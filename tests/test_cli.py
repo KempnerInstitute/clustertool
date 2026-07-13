@@ -240,3 +240,20 @@ def test_account_members_needs_account():
     result = CliRunner().invoke(main, ["account", "members"])
     assert result.exit_code != 0
     assert "give an ACCOUNT or use --all" in result.output
+
+
+def test_diag_ib(monkeypatch):
+    monkeypatch.setattr(
+        slurm, "partition_nodes", lambda p: [("n1", "idle"), ("n2", "idle"), ("n3", "idle")]
+    )
+
+    def fake_run(cmd):
+        host = cmd[-2]
+        return "5: ib1: <BROADCAST,MULTICAST> mtu 4092 state DOWN\n" if host == "n2" else ""
+
+    monkeypatch.setattr(process, "run", fake_run)
+    result = CliRunner().invoke(main, ["diag", "ib", "kempner_h100"])
+    assert result.exit_code == 0
+    assert "n2" in result.output
+    assert "ib1" in result.output
+    assert "1 host(s) with IB ports DOWN" in result.output

@@ -2,6 +2,7 @@
 
 import click
 
+from cluster_tools.commands.diag.ib import ib
 from cluster_tools.commands.diag.nccl import nccl
 
 
@@ -10,4 +11,5 @@ def diag() -> None:
     """Run cluster diagnostics."""
 
 
+diag.add_command(ib)
 diag.add_command(nccl)
