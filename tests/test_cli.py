@@ -215,3 +215,28 @@ def test_jobs_violators_override(monkeypatch):
     )
     assert result.exit_code == 0
     assert "201" in result.output
+
+
+def test_account_members_all(monkeypatch):
+    monkeypatch.setattr(
+        slurm, "partition_accounts", lambda p: ["kempner_dev", "kempner_x_lab", "other_acct"]
+    )
+    members_map = {"kempner_dev": ["alice", "bob"], "kempner_x_lab": ["carol"], "other_acct": ["z"]}
+    monkeypatch.setattr(slurm, "account_members", lambda a: members_map.get(a, []))
+    monkeypatch.setattr(
+        slurm,
+        "user_fullnames",
+        lambda users: {"alice": "Alice_A", "bob": "Bob_B", "carol": "Carol_C"},
+    )
+    result = CliRunner().invoke(main, ["account", "members", "--all"])
+    assert result.exit_code == 0
+    assert "account,username,full_name" in result.output
+    assert "kempner_dev,alice,Alice_A" in result.output
+    assert "kempner_x_lab,carol,Carol_C" in result.output
+    assert "other_acct" not in result.output
+
+
+def test_account_members_needs_account():
+    result = CliRunner().invoke(main, ["account", "members"])
+    assert result.exit_code != 0
+    assert "give an ACCOUNT or use --all" in result.output

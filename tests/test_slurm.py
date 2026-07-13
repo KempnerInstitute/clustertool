@@ -140,3 +140,21 @@ def test_running_jobs_reqtres(monkeypatch):
         ("101", "alice", 200, 8, 100000),
         ("102", "bob", 96, 4, 2000000),
     ]
+
+
+def test_partition_accounts(monkeypatch):
+    monkeypatch.setattr(
+        slurm,
+        "_run",
+        lambda cmd: "PartitionName=kempner AllowAccounts=kempner_dev,kempner_sham_lab State=UP\n",
+    )
+    assert slurm.partition_accounts("kempner") == ["kempner_dev", "kempner_sham_lab"]
+
+
+def test_user_fullnames(monkeypatch):
+    out = "mmsh:*:1:2:Max Shad:/home:/bin/bash\nebatty:*:3:4:Eleanor Batty:/h:/bin/bash\n"
+    monkeypatch.setattr(slurm, "_run", lambda cmd: out)
+    assert slurm.user_fullnames(["mmsh", "ebatty"]) == {
+        "mmsh": "Max_Shad",
+        "ebatty": "Eleanor_Batty",
+    }

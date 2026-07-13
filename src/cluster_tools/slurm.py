@@ -210,3 +210,25 @@ def running_jobs_reqtres(partition: str) -> list[tuple[str, str, int, int, int]]
             (_field(line, "JobId"), user, _tres_int(req, "cpu"), parse_gpu_count(req), mem_mb)
         )
     return jobs
+
+
+def partition_accounts(partition: str) -> list[str]:
+    """Return the accounts allowed on a partition."""
+    out = _run(["scontrol", "show", "partition", partition])
+    match = re.search(r"AllowAccounts=(\S+)", out)
+    if not match or match.group(1).upper() == "ALL":
+        return []
+    return match.group(1).split(",")
+
+
+def user_fullnames(usernames: list[str]) -> dict[str, str]:
+    """Return {username: full_name} (spaces as underscores) via one getent call."""
+    if not usernames:
+        return {}
+    out = _run(["getent", "passwd", *usernames])
+    names: dict[str, str] = {}
+    for line in out.splitlines():
+        fields = line.split(":")
+        if len(fields) > 4:
+            names[fields[0]] = fields[4].replace(" ", "_")
+    return names
