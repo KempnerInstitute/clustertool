@@ -232,3 +232,11 @@ def user_fullnames(usernames: list[str]) -> dict[str, str]:
         if len(fields) > 4:
             names[fields[0]] = fields[4].replace(" ", "_")
     return names
+
+
+def job_nodes(jobid: str) -> list[str]:
+    """Return the expanded hostnames allocated to a job."""
+    compact = _run(["squeue", "-j", jobid, "-h", "-o", "%N"]).strip()
+    if not compact:
+        return []
+    return [host for host in _run(["scontrol", "show", "hostnames", compact]).split() if host]

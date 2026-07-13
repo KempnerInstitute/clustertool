@@ -158,3 +158,18 @@ def test_user_fullnames(monkeypatch):
         "mmsh": "Max_Shad",
         "ebatty": "Eleanor_Batty",
     }
+
+
+def test_job_nodes(monkeypatch):
+    def fake_run(cmd):
+        if cmd[0] == "squeue":
+            return "holygpu8a[11101-11102]\n"
+        return "holygpu8a11101\nholygpu8a11102\n"
+
+    monkeypatch.setattr(slurm, "_run", fake_run)
+    assert slurm.job_nodes("123") == ["holygpu8a11101", "holygpu8a11102"]
+
+
+def test_job_nodes_not_running(monkeypatch):
+    monkeypatch.setattr(slurm, "_run", lambda cmd: "\n")
+    assert slurm.job_nodes("123") == []

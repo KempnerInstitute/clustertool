@@ -257,3 +257,26 @@ def test_diag_ib(monkeypatch):
     assert "n2" in result.output
     assert "ib1" in result.output
     assert "1 host(s) with IB ports DOWN" in result.output
+
+
+def test_gpu_monitor_job(monkeypatch):
+    from cluster_tools import monitor
+
+    monkeypatch.setattr(slurm, "job_nodes", lambda j: ["n1", "n2"])
+    captured = {}
+    monkeypatch.setattr(
+        monitor,
+        "run_monitor",
+        lambda title, hosts, interval: captured.update(title=title, hosts=hosts),
+    )
+    result = CliRunner().invoke(main, ["gpu", "monitor-job", "12345"])
+    assert result.exit_code == 0
+    assert captured["hosts"] == ["n1", "n2"]
+    assert "12345" in captured["title"]
+
+
+def test_gpu_monitor_job_no_nodes(monkeypatch):
+    monkeypatch.setattr(slurm, "job_nodes", lambda j: [])
+    result = CliRunner().invoke(main, ["gpu", "monitor-job", "99999"])
+    assert result.exit_code != 0
+    assert "no nodes found" in result.output
