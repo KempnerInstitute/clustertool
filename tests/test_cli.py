@@ -106,68 +106,45 @@ def test_storage_quota_lustre(monkeypatch):
     assert captured["cmd"] == ["lfs", "quota", "-hg", "kempner_dev", "/n/holylfs06"]
 
 
-def test_diag_nccl_not_gpu(monkeypatch):
-    monkeypatch.setattr(
-        slurm, "node_info", lambda node: {"name": node, "gpus": 0, "partitions": ["shared"]}
-    )
-    result = CliRunner().invoke(main, ["diag", "nccl", "cpu01"])
+def test_diag_nccl_dry_run():
+    result = CliRunner().invoke(main, ["diag", "nccl", "--dry-run"])
+    assert result.exit_code == 0
+    assert "timeout 300 srun" in result.output
+    assert "--ntasks-per-node=" in result.output
+    assert result.output.strip().endswith("-u <nccl_fsdp_test.py>")
+
+
+def test_diag_nccl_no_slurm(monkeypatch):
+    for var in ["SLURM_PROCID", "SLURM_NNODES", "SLURM_NTASKS_PER_NODE"]:
+        monkeypatch.delenv(var, raising=False)
+    result = CliRunner().invoke(main, ["diag", "nccl"])
     assert result.exit_code != 0
-    assert "not a GPU node" in result.output
+    assert "Slurm allocation" in result.output
 
 
-def test_diag_nccl_dry_run(monkeypatch):
-    monkeypatch.setattr(
-        slurm,
-        "node_info",
-        lambda node: {"name": node, "gpus": 4, "partitions": ["kempner_h100"]},
-    )
-    result = CliRunner().invoke(
-        main,
-        ["diag", "nccl", "holygpu8a11101", "--binary", "/opt/all_reduce_perf", "--dry-run"],
-    )
+def test_diag_nccl_run(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SLURM_PROCID", "0")
+    monkeypatch.setenv("SLURM_NNODES", "2")
+    monkeypatch.setenv("SLURM_NTASKS_PER_NODE", "4")
+    monkeypatch.setenv("SLURM_JOB_ID", "999")
+    monkeypatch.setattr(slurm, "first_hostname", lambda: "node0")
+    captured = {}
+
+    def fake_stream(cmd, extra_env=None):
+        captured["cmd"] = cmd
+        captured["env"] = extra_env
+        return 0
+
+    monkeypatch.setattr(process, "stream", fake_stream)
+    result = CliRunner().invoke(main, ["diag", "nccl"])
     assert result.exit_code == 0
-    assert "srun" in result.output
-    assert "--nodelist=holygpu8a11101" in result.output
-    assert "--gpus-per-node=4" in result.output
-    assert "--partition=kempner_h100" in result.output
-    assert result.output.strip().endswith("/opt/all_reduce_perf -b 8 -e 128M -f 2 -g 4")
-
-
-def test_diag_nccl_partition_override(monkeypatch):
-    monkeypatch.setattr(
-        slurm,
-        "node_info",
-        lambda node: {"name": node, "gpus": 8, "partitions": ["kempner_requeue"]},
-    )
-    result = CliRunner().invoke(
-        main,
-        [
-            "diag",
-            "nccl",
-            "gpunode",
-            "--binary",
-            "/opt/arp",
-            "--partition",
-            "kempner_h100",
-            "--dry-run",
-        ],
-    )
-    assert result.exit_code == 0
-    assert "--partition=kempner_h100" in result.output
-    assert "--gpus-per-node=8" in result.output
-
-
-def test_diag_nccl_dry_run_without_binary(monkeypatch):
-    monkeypatch.setattr(
-        slurm,
-        "node_info",
-        lambda node: {"name": node, "gpus": 4, "partitions": ["kempner_h100"]},
-    )
-    monkeypatch.delenv("NCCL_TESTS_PATH", raising=False)
-    monkeypatch.setattr(shutil, "which", lambda name: None)
-    result = CliRunner().invoke(main, ["diag", "nccl", "gpunode", "--dry-run"])
-    assert result.exit_code == 0
-    assert "all_reduce_perf -b 8 -e 128M -f 2 -g 4" in result.output
+    assert captured["cmd"][:3] == ["timeout", "300", "srun"]
+    assert "--ntasks-per-node=4" in captured["cmd"]
+    assert captured["env"]["WORLD_SIZE"] == "8"
+    assert captured["env"]["MASTER_ADDR"] == "node0"
+    assert "passed" in result.output
+    assert not list(tmp_path.glob("nccl_fsdp_test_*.py"))
 
 
 def test_gpu_avail(monkeypatch):

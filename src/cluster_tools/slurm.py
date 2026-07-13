@@ -240,3 +240,9 @@ def job_nodes(jobid: str) -> list[str]:
     if not compact:
         return []
     return [host for host in _run(["scontrol", "show", "hostnames", compact]).split() if host]
+
+
+def first_hostname() -> str:
+    """Return the first hostname in the current job's node list."""
+    hosts = _run(["scontrol", "show", "hostnames"]).split()
+    return hosts[0] if hosts else ""
