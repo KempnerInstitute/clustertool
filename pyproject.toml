@@ -3,8 +3,10 @@ name = "cluster-tools"
 version = "0.1.0"
 description = "Kempner AI Cluster Tools: a single umbrella CLI for cluster scripts."
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
-authors = [{ name = "Kempner Institute" }]
+authors = [{ name = "Kempner Institute, Harvard University" }]
 dependencies = ["click>=8.1"]
 
 [project.urls]

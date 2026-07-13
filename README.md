@@ -91,4 +91,5 @@ New commands are added by pull request. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-TBD.
+MIT — see [LICENSE](LICENSE). Copyright (c) 2026 Kempner Institute, Harvard
+University.
