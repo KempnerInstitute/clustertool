@@ -307,3 +307,25 @@ def test_gpu_nvtop_no_nodes(monkeypatch):
     result = CliRunner().invoke(main, ["gpu", "nvtop", "9", "--no-attach"])
     assert result.exit_code != 0
     assert "no nodes found" in result.output
+
+
+def test_diag_nvlink_dry_run():
+    result = CliRunner().invoke(main, ["diag", "nvlink", "--dry-run"])
+    assert result.exit_code == 0
+    assert "-lnccl" in result.output
+    assert "nvlink_saturate_forever_4gpu.cu" in result.output
+    assert "2147483648 20 200" in result.output
+    assert "NCCL_IB_DISABLE=1" in result.output
+
+
+def test_diag_nvlink_args_dry_run():
+    result = CliRunner().invoke(main, ["diag", "nvlink", "1024", "5", "50", "--dry-run"])
+    assert result.exit_code == 0
+    assert "1024 5 50" in result.output
+
+
+def test_diag_nvlink_no_nvcc(monkeypatch):
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    result = CliRunner().invoke(main, ["diag", "nvlink"])
+    assert result.exit_code != 0
+    assert "not found" in result.output

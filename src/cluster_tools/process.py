@@ -34,9 +34,12 @@ def run(cmd: list[str], input_text: str | None = None) -> str:
     return result.stdout
 
 
-def stream(cmd: list[str]) -> int:
+def stream(cmd: list[str], extra_env: dict[str, str] | None = None) -> int:
     """Run a command with inherited stdio and return its exit code."""
+    env = _child_env()
+    if extra_env:
+        env.update(extra_env)
     try:
-        return subprocess.run(cmd, check=False, env=_child_env()).returncode
+        return subprocess.run(cmd, check=False, env=env).returncode
     except FileNotFoundError as exc:
         raise CommandError(f"'{cmd[0]}' not found on this host") from exc
