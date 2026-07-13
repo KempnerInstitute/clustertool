@@ -1,27 +1,57 @@
-"""gpu lab-util command."""
+"""gpu usage command."""
 
 import click
 
 from cluster_tools import slurm
 
 
-@click.command("lab-util")
-@click.argument("account")
-def lab_util(account: str) -> None:
-    """Show one account's live GPU usage, by user and partition.
+@click.command("usage")
+@click.argument("account", required=False)
+def usage(account: str | None) -> None:
+    """Show live base-partition GPU usage, for all labs or one lab.
 
-    Base-partition usage counts toward the per-account GPU cap. Priority and
-    kempner_requeue usage is additive and does not count toward the cap.
+    Without ACCOUNT, rank every account by base-partition GPU usage (the usage
+    that counts toward each account's cap), highest first. With ACCOUNT, break
+    that account's usage down by user and partition, plus additive priority and
+    kempner_requeue usage that does not count toward the cap.
 
     \b
     Use cases:
-      - See who in a lab is consuming the shared GPU cap.
-      - Check how close an account is to its cap and why jobs are pending.
+      - See which labs are the heaviest GPU users right now (no argument).
+      - See who in a lab is using its cap and why jobs pend (with ACCOUNT).
 
     \b
     Inputs:
-      ACCOUNT  Slurm account name (e.g. kempner_sham_lab).
+      ACCOUNT  Slurm account name (e.g. kempner_sham_lab). Omit for all labs.
     """
+    if account is None:
+        _all_labs()
+    else:
+        _one_lab(account)
+
+
+def _all_labs() -> None:
+    """Rank every account by base-partition GPU usage, highest first."""
+    cap = slurm.account_cap()
+    totals = slurm.gpu_by_account(slurm.BASE_PARTITIONS)
+
+    click.echo(
+        f"Base-partition GPU usage by account (counts toward the {cap}-GPU cap) -- highest first"
+    )
+    click.echo()
+    if not totals:
+        click.echo("  (no running GPU jobs on the base partitions)")
+        return
+
+    for account, gpus in sorted(totals.items(), key=lambda item: item[1], reverse=True):
+        click.echo(f"  {account:<28} {gpus:3d}/{cap}")
+    total = sum(totals.values())
+    click.echo(f"  {'':<28} ----")
+    click.echo(f"  {'TOTAL':<28} {total:3d} GPU in use across {len(totals)} account(s)")
+
+
+def _one_lab(account: str) -> None:
+    """Show one account's usage by user and partition."""
     if not slurm.account_exists(account):
         raise click.ClickException(f"account '{account}' not found")
 

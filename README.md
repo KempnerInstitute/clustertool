@@ -41,8 +41,8 @@ uv run clustertools --help
 ```bash
 clustertools --help              # list command groups
 clustertools gpu --help          # list commands in the gpu group
-clustertools gpu labs-util       # rank every account by base-partition GPU usage
-clustertools gpu lab-util kempner_sham_lab   # one account's usage, by user and partition
+clustertools gpu usage           # rank every account by base-partition GPU usage
+clustertools gpu usage kempner_sham_lab      # one account's usage, by user and partition
 clustertools nodes list kempner_h100         # node names and states in a partition
 clustertools account members kempner_dev     # users in a fairshare account
 clustertools storage quota kempner_dev       # VAST scratch quota for an account
@@ -70,8 +70,7 @@ a group's commands.
 
 | Command | Inputs | Description |
 | --- | --- | --- |
-| `gpu labs-util` | none | Rank every account by live base-partition GPU usage. |
-| `gpu lab-util` | `ACCOUNT` | Show one account's live GPU usage, by user and partition. |
+| `gpu usage` | `[ACCOUNT]` | Rank all labs by GPU usage, or break one lab down by user and partition. |
 | `gpu avail` | `PARTITION` | List nodes with free GPUs, most free first. |
 | `gpu monitor-partition` | `PARTITION [--interval] [--filter]` | Live per-node GPU/CPU/mem/network table for a partition. |
 | `gpu monitor-job` | `JOBID [--interval]` | Live per-node GPU/CPU/mem/network table for a job. |
@@ -96,7 +95,7 @@ src/cluster_tools/
   monitor.py          # shared live per-node monitor (monitor-partition/-job)
   data/               # bundled payloads (monitor sample, nccl test, nvlink .cu)
   commands/           # one package per group; one file per command
-    gpu/              # avail, labs_util, lab_util, monitor_partition, monitor_job, nvtop
+    gpu/              # usage, avail, monitor_partition, monitor_job, nvtop
     jobs/             # stats, violators
     account/          # members
     nodes/            # list
