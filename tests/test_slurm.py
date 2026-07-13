@@ -121,3 +121,22 @@ def test_node_free_resources_idle(monkeypatch):
     assert free_gpu == 4
     assert free_cpu == 96
     assert round(free_mem) == 1000
+
+
+def test_running_jobs_reqtres(monkeypatch):
+    out = (
+        "JobId=101 UserId=alice(1001) JobState=RUNNING Partition=kempner_h100 "
+        "ReqTRES=cpu=200,mem=100000M,node=1,gres/gpu=8\n"
+        "JobId=102 UserId=bob(1002) JobState=RUNNING Partition=kempner_h100,kempner "
+        "ReqTRES=cpu=96,mem=2000000M,gres/gpu=4\n"
+        "JobId=103 UserId=carol(1003) JobState=PENDING Partition=kempner_h100 "
+        "ReqTRES=cpu=8,mem=100M,gres/gpu=1\n"
+        "JobId=104 UserId=dave(1004) JobState=RUNNING Partition=kempner "
+        "ReqTRES=cpu=8,mem=100M,gres/gpu=1\n"
+    )
+    monkeypatch.setattr(slurm, "_run", lambda cmd: out)
+    jobs = slurm.running_jobs_reqtres("kempner_h100")
+    assert jobs == [
+        ("101", "alice", 200, 8, 100000),
+        ("102", "bob", 96, 4, 2000000),
+    ]

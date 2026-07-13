@@ -182,3 +182,36 @@ def test_gpu_avail(monkeypatch):
     assert "n2" in result.output
     assert "n3" not in result.output
     assert result.output.index("n2") < result.output.index("n1")
+
+
+def test_jobs_violators(monkeypatch):
+    jobs = [
+        ("101", "alice", 200, 8, 100000),
+        ("102", "bob", 96, 4, 2000000),
+        ("103", "carol", 96, 4, 1440000),
+        ("104", "dave", 400, 0, 100000),
+    ]
+    monkeypatch.setattr(slurm, "running_jobs_reqtres", lambda p: jobs)
+    result = CliRunner().invoke(main, ["jobs", "violators", "kempner_h100"])
+    assert result.exit_code == 0
+    assert "101" in result.output
+    assert "102" in result.output
+    assert "103" not in result.output
+    assert "104" not in result.output
+    assert result.output.index("101") < result.output.index("102")
+
+
+def test_jobs_violators_unknown_partition(monkeypatch):
+    monkeypatch.setattr(slurm, "running_jobs_reqtres", lambda p: [])
+    result = CliRunner().invoke(main, ["jobs", "violators", "some_partition"])
+    assert result.exit_code != 0
+    assert "unknown partition" in result.output
+
+
+def test_jobs_violators_override(monkeypatch):
+    monkeypatch.setattr(slurm, "running_jobs_reqtres", lambda p: [("201", "eve", 100, 2, 10000)])
+    result = CliRunner().invoke(
+        main, ["jobs", "violators", "custom", "--cpu-per-gpu", "40", "--mem-per-gpu", "100000"]
+    )
+    assert result.exit_code == 0
+    assert "201" in result.output

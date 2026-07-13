@@ -186,3 +186,27 @@ def node_free_resources(node: str) -> tuple[int, int, float]:
         _tres_int(cfg_tres, "cpu") - _tres_int(alloc_tres, "cpu"),
         free_mem if free_mem > 0 else 0.0,
     )
+
+
+def _field(text: str, key: str) -> str:
+    """Return the value of a `key=value` field in scontrol output."""
+    match = re.search(rf"(?:^|\s){re.escape(key)}=(\S*)", text)
+    return match.group(1) if match else ""
+
+
+def running_jobs_reqtres(partition: str) -> list[tuple[str, str, int, int, int]]:
+    """Return (jobid, user, cpu, gpu, mem_mb) for running jobs in a partition."""
+    out = _run(["scontrol", "show", "job", "-o"])
+    jobs: list[tuple[str, str, int, int, int]] = []
+    for line in out.splitlines():
+        if "JobId=" not in line or _field(line, "JobState") != "RUNNING":
+            continue
+        if partition not in _field(line, "Partition").split(","):
+            continue
+        req = _field(line, "ReqTRES")
+        user = _field(line, "UserId").split("(")[0]
+        mem_mb = round(_tres_mem_gb(req) * 1024)
+        jobs.append(
+            (_field(line, "JobId"), user, _tres_int(req, "cpu"), parse_gpu_count(req), mem_mb)
+        )
+    return jobs
