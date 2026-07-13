@@ -4,8 +4,13 @@ import importlib.metadata
 
 import click
 
+from cluster_tools.commands.account import account
+from cluster_tools.commands.diag import diag
 from cluster_tools.commands.gpu import gpu
-from cluster_tools.slurm import SlurmError
+from cluster_tools.commands.jobs import jobs
+from cluster_tools.commands.nodes import nodes
+from cluster_tools.commands.storage import storage
+from cluster_tools.process import CommandError
 
 
 def _version() -> str:
@@ -17,12 +22,12 @@ def _version() -> str:
 
 
 class ClusterToolsGroup(click.Group):
-    """Group that reports Slurm failures as clean CLI errors."""
+    """Group that reports command failures as clean CLI errors."""
 
     def invoke(self, ctx: click.Context):
         try:
             return super().invoke(ctx)
-        except SlurmError as exc:
+        except CommandError as exc:
             raise click.ClickException(str(exc)) from exc
 
 
@@ -33,6 +38,11 @@ def main() -> None:
 
 
 main.add_command(gpu)
+main.add_command(jobs)
+main.add_command(account)
+main.add_command(nodes)
+main.add_command(storage)
+main.add_command(diag)
 
 
 if __name__ == "__main__":

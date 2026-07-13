@@ -1,28 +1,19 @@
-"""Read-only helpers for querying Slurm about GPU usage."""
+"""Read-only helpers for querying Slurm."""
 
 import re
-import subprocess
+
+from cluster_tools.process import CommandError
+from cluster_tools.process import run as _run
 
 BASE_PARTITIONS = ("kempner", "kempner_h100", "kempner_h200", "kempner_rtx")
 REQUEUE_PARTITION = "kempner_requeue"
 BASE_QOS = "kempner_base"
 DEFAULT_CAP = 96
 
+SlurmError = CommandError
+
 _GPU_RE = re.compile(r"gres/gpu=(\d+)")
 _INT_RE = re.compile(r"\d+")
-
-
-class SlurmError(RuntimeError):
-    """Raised when a Slurm command is missing or cannot be run."""
-
-
-def _run(cmd: list[str]) -> str:
-    """Run a command and return its stdout."""
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-    except FileNotFoundError as exc:
-        raise SlurmError(f"'{cmd[0]}' not found; are you on a Slurm login node?") from exc
-    return result.stdout
 
 
 def parse_gpu_count(text: str) -> int:
@@ -47,11 +38,48 @@ def account_exists(account: str) -> bool:
     return out.strip() == account
 
 
+def account_members(account: str) -> list[str]:
+    """Return the sorted unique users in a fairshare account."""
+    out = _run(["sshare", "-P", "--all", f"--account={account}"])
+    members: set[str] = set()
+    for line in out.splitlines()[1:]:
+        parts = line.split("|")
+        if len(parts) >= 2 and parts[1].strip():
+            members.add(parts[1].strip())
+    return sorted(members)
+
+
 def priority_partitions() -> list[str]:
     """Return the live list of Kempner priority partitions."""
     out = _run(["scontrol", "show", "partition"])
     names = re.findall(r"PartitionName=(\S+)", out)
     return sorted(n for n in names if re.search(r"kempner.*priority", n, re.IGNORECASE))
+
+
+def partition_nodes(partition: str) -> list[tuple[str, str]]:
+    """Return (node, state) rows for a partition."""
+    out = _run(["sinfo", "-h", "-N", "-p", partition, "-o", "%N %t"])
+    rows: list[tuple[str, str]] = []
+    for line in out.splitlines():
+        fields = line.split()
+        if len(fields) >= 2:
+            rows.append((fields[0], fields[1]))
+    return rows
+
+
+def node_info(node: str) -> dict:
+    """Return the name, GPU count, and partitions for a node."""
+    out = _run(["scontrol", "show", "node", node])
+    if not out.strip() or "not found" in out.lower():
+        raise CommandError(f"node '{node}' not found")
+    name = re.search(r"NodeName=(\S+)", out)
+    cfgtres = re.search(r"CfgTRES=(\S+)", out)
+    partitions = re.search(r"Partitions=(\S+)", out)
+    return {
+        "name": name.group(1) if name else node,
+        "gpus": parse_gpu_count(cfgtres.group(1)) if cfgtres else 0,
+        "partitions": partitions.group(1).split(",") if partitions else [],
+    }
 
 
 def gpu_by_account(partitions: tuple[str, ...] | list[str]) -> dict[str, int]:

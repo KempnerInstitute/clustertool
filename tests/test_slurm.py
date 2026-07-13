@@ -1,5 +1,7 @@
 """Tests for the Slurm helper module."""
 
+import pytest
+
 from cluster_tools import slurm
 
 
@@ -54,3 +56,46 @@ def test_pending_at_cap(monkeypatch):
     sample = "MaxGRESPerAccount\nResources\nMaxGRESPerAccount\n"
     monkeypatch.setattr(slurm, "_run", lambda cmd: sample)
     assert slurm.pending_at_cap("acct_a", slurm.BASE_PARTITIONS) == 2
+
+
+def test_partition_nodes(monkeypatch):
+    sample = "node01 idle\nnode02 mix\nbad\n"
+    monkeypatch.setattr(slurm, "_run", lambda cmd: sample)
+    assert slurm.partition_nodes("kempner") == [("node01", "idle"), ("node02", "mix")]
+
+
+def test_account_members(monkeypatch):
+    sample = (
+        "Account|User|RawShares|NormShares|RawUsage|EffectvUsage|FairShare\n"
+        "kempner_dev||250|0.0004|1|0.002|\n"
+        " kempner_dev|alice|20|0.00003|1|0.0002|0.004\n"
+        " kempner_dev|alice|parent|0.0003|0|0.002|0.008\n"
+        " kempner_dev|bob|20|0.00003|1|0.0002|0.004\n"
+    )
+    monkeypatch.setattr(slurm, "_run", lambda cmd: sample)
+    assert slurm.account_members("kempner_dev") == ["alice", "bob"]
+
+
+def test_node_info_gpu(monkeypatch):
+    sample = (
+        "NodeName=holygpu8a11101 Arch=x86_64\n"
+        "CfgTRES=cpu=96,mem=1547208M,billing=2302,gres/gpu=4\n"
+        "Partitions=kempner_h100,kempner_h100_priority\n"
+    )
+    monkeypatch.setattr(slurm, "_run", lambda cmd: sample)
+    info = slurm.node_info("holygpu8a11101")
+    assert info["name"] == "holygpu8a11101"
+    assert info["gpus"] == 4
+    assert info["partitions"] == ["kempner_h100", "kempner_h100_priority"]
+
+
+def test_node_info_non_gpu(monkeypatch):
+    sample = "NodeName=cpu01\nCfgTRES=cpu=48,mem=192000M,billing=48\nPartitions=shared\n"
+    monkeypatch.setattr(slurm, "_run", lambda cmd: sample)
+    assert slurm.node_info("cpu01")["gpus"] == 0
+
+
+def test_node_info_missing(monkeypatch):
+    monkeypatch.setattr(slurm, "_run", lambda cmd: "")
+    with pytest.raises(slurm.SlurmError):
+        slurm.node_info("nope")
