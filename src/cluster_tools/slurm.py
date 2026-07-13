@@ -153,3 +153,36 @@ def pending_at_cap(account: str, partitions: tuple[str, ...] | list[str]) -> int
         ]
     )
     return sum(1 for line in out.splitlines() if "MaxGRESPerAccount" in line)
+
+
+_MEM_RE = re.compile(r"(?:^|,)mem=(\d+(?:\.\d+)?)([KMGT]?)")
+
+
+def _tres_int(tres: str, key: str) -> int:
+    """Return an integer TRES value, or 0 if absent."""
+    match = re.search(rf"(?:^|,){re.escape(key)}=(\d+)", tres)
+    return int(match.group(1)) if match else 0
+
+
+def _tres_mem_gb(tres: str) -> float:
+    """Return the memory TRES value in GB, or 0 if absent."""
+    match = _MEM_RE.search(tres)
+    if not match:
+        return 0.0
+    factors = {"K": 1 / 1024 / 1024, "M": 1 / 1024, "G": 1.0, "T": 1024.0, "": 1 / 1024}
+    return float(match.group(1)) * factors[match.group(2)]
+
+
+def node_free_resources(node: str) -> tuple[int, int, float]:
+    """Return (free_gpu, free_cpu, free_mem_gb) for a node."""
+    out = _run(["scontrol", "show", "node", node])
+    cfg = re.search(r"CfgTRES=(\S+)", out)
+    alloc = re.search(r"AllocTRES=(\S+)", out)
+    cfg_tres = cfg.group(1) if cfg else ""
+    alloc_tres = alloc.group(1) if alloc else ""
+    free_mem = _tres_mem_gb(cfg_tres) - _tres_mem_gb(alloc_tres)
+    return (
+        parse_gpu_count(cfg_tres) - parse_gpu_count(alloc_tres),
+        _tres_int(cfg_tres, "cpu") - _tres_int(alloc_tres, "cpu"),
+        free_mem if free_mem > 0 else 0.0,
+    )

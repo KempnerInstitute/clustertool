@@ -99,3 +99,25 @@ def test_node_info_missing(monkeypatch):
     monkeypatch.setattr(slurm, "_run", lambda cmd: "")
     with pytest.raises(slurm.SlurmError):
         slurm.node_info("nope")
+
+
+def test_node_free_resources(monkeypatch):
+    sample = (
+        "NodeName=n1\n"
+        "CfgTRES=cpu=96,mem=1547208M,billing=100,gres/gpu=4\n"
+        "AllocTRES=cpu=32,mem=200G,gres/gpu=1\n"
+    )
+    monkeypatch.setattr(slurm, "_run", lambda cmd: sample)
+    free_gpu, free_cpu, free_mem = slurm.node_free_resources("n1")
+    assert free_gpu == 3
+    assert free_cpu == 64
+    assert round(free_mem) == 1311
+
+
+def test_node_free_resources_idle(monkeypatch):
+    sample = "NodeName=n1\nCfgTRES=cpu=96,mem=1024000M,gres/gpu=4\nAllocTRES=\n"
+    monkeypatch.setattr(slurm, "_run", lambda cmd: sample)
+    free_gpu, free_cpu, free_mem = slurm.node_free_resources("n1")
+    assert free_gpu == 4
+    assert free_cpu == 96
+    assert round(free_mem) == 1000

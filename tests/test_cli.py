@@ -168,3 +168,17 @@ def test_diag_nccl_dry_run_without_binary(monkeypatch):
     result = CliRunner().invoke(main, ["diag", "nccl", "gpunode", "--dry-run"])
     assert result.exit_code == 0
     assert "all_reduce_perf -b 8 -e 128M -f 2 -g 4" in result.output
+
+
+def test_gpu_avail(monkeypatch):
+    monkeypatch.setattr(
+        slurm, "partition_nodes", lambda p: [("n1", "mix"), ("n2", "idle"), ("n3", "alloc")]
+    )
+    free = {"n1": (2, 40, 500.0), "n2": (4, 90, 1000.0), "n3": (0, 0, 0.0)}
+    monkeypatch.setattr(slurm, "node_free_resources", lambda node: free[node])
+    result = CliRunner().invoke(main, ["gpu", "avail", "kempner_h100"])
+    assert result.exit_code == 0
+    assert "n1" in result.output
+    assert "n2" in result.output
+    assert "n3" not in result.output
+    assert result.output.index("n2") < result.output.index("n1")
