@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="_static/ct-repo-image.png" alt="Cluster Tools" width="100%">
+</p>
+
 # Cluster Tools
 
 Kempner AI Cluster Tools: a single umbrella CLI (`clustertools`) that
