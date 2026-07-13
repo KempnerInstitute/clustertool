@@ -10,7 +10,7 @@ authors = [{ name = "Kempner Institute, Harvard University" }]
 dependencies = ["click>=8.1"]
 
 [project.urls]
-Repository = "https://github.com/KempnerInstitute/ClusterTools"
+Repository = "https://github.com/KempnerInstitute/cluster-tools"
 
 [project.scripts]
 clustertools = "cluster_tools.cli:main"

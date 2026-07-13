@@ -21,14 +21,14 @@ inputs.
 Install as a tool from the repository:
 
 ```bash
-uv tool install git+https://github.com/KempnerInstitute/ClusterTools
+uv tool install git+https://github.com/KempnerInstitute/cluster-tools
 ```
 
 Or work from a clone:
 
 ```bash
-git clone https://github.com/KempnerInstitute/ClusterTools
-cd ClusterTools
+git clone https://github.com/KempnerInstitute/cluster-tools
+cd cluster-tools
 uv sync
 uv run clustertools --help
 ```
