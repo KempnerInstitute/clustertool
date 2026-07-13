@@ -280,3 +280,30 @@ def test_gpu_monitor_job_no_nodes(monkeypatch):
     result = CliRunner().invoke(main, ["gpu", "monitor-job", "99999"])
     assert result.exit_code != 0
     assert "no nodes found" in result.output
+
+
+def test_gpu_nvtop(monkeypatch):
+    monkeypatch.setattr(slurm, "job_nodes", lambda j: ["n1", "n2"])
+    calls = []
+
+    def fake_run(cmd, input_text=None):
+        calls.append(cmd)
+        if cmd[:2] == ["tmux", "list-panes"]:
+            return "0\n1\n"
+        return ""
+
+    monkeypatch.setattr(process, "run", fake_run)
+    result = CliRunner().invoke(main, ["gpu", "nvtop", "123", "--no-attach"])
+    assert result.exit_code == 0
+    assert calls[0][:3] == ["tmux", "new-session", "-d"]
+    send_keys = [c for c in calls if c[:2] == ["tmux", "send-keys"]]
+    assert len(send_keys) == 2
+    assert any("n1" in c[4] and "nvtop" in c[4] for c in send_keys)
+    assert "attach -t nvtop_123" in result.output
+
+
+def test_gpu_nvtop_no_nodes(monkeypatch):
+    monkeypatch.setattr(slurm, "job_nodes", lambda j: [])
+    result = CliRunner().invoke(main, ["gpu", "nvtop", "9", "--no-attach"])
+    assert result.exit_code != 0
+    assert "no nodes found" in result.output
