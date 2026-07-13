@@ -125,6 +125,12 @@ command lives in its own file.
    tools through `cluster_tools.process`: `run` captures stdout for parsing, and
    `stream` passes a tool's output straight through to the user.
 
+6. To ship a shell snippet, CUDA source, or other payload with a command, put
+   the file under `src/cluster_tools/data/` and load it at runtime with
+   `importlib.resources.files("cluster_tools") / "data" / "<file>"`. This keeps
+   long verbatim payloads out of the Python source (that directory is excluded
+   from ruff) and bundles them into the wheel.
+
 ## Add tests
 
 Add tests under `tests/`. Mock external commands by monkeypatching the helper

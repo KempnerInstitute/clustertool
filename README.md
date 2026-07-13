@@ -13,8 +13,11 @@ inputs.
 - [uv](https://docs.astral.sh/uv/) for environment and dependency management.
 - Run on a cluster login node. Commands shell out to the host's own tools:
   Slurm (`squeue`, `sacctmgr`, `sinfo`, `sshare`, `scontrol`, `srun`),
-  `jobstats`, and the storage tools (`quota`, `lfs`). A command only needs the
-  tools it uses.
+  `jobstats`, storage tools (`quota`, `lfs`), and `getent`. A command only needs
+  the tools it uses.
+- Some commands need more: the live monitors and `diag ib` need passwordless
+  `ssh` to nodes running `nvidia-smi`; `gpu nvtop` needs `tmux` and `nvtop`;
+  `diag nvlink` needs `nvcc` and NCCL; `diag nccl` needs `torch`.
 
 ## Install
 
@@ -44,6 +47,9 @@ clustertools nodes list kempner_h100         # node names and states in a partit
 clustertools account members kempner_dev     # users in a fairshare account
 clustertools storage quota kempner_dev       # VAST scratch quota for an account
 clustertools jobs stats 1234567              # utilization for a job
+clustertools gpu avail kempner_h100          # nodes with free GPUs
+clustertools jobs violators kempner_h100     # jobs over the per-GPU norm
+clustertools gpu monitor-job 1234567         # live per-node GPU/CPU/mem/net table
 ```
 
 ## Command groups
@@ -66,11 +72,18 @@ a group's commands.
 | --- | --- | --- |
 | `gpu labs-util` | none | Rank every account by live base-partition GPU usage. |
 | `gpu lab-util` | `ACCOUNT` | Show one account's live GPU usage, by user and partition. |
+| `gpu avail` | `PARTITION` | List nodes with free GPUs, most free first. |
+| `gpu monitor-partition` | `PARTITION [--interval] [--filter]` | Live per-node GPU/CPU/mem/network table for a partition. |
+| `gpu monitor-job` | `JOBID [--interval]` | Live per-node GPU/CPU/mem/network table for a job. |
+| `gpu nvtop` | `JOBID [--no-attach]` | tmux session running nvtop on each of a job's nodes. |
 | `jobs stats` | `JOBID...` | Show job utilization (via `jobstats`). |
-| `account members` | `ACCOUNT` | List the users in a fairshare account. |
+| `jobs violators` | `PARTITION [--cpu-per-gpu] [--mem-per-gpu]` | List running jobs over the per-GPU CPU/memory norm. |
+| `account members` | `ACCOUNT` / `--all` | List users in an account, or all lab accounts as CSV. |
 | `nodes list` | `PARTITION...` | List node names and states in one or more partitions. |
 | `storage quota` | `ACCOUNT [-f vast\|lustre]` | Show an account's VAST or Lustre quota. |
-| `diag nccl` | `NODE` | Run a single-node NCCL bandwidth test on a GPU node. |
+| `diag ib` | `PARTITION... [--parallel]` | Report nodes with InfiniBand ports DOWN. |
+| `diag nccl` | `[--python] [--timeout]` | Multi-node FSDP NCCL sanity check inside a Slurm job. |
+| `diag nvlink` | `[BYTES] [WARMUP] [REPORT] [--nvcc]` | Saturate a 4-GPU node's NVLink with NCCL all-reduce. |
 
 ## Project layout
 
@@ -80,13 +93,15 @@ src/cluster_tools/
   process.py          # subprocess helpers (capture / stream)
   slurm.py            # read-only Slurm query and parse helpers
   storage.py          # storage quota command construction
+  monitor.py          # shared live per-node monitor (monitor-partition/-job)
+  data/               # bundled payloads (monitor sample, nccl test, nvlink .cu)
   commands/           # one package per group; one file per command
-    gpu/              # __init__.py (group) + labs_util.py, lab_util.py
-    jobs/             # __init__.py + stats.py
-    account/          # __init__.py + members.py
-    nodes/            # __init__.py + list.py
-    storage/          # __init__.py + quota.py
-    diag/             # __init__.py + nccl.py
+    gpu/              # avail, labs_util, lab_util, monitor_partition, monitor_job, nvtop
+    jobs/             # stats, violators
+    account/          # members
+    nodes/            # list
+    storage/          # quota
+    diag/             # ib, nccl, nvlink
 tests/                # unit tests
 ```
 
