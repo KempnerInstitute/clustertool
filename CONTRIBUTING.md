@@ -42,26 +42,26 @@ uv run clustertools --help
 
 ## Add a command
 
-1. Pick the group whose scope fits your command (see Command groups). Add your
-   command to that group's module in `src/cluster_tools/commands/`, or create a
-   new module if you are introducing a new group.
+Each group is a package under `src/cluster_tools/commands/`: the group's
+`__init__.py` defines the `click` group and registers its commands, and each
+command lives in its own file.
 
-2. Write the command with `click`. The docstring becomes `--help`, so it must
-   explain what the command does, its use cases, and its inputs. A line
-   containing only `\b` (a backspace escape in a normal, non-raw docstring)
-   keeps the following block from being re-wrapped.
+1. Pick the group whose scope fits your command (see Command groups). You will
+   add a file to that group's package, e.g. `src/cluster_tools/commands/env/`.
+
+2. Write the command in its own file as a standalone `click` command. The
+   docstring becomes `--help`, so it must explain what the command does, its use
+   cases, and its inputs. A line containing only `\b` (a backspace escape in a
+   normal, non-raw docstring) keeps the following block from being re-wrapped.
+
+   `src/cluster_tools/commands/env/modules.py`:
 
    ```python
-   """Environment commands."""
+   """env modules command."""
    import click
 
 
-   @click.group()
-   def env() -> None:
-       """Inspect the software environment."""
-
-
-   @env.command("modules")
+   @click.command("modules")
    @click.argument("name", required=False)
    def modules(name: str | None) -> None:
        """List available modules, optionally filtered by name.
@@ -77,11 +77,39 @@ uv run clustertools --help
        ...
    ```
 
-3. Inputs: a command may take no input, or a required/optional list of inputs.
+   Inputs: a command may take no input, or a required/optional list of inputs.
    Use `click.argument` for required inputs and `click.option` for optional
    ones. Document each input in the docstring.
 
-4. Register a new group in `src/cluster_tools/cli.py`:
+3. Register it in the group's `__init__.py`:
+
+   ```python
+   from cluster_tools.commands.env.modules import modules
+
+   env.add_command(modules)
+   ```
+
+4. For a new group, create the package `__init__.py` with the group, then add
+   the group in `src/cluster_tools/cli.py`:
+
+   `src/cluster_tools/commands/env/__init__.py`:
+
+   ```python
+   """Environment commands."""
+   import click
+
+   from cluster_tools.commands.env.modules import modules
+
+
+   @click.group()
+   def env() -> None:
+       """Inspect the software environment."""
+
+
+   env.add_command(modules)
+   ```
+
+   `src/cluster_tools/cli.py`:
 
    ```python
    from cluster_tools.commands.env import env
@@ -89,7 +117,8 @@ uv run clustertools --help
    main.add_command(env)
    ```
 
-   A command added to an existing group needs no change in `cli.py`.
+   Adding a command to an existing group only needs the new file plus its
+   `add_command` line in that group's `__init__.py` — no change in `cli.py`.
 
 5. Put shared Slurm logic in `src/cluster_tools/slurm.py` and keep it read-only
    unless a command is explicitly meant to change cluster state. Run external

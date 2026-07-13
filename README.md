@@ -80,8 +80,13 @@ src/cluster_tools/
   process.py          # subprocess helpers (capture / stream)
   slurm.py            # read-only Slurm query and parse helpers
   storage.py          # storage quota command construction
-  commands/           # one module per group
-    gpu.py  jobs.py  account.py  nodes.py  storage.py  diag.py
+  commands/           # one package per group; one file per command
+    gpu/              # __init__.py (group) + labs_util.py, lab_util.py
+    jobs/             # __init__.py + stats.py
+    account/          # __init__.py + members.py
+    nodes/            # __init__.py + list.py
+    storage/          # __init__.py + quota.py
+    diag/             # __init__.py + nccl.py
 tests/                # unit tests
 ```
 

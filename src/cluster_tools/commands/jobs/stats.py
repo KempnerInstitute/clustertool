@@ -1,16 +1,11 @@
-"""Job commands."""
+"""jobs stats command."""
 
 import click
 
 from cluster_tools import process
 
 
-@click.group()
-def jobs() -> None:
-    """Inspect Slurm jobs."""
-
-
-@jobs.command("stats")
+@click.command("stats")
 @click.argument("jobids", nargs=-1, required=True, metavar="JOBID...")
 def stats(jobids: tuple[str, ...]) -> None:
     """Show utilization for one or more jobs (via jobstats).

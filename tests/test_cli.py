@@ -1,5 +1,7 @@
 """Tests for the CLI commands."""
 
+import shutil
+
 from click.testing import CliRunner
 
 from cluster_tools import process, slurm
@@ -161,7 +163,8 @@ def test_diag_nccl_dry_run_without_binary(monkeypatch):
         "node_info",
         lambda node: {"name": node, "gpus": 4, "partitions": ["kempner_h100"]},
     )
-    monkeypatch.setattr("cluster_tools.commands.diag._find_nccl_binary", lambda: None)
+    monkeypatch.delenv("NCCL_TESTS_PATH", raising=False)
+    monkeypatch.setattr(shutil, "which", lambda name: None)
     result = CliRunner().invoke(main, ["diag", "nccl", "gpunode", "--dry-run"])
     assert result.exit_code == 0
     assert "all_reduce_perf -b 8 -e 128M -f 2 -g 4" in result.output

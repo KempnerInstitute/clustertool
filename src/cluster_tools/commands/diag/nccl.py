@@ -1,4 +1,4 @@
-"""Diagnostic commands."""
+"""diag nccl command."""
 
 import os
 import shutil
@@ -8,12 +8,7 @@ import click
 from cluster_tools import process, slurm
 
 
-@click.group()
-def diag() -> None:
-    """Run cluster diagnostics."""
-
-
-@diag.command("nccl")
+@click.command("nccl")
 @click.argument("node")
 @click.option("--binary", help="Path to the nccl-tests all_reduce_perf binary.")
 @click.option("--partition", help="Partition to run in (default: the node's first partition).")

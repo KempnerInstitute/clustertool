@@ -1,16 +1,11 @@
-"""Node commands."""
+"""nodes list command."""
 
 import click
 
 from cluster_tools import slurm
 
 
-@click.group()
-def nodes() -> None:
-    """Inspect cluster nodes."""
-
-
-@nodes.command("list")
+@click.command("list")
 @click.argument("partitions", nargs=-1, required=True, metavar="PARTITION...")
 def list_nodes(partitions: tuple[str, ...]) -> None:
     """List node names and states for one or more partitions.

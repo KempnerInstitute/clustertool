@@ -1,4 +1,4 @@
-"""Storage commands."""
+"""storage quota command."""
 
 import click
 
@@ -6,12 +6,7 @@ from cluster_tools import process
 from cluster_tools.storage import lustre_quota_cmd, vast_quota_cmd
 
 
-@click.group()
-def storage() -> None:
-    """Inspect storage quotas."""
-
-
-@storage.command("quota")
+@click.command("quota")
 @click.argument("account")
 @click.option(
     "--filesystem",

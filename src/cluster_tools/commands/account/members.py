@@ -1,16 +1,11 @@
-"""Account commands."""
+"""account members command."""
 
 import click
 
 from cluster_tools import slurm
 
 
-@click.group()
-def account() -> None:
-    """Inspect Slurm accounts."""
-
-
-@account.command("members")
+@click.command("members")
 @click.argument("account_name", metavar="ACCOUNT")
 def members(account_name: str) -> None:
     """List the users in a Slurm fairshare account.
