@@ -20,10 +20,15 @@ def _child_env() -> dict[str, str]:
     return env
 
 
-def run(cmd: list[str]) -> str:
+def run(cmd: list[str], input_text: str | None = None) -> str:
     """Run a command and return its captured stdout."""
+    kwargs = {"capture_output": True, "text": True, "check": False, "env": _child_env()}
+    if input_text is None:
+        kwargs["stdin"] = subprocess.DEVNULL
+    else:
+        kwargs["input"] = input_text
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False, env=_child_env())
+        result = subprocess.run(cmd, **kwargs)
     except FileNotFoundError as exc:
         raise CommandError(f"'{cmd[0]}' not found on this host") from exc
     return result.stdout

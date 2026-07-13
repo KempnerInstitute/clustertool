@@ -1,0 +1,34 @@
+"""gpu monitor-partition command."""
+
+import click
+
+from cluster_tools import monitor, slurm
+
+
+@click.command("monitor-partition")
+@click.argument("partition")
+@click.option("--interval", default=5, show_default=True, help="Refresh interval in seconds.")
+@click.option(
+    "--filter", "prefix", default="", help="Only nodes whose name starts with this prefix."
+)
+def monitor_partition(partition: str, interval: int, prefix: str) -> None:
+    """Live GPU/CPU/memory/InfiniBand monitor for a partition's nodes.
+
+    Refreshes a colored per-node table in place until Ctrl+C. Requires
+    passwordless ssh to the nodes, which must expose nvidia-smi.
+
+    \b
+    Use cases:
+      - Watch utilization across a partition during a large run.
+      - Spot idle or network-starved nodes live.
+
+    \b
+    Inputs:
+      PARTITION   Slurm partition name (e.g. kempner_h100).
+      --interval  Refresh interval in seconds (default 5).
+      --filter    Only include nodes whose name starts with this prefix.
+    """
+    hosts = [name for name, _ in slurm.partition_nodes(partition) if name.startswith(prefix)]
+    if not hosts:
+        raise click.ClickException(f"no nodes matched in partition '{partition}'")
+    monitor.run_monitor(f"GPU/CPU/MEM/NET Monitor for Partition: {partition}", hosts, interval)
