@@ -34,6 +34,22 @@ def run(cmd: list[str], input_text: str | None = None) -> str:
     return result.stdout
 
 
+def succeeds(cmd: list[str]) -> bool:
+    """Return True if the command runs and exits 0 (output discarded)."""
+    try:
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            check=False,
+            env=_child_env(),
+            stdin=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        return False
+    return result.returncode == 0
+
+
 def stream(cmd: list[str], extra_env: dict[str, str] | None = None) -> int:
     """Run a command with inherited stdio and return its exit code."""
     env = _child_env()

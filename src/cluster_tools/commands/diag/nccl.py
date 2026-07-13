@@ -59,6 +59,12 @@ def nccl(python_bin: str, timeout_s: int, dry_run: bool) -> None:
             "SLURM_NNODES / SLURM_NTASKS_PER_NODE are not set"
         )
 
+    if not process.succeeds([python_bin, "-c", "import torch"]):
+        raise click.ClickException(
+            f"'{python_bin}' cannot import torch; activate an environment with torch "
+            "or pass --python /path/to/python"
+        )
+
     source = importlib.resources.files("cluster_tools") / "data" / "nccl_fsdp_test.py"
     test_path = pathlib.Path(f"nccl_fsdp_test_{os.environ.get('SLURM_JOB_ID', 'test')}.py")
     test_path.write_text(source.read_text())

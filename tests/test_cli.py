@@ -129,6 +129,7 @@ def test_diag_nccl_run(monkeypatch, tmp_path):
     monkeypatch.setenv("SLURM_NTASKS_PER_NODE", "4")
     monkeypatch.setenv("SLURM_JOB_ID", "999")
     monkeypatch.setattr(slurm, "first_hostname", lambda: "node0")
+    monkeypatch.setattr(process, "succeeds", lambda cmd: True)
     captured = {}
 
     def fake_stream(cmd, extra_env=None):
@@ -145,6 +146,16 @@ def test_diag_nccl_run(monkeypatch, tmp_path):
     assert captured["env"]["MASTER_ADDR"] == "node0"
     assert "passed" in result.output
     assert not list(tmp_path.glob("nccl_fsdp_test_*.py"))
+
+
+def test_diag_nccl_no_torch(monkeypatch):
+    monkeypatch.setenv("SLURM_PROCID", "0")
+    monkeypatch.setenv("SLURM_NNODES", "2")
+    monkeypatch.setenv("SLURM_NTASKS_PER_NODE", "4")
+    monkeypatch.setattr(process, "succeeds", lambda cmd: False)
+    result = CliRunner().invoke(main, ["diag", "nccl"])
+    assert result.exit_code != 0
+    assert "cannot import torch" in result.output
 
 
 def test_gpu_avail(monkeypatch):
@@ -286,22 +297,81 @@ def test_gpu_nvtop_no_nodes(monkeypatch):
     assert "no nodes found" in result.output
 
 
+def _fake_nvidia_smi_l(n):
+    return "\n".join(f"GPU {i}: NVIDIA H100 (UUID: GPU-{i})" for i in range(n)) + "\n"
+
+
 def test_diag_nvlink_dry_run():
     result = CliRunner().invoke(main, ["diag", "nvlink", "--dry-run"])
     assert result.exit_code == 0
     assert "-lnccl" in result.output
-    assert "nvlink_saturate_forever_4gpu.cu" in result.output
+    assert "nvlink_saturate_forever.cu" in result.output
     assert "2147483648 20 200" in result.output
     assert "NCCL_IB_DISABLE=1" in result.output
+    assert "all GPUs on the node" in result.output
 
 
-def test_diag_nvlink_args_dry_run():
-    result = CliRunner().invoke(main, ["diag", "nvlink", "1024", "5", "50", "--dry-run"])
+def test_diag_nvlink_dry_run_gpus():
+    result = CliRunner().invoke(
+        main, ["diag", "nvlink", "1024", "5", "50", "--gpus", "4", "--dry-run"]
+    )
     assert result.exit_code == 0
     assert "1024 5 50" in result.output
+    assert "CUDA_VISIBLE_DEVICES=0,1,2,3" in result.output
+
+
+def test_diag_nvlink_run_all_gpus(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    monkeypatch.setattr(process, "run", lambda cmd, input_text=None: _fake_nvidia_smi_l(8))
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/nvcc")
+    calls = []
+    monkeypatch.setattr(
+        process, "stream", lambda cmd, extra_env=None: calls.append((cmd, extra_env)) or 0
+    )
+    result = CliRunner().invoke(main, ["diag", "nvlink"])
+    assert result.exit_code == 0
+    run_env = [env for cmd, env in calls if env is not None][0]
+    assert run_env["CUDA_VISIBLE_DEVICES"] == "0,1,2,3,4,5,6,7"
+    assert "8 GPU(s)" in result.output
+
+
+def test_diag_nvlink_gpus_override(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    monkeypatch.setattr(process, "run", lambda cmd, input_text=None: _fake_nvidia_smi_l(8))
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/nvcc")
+    calls = []
+    monkeypatch.setattr(
+        process, "stream", lambda cmd, extra_env=None: calls.append((cmd, extra_env)) or 0
+    )
+    result = CliRunner().invoke(main, ["diag", "nvlink", "--gpus", "4"])
+    assert result.exit_code == 0
+    run_env = [env for cmd, env in calls if env is not None][0]
+    assert run_env["CUDA_VISIBLE_DEVICES"] == "0,1,2,3"
+
+
+def test_diag_nvlink_gpus_exceeds(monkeypatch):
+    monkeypatch.setattr(process, "run", lambda cmd, input_text=None: _fake_nvidia_smi_l(4))
+    result = CliRunner().invoke(main, ["diag", "nvlink", "--gpus", "8"])
+    assert result.exit_code != 0
+    assert "exceeds" in result.output
+
+
+def test_diag_nvlink_too_few_gpus(monkeypatch):
+    monkeypatch.setattr(process, "run", lambda cmd, input_text=None: _fake_nvidia_smi_l(1))
+    result = CliRunner().invoke(main, ["diag", "nvlink"])
+    assert result.exit_code != 0
+    assert "at least 2 GPUs" in result.output
+
+
+def test_diag_nvlink_no_gpus(monkeypatch):
+    monkeypatch.setattr(process, "run", lambda cmd, input_text=None: "")
+    result = CliRunner().invoke(main, ["diag", "nvlink"])
+    assert result.exit_code != 0
+    assert "no GPUs detected" in result.output
 
 
 def test_diag_nvlink_no_nvcc(monkeypatch):
+    monkeypatch.setattr(process, "run", lambda cmd, input_text=None: _fake_nvidia_smi_l(8))
     monkeypatch.setattr(shutil, "which", lambda name: None)
     result = CliRunner().invoke(main, ["diag", "nvlink"])
     assert result.exit_code != 0

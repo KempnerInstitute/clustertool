@@ -1,4 +1,4 @@
-// nvlink_saturate_forever_4h100.cu
+// nvlink_saturate_forever.cu
 #include <cstdio>
 #include <cstdlib>
 #include <cstdint>
@@ -32,7 +32,6 @@ void handle_sigint(int) {
 }
 
 int main(int argc, char** argv) {
-  const int ngpus = 4;
   const size_t bytes = (argc > 1) ? std::strtoull(argv[1], nullptr, 10)
                                   : (size_t)2 << 30; // default 2 GiB per GPU
   const int warmup = (argc > 2) ? std::atoi(argv[2]) : 20;
@@ -48,10 +47,11 @@ int main(int argc, char** argv) {
 
   int ndev = 0;
   CUDACHECK(cudaGetDeviceCount(&ndev));
-  if (ndev < ngpus) {
-    fprintf(stderr, "Need at least %d GPUs, found %d\n", ngpus, ndev);
+  if (ndev < 2) {
+    fprintf(stderr, "Need at least 2 GPUs, found %d\n", ndev);
     return EXIT_FAILURE;
   }
+  const int ngpus = ndev;
 
   std::vector<void*> sendbuf(ngpus), recvbuf(ngpus);
   std::vector<cudaStream_t> streams(ngpus);
