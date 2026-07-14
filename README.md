@@ -21,7 +21,8 @@ inputs.
   the tools it uses.
 - Some commands need more: the live monitors and `diag ib` need passwordless
   `ssh` to nodes running `nvidia-smi`; `gpu nvtop` needs `tmux` and `nvtop`;
-  `diag nvlink` needs `nvcc` and NCCL; `diag nccl` needs `torch`.
+  `diag nvlink` needs `nvcc` and NCCL; `diag nccl` needs `torch`;
+  `storage home --ncdu` needs `ncdu`.
 
 ## Install
 
