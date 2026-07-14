@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="_static/ct-repo-image.png" alt="Cluster Tools" width="100%">
+  <img src="_static/ct-repo-image.png" alt="Cluster Tools" width="60%">
 </p>
 
 # Cluster Tools
