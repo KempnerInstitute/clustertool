@@ -93,66 +93,40 @@ def test_jobs_stats(monkeypatch):
     assert captured["cmd"] == ["jobstats", "123", "456"]
 
 
-def test_storage_quota_lustre(monkeypatch):
-    captured = {}
-
-    def fake_stream(cmd):
-        captured["cmd"] = cmd
-        return 0
-
-    monkeypatch.setattr(process, "stream", fake_stream)
-    result = CliRunner().invoke(main, ["storage", "quota", "kempner_dev", "-f", "lustre"])
-    assert result.exit_code == 0
-    assert captured["cmd"] == ["lfs", "quota", "-hg", "kempner_dev", "/n/holylfs06"]
-
-
-def test_storage_lustre_group(monkeypatch):
+def test_storage_quota_group(monkeypatch):
     captured = {}
     monkeypatch.setattr(
         process, "stream", lambda cmd, extra_env=None: captured.update(cmd=cmd) or 0
     )
-    result = CliRunner().invoke(main, ["storage", "lustre", "kempner_dev"])
+    result = CliRunner().invoke(main, ["storage", "quota", "holylfs06", "-g", "kempner_dev"])
     assert result.exit_code == 0
-    assert captured["cmd"] == ["lfs", "quota", "-hg", "kempner_dev", "/n/holylfs06"]
+    assert captured["cmd"] == ["quota", "-g", "kempner_dev", "/n/holylfs06"]
 
 
-def test_storage_lustre_user_and_path(monkeypatch):
+def test_storage_quota_user_full_path(monkeypatch):
     captured = {}
     monkeypatch.setattr(
         process, "stream", lambda cmd, extra_env=None: captured.update(cmd=cmd) or 0
     )
-    result = CliRunner().invoke(
-        main, ["storage", "lustre", "mmsh", "--user", "--path", "holystore01"]
-    )
+    result = CliRunner().invoke(main, ["storage", "quota", "/n/netscratch", "-u", "mmsh"])
     assert result.exit_code == 0
-    assert captured["cmd"] == ["lfs", "quota", "-hu", "mmsh", "/n/holystore01"]
+    assert captured["cmd"] == ["quota", "-u", "mmsh", "/n/netscratch"]
 
 
-def test_storage_lustre_default_group(monkeypatch):
-    import grp
-    import types
-
-    monkeypatch.setattr(grp, "getgrgid", lambda gid: types.SimpleNamespace(gr_name="mylab"))
+def test_storage_quota_infer(monkeypatch):
     captured = {}
     monkeypatch.setattr(
         process, "stream", lambda cmd, extra_env=None: captured.update(cmd=cmd) or 0
     )
-    result = CliRunner().invoke(main, ["storage", "lustre"])
+    result = CliRunner().invoke(main, ["storage", "quota", "netscratch"])
     assert result.exit_code == 0
-    assert captured["cmd"] == ["lfs", "quota", "-hg", "mylab", "/n/holylfs06"]
+    assert captured["cmd"] == ["quota", "/n/netscratch"]
 
 
-def test_storage_lustre_default_user(monkeypatch):
-    import getpass
-
-    monkeypatch.setattr(getpass, "getuser", lambda: "alice")
-    captured = {}
-    monkeypatch.setattr(
-        process, "stream", lambda cmd, extra_env=None: captured.update(cmd=cmd) or 0
-    )
-    result = CliRunner().invoke(main, ["storage", "lustre", "--user"])
-    assert result.exit_code == 0
-    assert captured["cmd"] == ["lfs", "quota", "-hu", "alice", "/n/holylfs06"]
+def test_storage_quota_group_and_user_error():
+    result = CliRunner().invoke(main, ["storage", "quota", "/n/holylfs06", "-g", "x", "-u", "y"])
+    assert result.exit_code != 0
+    assert "at most one" in result.output
 
 
 def test_diag_nccl_dry_run():

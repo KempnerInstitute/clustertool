@@ -3,25 +3,24 @@
 from cluster_tools import storage
 
 
-def test_vast_quota_cmd():
-    assert storage.vast_quota_cmd("kempner_dev") == ["quota", "/n/netscratch/kempner_dev"]
+def test_quota_cmd_path_only():
+    assert storage.quota_cmd("/n/netscratch") == ["quota", "/n/netscratch"]
 
 
-def test_lustre_quota_cmd():
-    assert storage.lustre_quota_cmd("kempner_dev") == [
-        "lfs",
+def test_quota_cmd_group():
+    assert storage.quota_cmd("/n/holylfs06", group="kempner_dev") == [
         "quota",
-        "-hg",
+        "-g",
         "kempner_dev",
         "/n/holylfs06",
     ]
 
 
-def test_lustre_quota_cmd_user():
-    assert storage.lustre_quota_cmd("mmsh", "/n/holystore01", user=True) == [
-        "lfs",
+def test_quota_cmd_user_verbose():
+    assert storage.quota_cmd("/n/holystore01", user="mmsh", verbose=True) == [
         "quota",
-        "-hu",
+        "-u",
         "mmsh",
+        "-v",
         "/n/holystore01",
     ]

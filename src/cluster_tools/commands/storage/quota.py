@@ -3,33 +3,39 @@
 import click
 
 from cluster_tools import process
-from cluster_tools.storage import lustre_quota_cmd, vast_quota_cmd
+from cluster_tools.storage import quota_cmd
 
 
 @click.command("quota")
-@click.argument("account")
-@click.option(
-    "--filesystem",
-    "-f",
-    type=click.Choice(["vast", "lustre"]),
-    default="vast",
-    show_default=True,
-    help="Filesystem to report on.",
-)
-def quota(account: str, filesystem: str) -> None:
-    """Show an account's storage quota on VAST or Lustre.
+@click.argument("path")
+@click.option("--group", "-g", help="Group/lab name for the quota lookup.")
+@click.option("--user", "-u", help="User name for the quota lookup.")
+@click.option("--verbose", "-v", is_flag=True, help="Show the underlying quota command.")
+def quota(path: str, group: str | None, user: str | None, verbose: bool) -> None:
+    """Show a storage quota on any filesystem (via the FASRC quota tool).
+
+    Reports quota and usage for PATH, which selects the filesystem: VAST
+    (/n/netscratch), Lustre (/n/holylfs06, /n/holystore01, ...), home, and so on.
+    Use --group for a lab's quota or --user for a user's; with neither, the quota
+    tool infers from the path. A bare name like 'holylfs06' becomes
+    '/n/holylfs06'.
 
     \b
     Use cases:
-      - Check a lab's scratch usage on VAST (/n/netscratch).
-      - Check a lab's Lustre group quota (/n/holylfs06).
+      - Lab quota on scratch: storage quota netscratch -g kempner_dev
+      - Lab quota on Lustre: storage quota holylfs06 -g kempner_dev
+      - Your own usage: storage quota holystore01 -u $USER
 
     \b
     Inputs:
-      ACCOUNT           Account/group name (e.g. kempner_dev).
-      -f, --filesystem  vast (default) or lustre.
+      PATH           Filesystem path, or a bare name that becomes /n/<name>.
+      -g, --group    Group/lab name for the lookup.
+      -u, --user     User name for the lookup.
+      -v, --verbose  Show the underlying quota command.
     """
-    cmd = vast_quota_cmd(account) if filesystem == "vast" else lustre_quota_cmd(account)
-    code = process.stream(cmd)
+    if group and user:
+        raise click.ClickException("give at most one of --group / --user")
+    target = path if path.startswith("/") else f"/n/{path}"
+    code = process.stream(quota_cmd(target, group=group, user=user, verbose=verbose))
     if code:
         raise SystemExit(code)

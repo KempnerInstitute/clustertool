@@ -17,7 +17,7 @@ inputs.
 - [uv](https://docs.astral.sh/uv/) for environment and dependency management.
 - Run on a cluster login node. Commands shell out to the host's own tools:
   Slurm (`squeue`, `sacctmgr`, `sinfo`, `sshare`, `scontrol`, `srun`),
-  `jobstats`, storage tools (`quota`, `lfs`), and `getent`. A command only needs
+  `jobstats`, the FASRC `quota` tool, and `getent`. A command only needs
   the tools it uses.
 - Some commands need more: the live monitors and `diag ib` need passwordless
   `ssh` to nodes running `nvidia-smi`; `gpu nvtop` needs `tmux` and `nvtop`;
@@ -49,7 +49,7 @@ clustertools gpu usage           # rank every account by base-partition GPU usag
 clustertools gpu usage kempner_sham_lab      # one account's usage, by user and partition
 clustertools nodes list kempner_h100         # node names and states in a partition
 clustertools account members kempner_dev     # users in a fairshare account
-clustertools storage quota kempner_dev       # VAST scratch quota for an account
+clustertools storage quota holylfs06 -g kempner_dev  # lab quota on Lustre (or VAST)
 clustertools jobs stats 1234567              # utilization for a job
 clustertools gpu avail kempner_h100          # nodes with free GPUs
 clustertools jobs violators kempner_h100     # jobs over the per-GPU norm
@@ -83,8 +83,7 @@ a group's commands.
 | `jobs violators` | `PARTITION [--cpu-per-gpu] [--mem-per-gpu]` | List running jobs over the per-GPU CPU/memory norm. |
 | `account members` | `ACCOUNT` / `--all` | List users in an account, or all lab accounts as CSV. |
 | `nodes list` | `PARTITION...` | List node names and states in one or more partitions. |
-| `storage quota` | `ACCOUNT [-f vast\|lustre]` | Show an account's VAST (netscratch) quota. |
-| `storage lustre` | `[NAME] [--user] [--path]` | Lab (group) or user quota on a Lustre filesystem (`/n/holy*`). |
+| `storage quota` | `PATH [-g\|-u]` | Show a storage quota on any filesystem (VAST, Lustre, home) via the FASRC `quota` tool. |
 | `diag ib` | `PARTITION... [--parallel]` | Report nodes with InfiniBand ports DOWN. |
 | `diag nccl` | `[--python] [--timeout]` | Multi-node FSDP NCCL sanity check inside a Slurm job. |
 | `diag nvlink` | `[BYTES] [WARMUP] [REPORT] [--gpus] [--nvcc]` | Saturate a node's NVLink (2-8 GPUs) with NCCL all-reduce. |
@@ -104,7 +103,7 @@ src/cluster_tools/
     jobs/             # stats, violators
     account/          # members
     nodes/            # list
-    storage/          # quota, lustre
+    storage/          # quota
     diag/             # ib, nccl, nvlink
 tests/                # unit tests
 ```
