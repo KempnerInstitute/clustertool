@@ -84,6 +84,7 @@ a group's commands.
 | `account members` | `ACCOUNT` / `--all` | List users in an account, or all lab accounts as CSV. |
 | `nodes list` | `PARTITION...` | List node names and states in one or more partitions. |
 | `storage quota` | `PATH [-g\|-u]` | Show a storage quota on any filesystem (VAST, Lustre, home) via the FASRC `quota` tool. |
+| `storage home` | `[--scan] [--top N] [--ncdu]` | Home directory usage (`df ~`); with `--scan`, the largest subdirectories. |
 | `diag ib` | `PARTITION... [--parallel]` | Report nodes with InfiniBand ports DOWN. |
 | `diag nccl` | `[--python] [--timeout]` | Multi-node FSDP NCCL sanity check inside a Slurm job. |
 | `diag nvlink` | `[BYTES] [WARMUP] [REPORT] [--gpus] [--nvcc]` | Saturate a node's NVLink (2-8 GPUs) with NCCL all-reduce. |
@@ -103,7 +104,7 @@ src/cluster_tools/
     jobs/             # stats, violators
     account/          # members
     nodes/            # list
-    storage/          # quota
+    storage/          # quota, home
     diag/             # ib, nccl, nvlink
 tests/                # unit tests
 ```

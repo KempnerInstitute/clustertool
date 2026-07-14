@@ -1,5 +1,6 @@
 """Tests for the CLI commands."""
 
+import os
 import shutil
 
 from click.testing import CliRunner
@@ -121,6 +122,35 @@ def test_storage_quota_infer(monkeypatch):
     result = CliRunner().invoke(main, ["storage", "quota", "netscratch"])
     assert result.exit_code == 0
     assert captured["cmd"] == ["quota", "/n/netscratch"]
+
+
+def test_storage_home(monkeypatch):
+    calls = []
+    monkeypatch.setattr(process, "stream", lambda cmd, extra_env=None: calls.append(cmd) or 0)
+    result = CliRunner().invoke(main, ["storage", "home"])
+    assert result.exit_code == 0
+    assert calls[0][:2] == ["df", "-h"]
+
+
+def test_storage_home_scan(monkeypatch):
+    home = os.path.expanduser("~")
+    monkeypatch.setattr(process, "stream", lambda cmd, extra_env=None: 0)
+    du_out = f"5000000\t{home}/big\n2000000\t{home}/med\n1000\t{home}/small\n9999999\t{home}\n"
+    monkeypatch.setattr(process, "run", lambda cmd, input_text=None: du_out)
+    result = CliRunner().invoke(main, ["storage", "home", "--scan", "--top", "2"])
+    assert result.exit_code == 0
+    assert f"{home}/big" in result.output
+    assert f"{home}/med" in result.output
+    assert f"{home}/small" not in result.output
+    assert result.output.index("/big") < result.output.index("/med")
+
+
+def test_storage_home_ncdu(monkeypatch):
+    calls = []
+    monkeypatch.setattr(process, "stream", lambda cmd, extra_env=None: calls.append(cmd) or 0)
+    result = CliRunner().invoke(main, ["storage", "home", "--ncdu"])
+    assert result.exit_code == 0
+    assert calls[0][0] == "ncdu"
 
 
 def test_storage_quota_group_and_user_error():
