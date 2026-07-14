@@ -11,4 +11,4 @@ List node names and states for one or more partitions.
 - Check node states before targeting a node for a job.
 
 **Inputs**
-- `PARTITION...` — One or more Slurm partition names (e.g. `kempner_h100`).
+- `PARTITION...`: One or more Slurm partition names (e.g. `kempner_h100`).

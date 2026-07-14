@@ -12,7 +12,7 @@ Show utilization for one or more jobs (via `jobstats`).
 - Review the efficiency of a finished job.
 
 **Inputs**
-- `JOBID...` — One or more Slurm job ids (e.g. `1234567`).
+- `JOBID...`: One or more Slurm job ids (e.g. `1234567`).
 
 ## `jobs violators PARTITION [--cpu-per-gpu N] [--mem-per-gpu MB]`
 
@@ -27,6 +27,6 @@ GPU; kempner: 16 CPU / 240000 MB per GPU). For other partitions, pass
 - Spot over-requests that block other jobs from a lab's GPUs.
 
 **Inputs**
-- `PARTITION` — Slurm partition name (e.g. `kempner_h100`).
-- `--cpu-per-gpu` — CPU-per-GPU norm (default: per-partition policy).
-- `--mem-per-gpu` — Memory-per-GPU norm in MB (default: per-partition policy).
+- `PARTITION`: Slurm partition name (e.g. `kempner_h100`).
+- `--cpu-per-gpu`: CPU-per-GPU norm (default: per-partition policy).
+- `--mem-per-gpu`: Memory-per-GPU norm in MB (default: per-partition policy).

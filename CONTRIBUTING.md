@@ -118,7 +118,7 @@ command lives in its own file.
    ```
 
    Adding a command to an existing group only needs the new file plus its
-   `add_command` line in that group's `__init__.py` — no change in `cli.py`.
+   `add_command` line in that group's `__init__.py`; no change in `cli.py`.
 
 5. Put shared Slurm logic in `src/cluster_tools/slurm.py` and keep it read-only
    unless a command is explicitly meant to change cluster state. Run external

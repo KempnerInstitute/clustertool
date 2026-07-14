@@ -17,7 +17,7 @@ kempner_requeue usage that does not count toward the cap.
 - See who in a lab is using its cap and why jobs pend (with ACCOUNT).
 
 **Inputs**
-- `ACCOUNT` — Slurm account name (e.g. `kempner_sham_lab`). Omit for all labs.
+- `ACCOUNT`: Slurm account name (e.g. `kempner_sham_lab`). Omit for all labs.
 
 ## `gpu avail PARTITION [--cpu-per-gpu N] [--mem-per-gpu MB]`
 
@@ -33,9 +33,9 @@ partitions show raw free GPUs unless `--cpu-per-gpu` / `--mem-per-gpu` are given
 - See spare CPU and memory alongside usable GPUs.
 
 **Inputs**
-- `PARTITION` — Slurm partition name (e.g. `kempner_h100`).
-- `--cpu-per-gpu` — Cores per GPU (overrides the per-partition default).
-- `--mem-per-gpu` — Memory per GPU in MB (overrides the per-partition default).
+- `PARTITION`: Slurm partition name (e.g. `kempner_h100`).
+- `--cpu-per-gpu`: Cores per GPU (overrides the per-partition default).
+- `--mem-per-gpu`: Memory per GPU in MB (overrides the per-partition default).
 
 ## `gpu monitor-partition PARTITION [--interval S] [--filter PREFIX]`
 
@@ -49,9 +49,9 @@ ssh to the nodes, which must expose `nvidia-smi`.
 - Spot idle or network-starved nodes live.
 
 **Inputs**
-- `PARTITION` — Slurm partition name (e.g. `kempner_h100`).
-- `--interval` — Refresh interval in seconds (default 5).
-- `--filter` — Only include nodes whose name starts with this prefix.
+- `PARTITION`: Slurm partition name (e.g. `kempner_h100`).
+- `--interval`: Refresh interval in seconds (default 5).
+- `--filter`: Only include nodes whose name starts with this prefix.
 
 ## `gpu monitor-job JOBID [--interval S]`
 
@@ -65,8 +65,8 @@ ssh to the job's nodes, which must expose `nvidia-smi`.
 - Confirm every node of a job is actually busy.
 
 **Inputs**
-- `JOBID` — Slurm job id of a running job.
-- `--interval` — Refresh interval in seconds (default 5).
+- `JOBID`: Slurm job id of a running job.
+- `--interval`: Refresh interval in seconds (default 5).
 
 ## `gpu nvtop JOBID [--attach/--no-attach]`
 
@@ -80,5 +80,5 @@ the nodes.
 - Watch per-node GPU activity for a multi-node job at a glance.
 
 **Inputs**
-- `JOBID` — Slurm job id of a running job.
-- `--attach/--no-attach` — Attach after creating the session (default attach).
+- `JOBID`: Slurm job id of a running job.
+- `--attach/--no-attach`: Attach after creating the session (default attach).

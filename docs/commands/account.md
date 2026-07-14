@@ -14,5 +14,5 @@ allowed accounts) and its members as CSV: `account,username,full_name`.
 - Export a full account/user/name roster with `--all`.
 
 **Inputs**
-- `ACCOUNT` — Slurm account name (e.g. `kempner_dev`). Omit when using `--all`.
-- `--all` — List all Kempner lab accounts and members as CSV.
+- `ACCOUNT`: Slurm account name (e.g. `kempner_dev`). Omit when using `--all`.
+- `--all`: List all Kempner lab accounts and members as CSV.

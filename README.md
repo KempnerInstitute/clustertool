@@ -59,8 +59,8 @@ clustertools gpu monitor-job 1234567         # live per-node GPU/CPU/mem/net tab
 
 ## Commands
 
-Commands are grouped. The table lists every command; for the full reference —
-what each does, its use cases and inputs — see the linked
+Commands are grouped. The table lists every command. For the full reference of
+what each does, its use cases, and inputs, see the linked
 [`docs/commands/<group>.md`](docs/commands/) file, or run
 `clustertools <group> <command> --help`.
 
@@ -100,5 +100,5 @@ New commands are added by pull request. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Copyright (c) 2026 Kempner Institute, Harvard
+MIT. See [LICENSE](LICENSE). Copyright (c) 2026 Kempner Institute, Harvard
 University.

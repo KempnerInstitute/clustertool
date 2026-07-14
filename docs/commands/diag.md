@@ -16,8 +16,8 @@ skipped.
 - Spot-check fabric health across a partition.
 
 **Inputs**
-- `PARTITION...` — One or more Slurm partition names (e.g. `kempner_h100`).
-- `--parallel` — Maximum parallel ssh checks (default 24).
+- `PARTITION...`: One or more Slurm partition names (e.g. `kempner_h100`).
+- `--parallel`: Maximum parallel ssh checks (default 24).
 
 ## `diag nccl [--python PY] [--timeout S] [--dry-run]`
 
@@ -32,9 +32,9 @@ NCCL works. Requires torch in the environment (activate your env, or pass
 - Verify NCCL and network health before a large distributed run.
 
 **Inputs**
-- `--python` — Python interpreter with torch (default: python).
-- `--timeout` — Seconds before the check is aborted (default 300).
-- `--dry-run` — Print the srun command instead of running it.
+- `--python`: Python interpreter with torch (default: python).
+- `--timeout`: Seconds before the check is aborted (default 300).
+- `--dry-run`: Print the srun command instead of running it.
 
 ## `diag nvlink [BYTES_PER_GPU] [WARMUP] [REPORT_EVERY] [--gpus N] [--nvcc PATH] [--rebuild] [--dry-run]`
 
@@ -49,10 +49,10 @@ algorithm bandwidth. Uses every GPU on the node (2-8) unless `--gpus` limits it.
 - Benchmark sustained multi-GPU collective throughput.
 
 **Inputs**
-- `BYTES_PER_GPU` — Bytes per GPU (default 2147483648 = 2 GiB).
-- `WARMUP` — Warmup iterations (default 20).
-- `REPORT_EVERY` — Report interval in iterations (default 200).
-- `--gpus` — Number of GPUs to use (default: all on the node).
-- `--nvcc` — nvcc used to build the benchmark.
-- `--rebuild` — Force rebuild of the cached binary.
-- `--dry-run` — Print the build and run commands instead of running.
+- `BYTES_PER_GPU`: Bytes per GPU (default 2147483648 = 2 GiB).
+- `WARMUP`: Warmup iterations (default 20).
+- `REPORT_EVERY`: Report interval in iterations (default 200).
+- `--gpus`: Number of GPUs to use (default: all on the node).
+- `--nvcc`: nvcc used to build the benchmark.
+- `--rebuild`: Force rebuild of the cached binary.
+- `--dry-run`: Print the build and run commands instead of running.

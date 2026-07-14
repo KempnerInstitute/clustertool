@@ -18,10 +18,10 @@ quota tool infers from the path. A bare name like `holylfs06` becomes
 - Your own usage: `storage quota holystore01 -u $USER`
 
 **Inputs**
-- `PATH` — Filesystem path, or a bare name that becomes `/n/<name>`.
-- `-g, --group` — Group/lab name for the lookup.
-- `-u, --user` — User name for the lookup.
-- `-v, --verbose` — Show the underlying quota command.
+- `PATH`: Filesystem path, or a bare name that becomes `/n/<name>`.
+- `-g, --group`: Group/lab name for the lookup.
+- `-u, --user`: User name for the lookup.
+- `-v, --verbose`: Show the underlying quota command.
 
 ## `storage home [--scan] [--top N] [--ncdu]`
 
@@ -37,6 +37,6 @@ instead.
 - Find the biggest directories when near the cap (`--scan` or `--ncdu`).
 
 **Inputs**
-- `-s, --scan` — Also list the largest subdirectories under home.
-- `-n, --top` — How many directories to list with `--scan` (default 10).
-- `--ncdu` — Launch the interactive ncdu explorer on home.
+- `-s, --scan`: Also list the largest subdirectories under home.
+- `-n, --top`: How many directories to list with `--scan` (default 10).
+- `--ncdu`: Launch the interactive ncdu explorer on home.
