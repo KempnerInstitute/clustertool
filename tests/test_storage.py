@@ -15,3 +15,13 @@ def test_lustre_quota_cmd():
         "kempner_dev",
         "/n/holylfs06",
     ]
+
+
+def test_lustre_quota_cmd_user():
+    assert storage.lustre_quota_cmd("mmsh", "/n/holystore01", user=True) == [
+        "lfs",
+        "quota",
+        "-hu",
+        "mmsh",
+        "/n/holystore01",
+    ]

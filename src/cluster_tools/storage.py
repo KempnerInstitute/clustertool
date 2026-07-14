@@ -9,6 +9,6 @@ def vast_quota_cmd(account: str) -> list[str]:
     return ["quota", f"{VAST_ROOT}/{account}"]
 
 
-def lustre_quota_cmd(account: str, mount: str = LUSTRE_MOUNT) -> list[str]:
-    """Return the command to report Lustre quota for an account group."""
-    return ["lfs", "quota", "-hg", account, mount]
+def lustre_quota_cmd(name: str, mount: str = LUSTRE_MOUNT, user: bool = False) -> list[str]:
+    """Return the command to report a Lustre group or user quota."""
+    return ["lfs", "quota", "-hu" if user else "-hg", name, mount]

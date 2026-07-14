@@ -106,6 +106,55 @@ def test_storage_quota_lustre(monkeypatch):
     assert captured["cmd"] == ["lfs", "quota", "-hg", "kempner_dev", "/n/holylfs06"]
 
 
+def test_storage_lustre_group(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        process, "stream", lambda cmd, extra_env=None: captured.update(cmd=cmd) or 0
+    )
+    result = CliRunner().invoke(main, ["storage", "lustre", "kempner_dev"])
+    assert result.exit_code == 0
+    assert captured["cmd"] == ["lfs", "quota", "-hg", "kempner_dev", "/n/holylfs06"]
+
+
+def test_storage_lustre_user_and_path(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        process, "stream", lambda cmd, extra_env=None: captured.update(cmd=cmd) or 0
+    )
+    result = CliRunner().invoke(
+        main, ["storage", "lustre", "mmsh", "--user", "--path", "holystore01"]
+    )
+    assert result.exit_code == 0
+    assert captured["cmd"] == ["lfs", "quota", "-hu", "mmsh", "/n/holystore01"]
+
+
+def test_storage_lustre_default_group(monkeypatch):
+    import grp
+    import types
+
+    monkeypatch.setattr(grp, "getgrgid", lambda gid: types.SimpleNamespace(gr_name="mylab"))
+    captured = {}
+    monkeypatch.setattr(
+        process, "stream", lambda cmd, extra_env=None: captured.update(cmd=cmd) or 0
+    )
+    result = CliRunner().invoke(main, ["storage", "lustre"])
+    assert result.exit_code == 0
+    assert captured["cmd"] == ["lfs", "quota", "-hg", "mylab", "/n/holylfs06"]
+
+
+def test_storage_lustre_default_user(monkeypatch):
+    import getpass
+
+    monkeypatch.setattr(getpass, "getuser", lambda: "alice")
+    captured = {}
+    monkeypatch.setattr(
+        process, "stream", lambda cmd, extra_env=None: captured.update(cmd=cmd) or 0
+    )
+    result = CliRunner().invoke(main, ["storage", "lustre", "--user"])
+    assert result.exit_code == 0
+    assert captured["cmd"] == ["lfs", "quota", "-hu", "alice", "/n/holylfs06"]
+
+
 def test_diag_nccl_dry_run():
     result = CliRunner().invoke(main, ["diag", "nccl", "--dry-run"])
     assert result.exit_code == 0

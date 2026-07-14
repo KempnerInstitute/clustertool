@@ -83,7 +83,8 @@ a group's commands.
 | `jobs violators` | `PARTITION [--cpu-per-gpu] [--mem-per-gpu]` | List running jobs over the per-GPU CPU/memory norm. |
 | `account members` | `ACCOUNT` / `--all` | List users in an account, or all lab accounts as CSV. |
 | `nodes list` | `PARTITION...` | List node names and states in one or more partitions. |
-| `storage quota` | `ACCOUNT [-f vast\|lustre]` | Show an account's VAST or Lustre quota. |
+| `storage quota` | `ACCOUNT [-f vast\|lustre]` | Show an account's VAST (netscratch) quota. |
+| `storage lustre` | `[NAME] [--user] [--path]` | Lab (group) or user quota on a Lustre filesystem (`/n/holy*`). |
 | `diag ib` | `PARTITION... [--parallel]` | Report nodes with InfiniBand ports DOWN. |
 | `diag nccl` | `[--python] [--timeout]` | Multi-node FSDP NCCL sanity check inside a Slurm job. |
 | `diag nvlink` | `[BYTES] [WARMUP] [REPORT] [--gpus] [--nvcc]` | Saturate a node's NVLink (2-8 GPUs) with NCCL all-reduce. |
@@ -103,7 +104,7 @@ src/cluster_tools/
     jobs/             # stats, violators
     account/          # members
     nodes/            # list
-    storage/          # quota
+    storage/          # quota, lustre
     diag/             # ib, nccl, nvlink
 tests/                # unit tests
 ```
