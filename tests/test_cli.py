@@ -181,18 +181,42 @@ def test_diag_nccl_no_torch(monkeypatch):
     assert "cannot import torch" in result.output
 
 
+def _node_fields(output):
+    return {
+        line.split()[0]: line.split()
+        for line in output.splitlines()
+        if line.strip().startswith("n")
+    }
+
+
 def test_gpu_avail(monkeypatch):
     monkeypatch.setattr(
-        slurm, "partition_nodes", lambda p: [("n1", "mix"), ("n2", "idle"), ("n3", "alloc")]
+        slurm, "partition_nodes", lambda p: [("n1", "x"), ("n2", "x"), ("n3", "x"), ("n4", "x")]
     )
-    free = {"n1": (2, 40, 500.0), "n2": (4, 90, 1000.0), "n3": (0, 0, 0.0)}
+    free = {
+        "n1": (4, 96, 1440000),  # min(4, 96//24, 1440000//360000) = 4
+        "n2": (8, 48, 2880000),  # cpu-capped: min(8, 48//24=2, 8) = 2
+        "n3": (2, 96, 360000),  # mem-capped: min(2, 4, 360000//360000=1) = 1
+        "n4": (0, 0, 0),  # no gpu -> filtered
+    }
     monkeypatch.setattr(slurm, "node_free_resources", lambda node: free[node])
     result = CliRunner().invoke(main, ["gpu", "avail", "kempner_h100"])
     assert result.exit_code == 0
-    assert "n1" in result.output
-    assert "n2" in result.output
-    assert "n3" not in result.output
-    assert result.output.index("n2") < result.output.index("n1")
+    fields = _node_fields(result.output)
+    assert "n4" not in fields
+    assert fields["n1"][1] == "4"
+    assert fields["n2"][1] == "2" and fields["n2"][2] == "8"
+    assert fields["n3"][1] == "1" and fields["n3"][2] == "2"
+    assert result.output.index("n1") < result.output.index("n2") < result.output.index("n3")
+
+
+def test_gpu_avail_raw_partition(monkeypatch):
+    monkeypatch.setattr(slurm, "partition_nodes", lambda p: [("n1", "x")])
+    monkeypatch.setattr(slurm, "node_free_resources", lambda node: (4, 8, 1000))
+    result = CliRunner().invoke(main, ["gpu", "avail", "kempner_eng"])
+    assert result.exit_code == 0
+    assert "raw free" in result.output
+    assert _node_fields(result.output)["n1"][1] == "4"
 
 
 def test_jobs_violators(monkeypatch):
@@ -210,6 +234,13 @@ def test_jobs_violators(monkeypatch):
     assert "103" not in result.output
     assert "104" not in result.output
     assert result.output.index("101") < result.output.index("102")
+
+
+def test_jobs_violators_h200(monkeypatch):
+    monkeypatch.setattr(slurm, "running_jobs_reqtres", lambda p: [("301", "x", 200, 2, 10000)])
+    result = CliRunner().invoke(main, ["jobs", "violators", "kempner_h200"])
+    assert result.exit_code == 0
+    assert "301" in result.output
 
 
 def test_jobs_violators_unknown_partition(monkeypatch):

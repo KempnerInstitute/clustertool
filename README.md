@@ -51,7 +51,7 @@ clustertools nodes list kempner_h100         # node names and states in a partit
 clustertools account members kempner_dev     # users in a fairshare account
 clustertools storage quota holylfs06 -g kempner_dev  # lab quota on Lustre (or VAST)
 clustertools jobs stats 1234567              # utilization for a job
-clustertools gpu avail kempner_h100          # nodes with free GPUs
+clustertools gpu avail kempner_h100          # nodes with allocatable GPUs (ratio-capped)
 clustertools jobs violators kempner_h100     # jobs over the per-GPU norm
 clustertools gpu monitor-job 1234567         # live per-node GPU/CPU/mem/net table
 ```
@@ -75,7 +75,7 @@ a group's commands.
 | Command | Inputs | Description |
 | --- | --- | --- |
 | `gpu usage` | `[ACCOUNT]` | Rank all labs by GPU usage, or break one lab down by user and partition. |
-| `gpu avail` | `PARTITION` | List nodes with free GPUs, most free first. |
+| `gpu avail` | `PARTITION [--cpu-per-gpu] [--mem-per-gpu]` | List nodes with allocatable GPUs (free GPUs capped by the enforced per-GPU CPU/mem ratio). |
 | `gpu monitor-partition` | `PARTITION [--interval] [--filter]` | Live per-node GPU/CPU/mem/network table for a partition. |
 | `gpu monitor-job` | `JOBID [--interval]` | Live per-node GPU/CPU/mem/network table for a job. |
 | `gpu nvtop` | `JOBID [--no-attach]` | tmux session running nvtop on each of a job's nodes. |

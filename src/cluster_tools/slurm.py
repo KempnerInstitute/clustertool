@@ -10,6 +10,13 @@ REQUEUE_PARTITION = "kempner_requeue"
 BASE_QOS = "kempner_base"
 DEFAULT_CAP = 96
 
+PARTITION_LIMITS = {
+    "kempner": (16, 240000),
+    "kempner_h100": (24, 360000),
+    "kempner_h200": (16, 360000),
+    "kempner_rtx": (16, 180000),
+}
+
 SlurmError = CommandError
 
 _GPU_RE = re.compile(r"gres/gpu=(\d+)")
@@ -164,23 +171,23 @@ def _tres_int(tres: str, key: str) -> int:
     return int(match.group(1)) if match else 0
 
 
-def _tres_mem_gb(tres: str) -> float:
-    """Return the memory TRES value in GB, or 0 if absent."""
+def _tres_mem_mb(tres: str) -> float:
+    """Return the memory TRES value in MB, or 0 if absent."""
     match = _MEM_RE.search(tres)
     if not match:
         return 0.0
-    factors = {"K": 1 / 1024 / 1024, "M": 1 / 1024, "G": 1.0, "T": 1024.0, "": 1 / 1024}
+    factors = {"K": 1 / 1024, "M": 1.0, "G": 1024.0, "T": 1024.0 * 1024, "": 1.0}
     return float(match.group(1)) * factors[match.group(2)]
 
 
 def node_free_resources(node: str) -> tuple[int, int, float]:
-    """Return (free_gpu, free_cpu, free_mem_gb) for a node."""
+    """Return (free_gpu, free_cpu, free_mem_mb) for a node."""
     out = _run(["scontrol", "show", "node", node])
     cfg = re.search(r"CfgTRES=(\S+)", out)
     alloc = re.search(r"AllocTRES=(\S+)", out)
     cfg_tres = cfg.group(1) if cfg else ""
     alloc_tres = alloc.group(1) if alloc else ""
-    free_mem = _tres_mem_gb(cfg_tres) - _tres_mem_gb(alloc_tres)
+    free_mem = _tres_mem_mb(cfg_tres) - _tres_mem_mb(alloc_tres)
     return (
         parse_gpu_count(cfg_tres) - parse_gpu_count(alloc_tres),
         _tres_int(cfg_tres, "cpu") - _tres_int(alloc_tres, "cpu"),
@@ -205,7 +212,7 @@ def running_jobs_reqtres(partition: str) -> list[tuple[str, str, int, int, int]]
             continue
         req = _field(line, "ReqTRES")
         user = _field(line, "UserId").split("(")[0]
-        mem_mb = round(_tres_mem_gb(req) * 1024)
+        mem_mb = round(_tres_mem_mb(req))
         jobs.append(
             (_field(line, "JobId"), user, _tres_int(req, "cpu"), parse_gpu_count(req), mem_mb)
         )

@@ -111,7 +111,7 @@ def test_node_free_resources(monkeypatch):
     free_gpu, free_cpu, free_mem = slurm.node_free_resources("n1")
     assert free_gpu == 3
     assert free_cpu == 64
-    assert round(free_mem) == 1311
+    assert round(free_mem) == 1342408
 
 
 def test_node_free_resources_idle(monkeypatch):
@@ -120,7 +120,7 @@ def test_node_free_resources_idle(monkeypatch):
     free_gpu, free_cpu, free_mem = slurm.node_free_resources("n1")
     assert free_gpu == 4
     assert free_cpu == 96
-    assert round(free_mem) == 1000
+    assert round(free_mem) == 1024000
 
 
 def test_running_jobs_reqtres(monkeypatch):

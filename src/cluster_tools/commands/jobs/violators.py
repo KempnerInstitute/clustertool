@@ -4,8 +4,6 @@ import click
 
 from cluster_tools import slurm
 
-_LIMITS = {"kempner_h100": (24, 360000), "kempner": (16, 240000)}
-
 
 @click.command("violators")
 @click.argument("partition")
@@ -36,13 +34,13 @@ def violators(partition: str, cpu_per_gpu: int | None, mem_per_gpu: int | None) 
       --cpu-per-gpu  CPU-per-GPU norm (default: per-partition policy).
       --mem-per-gpu  Memory-per-GPU norm in MB (default: per-partition policy).
     """
-    default = _LIMITS.get(partition)
+    default = slurm.PARTITION_LIMITS.get(partition)
     if cpu_per_gpu is None:
         cpu_per_gpu = default[0] if default else None
     if mem_per_gpu is None:
         mem_per_gpu = default[1] if default else None
     if cpu_per_gpu is None or mem_per_gpu is None:
-        known = ", ".join(sorted(_LIMITS))
+        known = ", ".join(sorted(slurm.PARTITION_LIMITS))
         raise click.ClickException(
             f"unknown partition '{partition}'; known partitions: {known}. "
             "Pass --cpu-per-gpu and --mem-per-gpu for others."
