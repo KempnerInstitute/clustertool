@@ -57,38 +57,21 @@ clustertools jobs violators kempner_h100     # jobs over the per-GPU norm
 clustertools gpu monitor-job 1234567         # live per-node GPU/CPU/mem/net table
 ```
 
-## Command groups
-
-Commands are classified into groups. Run `clustertools <group> --help` to list
-a group's commands.
-
-| Group | Scope |
-| --- | --- |
-| `gpu` | GPU usage and availability |
-| `jobs` | Job queue and history |
-| `account` | Account membership, limits, fairshare |
-| `nodes` | Node status and health |
-| `storage` | Filesystem quotas |
-| `diag` | Diagnostics and benchmarks |
-
 ## Commands
 
-| Command | Inputs | Description |
+Commands are grouped. The table lists every command; for the full reference —
+what each does, its use cases and inputs — see the linked
+[`docs/commands/<group>.md`](docs/commands/) file, or run
+`clustertools <group> <command> --help`.
+
+| Group | Commands | Scope |
 | --- | --- | --- |
-| `gpu usage` | `[ACCOUNT]` | Rank all labs by GPU usage, or break one lab down by user and partition. |
-| `gpu avail` | `PARTITION [--cpu-per-gpu] [--mem-per-gpu]` | List nodes with allocatable GPUs (free GPUs capped by the enforced per-GPU CPU/mem ratio). |
-| `gpu monitor-partition` | `PARTITION [--interval] [--filter]` | Live per-node GPU/CPU/mem/network table for a partition. |
-| `gpu monitor-job` | `JOBID [--interval]` | Live per-node GPU/CPU/mem/network table for a job. |
-| `gpu nvtop` | `JOBID [--no-attach]` | tmux session running nvtop on each of a job's nodes. |
-| `jobs stats` | `JOBID...` | Show job utilization (via `jobstats`). |
-| `jobs violators` | `PARTITION [--cpu-per-gpu] [--mem-per-gpu]` | List running jobs over the per-GPU CPU/memory norm. |
-| `account members` | `ACCOUNT` / `--all` | List users in an account, or all lab accounts as CSV. |
-| `nodes list` | `PARTITION...` | List node names and states in one or more partitions. |
-| `storage quota` | `PATH [-g\|-u]` | Show a storage quota on any filesystem (VAST, Lustre, home) via the FASRC `quota` tool. |
-| `storage home` | `[--scan] [--top N] [--ncdu]` | Home directory usage (`df ~`); with `--scan`, the largest subdirectories. |
-| `diag ib` | `PARTITION... [--parallel]` | Report nodes with InfiniBand ports DOWN. |
-| `diag nccl` | `[--python] [--timeout]` | Multi-node FSDP NCCL sanity check inside a Slurm job. |
-| `diag nvlink` | `[BYTES] [WARMUP] [REPORT] [--gpus] [--nvcc]` | Saturate a node's NVLink (2-8 GPUs) with NCCL all-reduce. |
+| [`gpu`](docs/commands/gpu.md) | `usage`, `avail`, `monitor-partition`, `monitor-job`, `nvtop` | GPU usage and availability |
+| [`jobs`](docs/commands/jobs.md) | `stats`, `violators` | Job queue and history |
+| [`account`](docs/commands/account.md) | `members` | Account membership, limits, fairshare |
+| [`nodes`](docs/commands/nodes.md) | `list` | Node status and health |
+| [`storage`](docs/commands/storage.md) | `quota`, `home` | Filesystem quotas |
+| [`diag`](docs/commands/diag.md) | `ib`, `nccl`, `nvlink` | Diagnostics and benchmarks |
 
 ## Project layout
 
@@ -108,6 +91,7 @@ src/cluster_tools/
     storage/          # quota, home
     diag/             # ib, nccl, nvlink
 tests/                # unit tests
+docs/commands/        # extended per-group command reference (gpu.md, jobs.md, ...)
 ```
 
 ## Contributing

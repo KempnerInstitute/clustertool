@@ -131,6 +131,13 @@ command lives in its own file.
    long verbatim payloads out of the Python source (that directory is excluded
    from ruff) and bundles them into the wheel.
 
+7. Document the command in `docs/commands/<group>.md`, mirroring its `--help`: a
+   `## ` heading with the command signature, the description, and **Use cases**
+   and **Inputs** lists. For a new group, create that file, link it from
+   `docs/commands/README.md`, and add a row to the README command table. For a
+   new command in an existing group, add its name to that group's cell in the
+   README table.
+
 ## Add tests
 
 Add tests under `tests/`. Mock external commands by monkeypatching the helper
