@@ -117,6 +117,7 @@ source = { editable = "." }
 dependencies = [
     { name = "click" },
     { name = "jobscope" },
+    { name = "kempnerpulse" },
 ]
 
 [package.dev-dependencies]
@@ -129,6 +130,7 @@ dev = [
 requires-dist = [
     { name = "click", specifier = ">=8.1" },
     { name = "jobscope", specifier = ">=0.1.1" },
+    { name = "kempnerpulse", specifier = ">=0.5.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -189,6 +191,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/73/26/ef6b10e9fc9125a3ee50612b87aaf5aa1326d2832a29f6ec00d06a78bb3a/jobscope-0.1.1.tar.gz", hash = "sha256:9136bc178e2b54edd2600202d7794ddc86c5a80e4cf4a784a026c61eea78b151", size = 55818, upload-time = "2026-07-27T17:20:30.079Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/19/1c/86b4fb9432b860c6cb54df1322a239e154db2c60c7cdeb53808f2c2496ae/jobscope-0.1.1-py3-none-any.whl", hash = "sha256:222ae187f66e716a986d1d07d57d4d7b530bcbe0655fea2f9de9112f80a7e430", size = 43473, upload-time = "2026-07-27T17:20:30.877Z" },
+]
+
+[[package]]
+name = "kempnerpulse"
+version = "0.5.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "rich" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/16/a6/c2b26bdec7b1571c53f0ff7555a598ac94fcc47a211bff1c215632452d2d/kempnerpulse-0.5.0.tar.gz", hash = "sha256:befd083c71947ca9ebe38b34e46730e5c52249416e1024745965ca5edd84e815", size = 71089, upload-time = "2026-07-27T21:18:38.087Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c3/ef/c368bde1354808d9abca4ba4c3db23c6a9dfdb370eef9099e2243a07a767/kempnerpulse-0.5.0-py3-none-any.whl", hash = "sha256:8cf53114d78eaf63cafdbeb58350204cfb1f0e114276d25e5938cb854216406d", size = 86155, upload-time = "2026-07-27T21:18:37.174Z" },
 ]
 
 [[package]]

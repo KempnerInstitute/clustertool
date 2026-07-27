@@ -125,6 +125,21 @@ def test_storage_quota_infer(monkeypatch):
     assert captured["cmd"] == ["quota", "/n/netscratch"]
 
 
+def test_gpu_pulse_passthrough(monkeypatch):
+    calls = []
+    monkeypatch.setattr(process, "stream", lambda cmd, extra_env=None: calls.append(cmd) or 0)
+    result = CliRunner().invoke(main, ["gpu", "pulse", "--once", "--gpus", "0,1"])
+    assert result.exit_code == 0
+    assert calls[0][:3] == [sys.executable, "-m", "kempnerpulse"]
+    assert calls[0][3:] == ["--once", "--gpus", "0,1"]
+
+
+def test_gpu_pulse_exit_code(monkeypatch):
+    monkeypatch.setattr(process, "stream", lambda cmd, extra_env=None: 3)
+    result = CliRunner().invoke(main, ["gpu", "pulse", "--backend", "bogus"])
+    assert result.exit_code == 3
+
+
 def test_jobs_scope_passthrough(monkeypatch):
     calls = []
     monkeypatch.setattr(process, "stream", lambda cmd, extra_env=None: calls.append(cmd) or 0)

@@ -7,7 +7,7 @@ license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
 authors = [{ name = "Kempner Institute, Harvard University" }]
-dependencies = ["click>=8.1", "jobscope>=0.1.1"]
+dependencies = ["click>=8.1", "jobscope>=0.1.1", "kempnerpulse>=0.5.0"]
 
 [project.urls]
 Repository = "https://github.com/KempnerInstitute/cluster-tools"
