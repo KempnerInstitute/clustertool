@@ -44,20 +44,3 @@ jobstats install, so no setup is needed on the Kempner AI Cluster (the offline
 
 **Inputs**
 - `[ARG]...`: any jobscope arguments (job ids; `-D`/`-N`/`-S`/`-E` time selectors; `-u`/`-A`/`-p` filters; `--cpu`/`--gpu`/`--cgpu` views; `--csv`; the `detail`, `dcgm`, `plot`, and `describe` subcommands), forwarded verbatim.
-
-## `jobs violators PARTITION [--cpu-per-gpu N] [--mem-per-gpu MB]`
-
-List running jobs requesting more CPU or memory per GPU than the norm.
-
-Norms default to the per-partition policy (kempner_h100: 24 CPU / 360000 MB per
-GPU; kempner: 16 CPU / 240000 MB per GPU). For other partitions, pass
-`--cpu-per-gpu` and `--mem-per-gpu`. Jobs with no GPUs are not evaluated.
-
-**Use cases**
-- Find jobs hoarding CPU or memory relative to their GPU count.
-- Spot over-requests that block other jobs from a lab's GPUs.
-
-**Inputs**
-- `PARTITION`: Slurm partition name (e.g. `kempner_h100`).
-- `--cpu-per-gpu`: CPU-per-GPU norm (default: per-partition policy).
-- `--mem-per-gpu`: Memory-per-GPU norm in MB (default: per-partition policy).

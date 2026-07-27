@@ -56,7 +56,6 @@ clustertools storage quota holylfs06 -g kempner_dev  # lab quota on Lustre (or V
 clustertools jobs stats 1234567              # utilization for a job
 clustertools jobs scope -D 3                  # efficiency of your completed jobs (last 3 days)
 clustertools gpu avail kempner_h100          # nodes with allocatable GPUs (ratio-capped)
-clustertools jobs violators kempner_h100     # jobs over the per-GPU norm
 clustertools gpu monitor-job 1234567         # live per-node GPU/CPU/mem/net table
 ```
 
@@ -70,7 +69,7 @@ what each does, its use cases, and inputs, see the linked
 | Group | Commands | Scope |
 | --- | --- | --- |
 | [`gpu`](docs/commands/gpu.md) | `usage`, `avail`, `monitor-partition`, `monitor-job`, `nvtop` | GPU usage and availability |
-| [`jobs`](docs/commands/jobs.md) | `stats`, `scope`, `violators` | Job queue and history |
+| [`jobs`](docs/commands/jobs.md) | `stats`, `scope` | Job queue and history |
 | [`account`](docs/commands/account.md) | `members` | Account membership, limits, fairshare |
 | [`nodes`](docs/commands/nodes.md) | `list` | Node status and health |
 | [`storage`](docs/commands/storage.md) | `quota`, `home` | Filesystem quotas |
@@ -88,7 +87,7 @@ src/cluster_tools/
   data/               # bundled payloads (monitor sample, nccl test, nvlink .cu)
   commands/           # one package per group; one file per command
     gpu/              # usage, avail, monitor_partition, monitor_job, nvtop
-    jobs/             # stats, violators
+    jobs/             # stats, scope, violators
     account/          # members
     nodes/            # list
     storage/          # quota, home
