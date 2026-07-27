@@ -2,6 +2,7 @@
 
 import os
 import shutil
+import sys
 
 from click.testing import CliRunner
 
@@ -122,6 +123,29 @@ def test_storage_quota_infer(monkeypatch):
     result = CliRunner().invoke(main, ["storage", "quota", "netscratch"])
     assert result.exit_code == 0
     assert captured["cmd"] == ["quota", "/n/netscratch"]
+
+
+def test_jobs_scope_passthrough(monkeypatch):
+    calls = []
+    monkeypatch.setattr(process, "stream", lambda cmd, extra_env=None: calls.append(cmd) or 0)
+    result = CliRunner().invoke(main, ["jobs", "scope", "-D", "3", "--gpu"])
+    assert result.exit_code == 0
+    assert calls[0][:3] == [sys.executable, "-m", "jobscope"]
+    assert calls[0][3:] == ["-D", "3", "--gpu"]
+
+
+def test_jobs_scope_forwards_subcommand(monkeypatch):
+    calls = []
+    monkeypatch.setattr(process, "stream", lambda cmd, extra_env=None: calls.append(cmd) or 0)
+    result = CliRunner().invoke(main, ["jobs", "scope", "detail", "1234567", "--ext"])
+    assert result.exit_code == 0
+    assert calls[0][3:] == ["detail", "1234567", "--ext"]
+
+
+def test_jobs_scope_exit_code(monkeypatch):
+    monkeypatch.setattr(process, "stream", lambda cmd, extra_env=None: 2)
+    result = CliRunner().invoke(main, ["jobs", "scope", "bogus"])
+    assert result.exit_code == 2
 
 
 def test_storage_home(monkeypatch):
