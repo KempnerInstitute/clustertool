@@ -49,18 +49,28 @@ uv run clustertools --help
 ## Usage
 
 ```bash
-clustertools --help              # list command groups
-clustertools gpu --help          # list commands in the gpu group
-clustertools gpu usage           # rank every account by base-partition GPU usage
-clustertools gpu usage kempner_sham_lab      # one account's usage, by user and partition
-clustertools nodes list kempner_h100         # node names and states in a partition
-clustertools account members kempner_dev     # users in a fairshare account
-clustertools storage quota holylfs06 -g kempner_dev  # lab quota on Lustre (or VAST)
-clustertools jobs stats 1234567              # utilization for a job
-clustertools jobs scope -D 3                  # efficiency of your completed jobs (last 3 days)
-clustertools gpu avail kempner_h100          # nodes with allocatable GPUs (ratio-capped)
-clustertools gpu monitor-job 1234567         # live per-node GPU/CPU/mem/net table
-clustertools gpu pulse                       # live per-GPU dashboard (run on a GPU node)
+# Discover
+clustertools --help      # list command groups
+clustertools gpu --help  # list a group's commands
+
+# GPU
+clustertools gpu usage                   # rank every lab by base-partition GPU usage
+clustertools gpu usage kempner_sham_lab  # one lab's usage, by user and partition
+clustertools gpu avail kempner_h100      # nodes with allocatable GPUs (ratio-capped)
+clustertools gpu monitor-job 1234567     # live per-node GPU/CPU/memory/network table
+clustertools gpu pulse                   # live per-GPU dashboard (on a GPU node)
+
+# Jobs
+clustertools jobs stats 1234567  # utilization for a job
+clustertools jobs scope -D 3     # efficiency of your completed jobs (last 3 days)
+
+# Accounts and nodes
+clustertools account members kempner_dev  # users in a fairshare account
+clustertools nodes list kempner_h100      # nodes and states in a partition
+
+# Storage
+clustertools storage quota netscratch  # your quota on a filesystem (-g LAB for a lab)
+clustertools storage home              # home directory usage and quota
 ```
 
 ## Commands
