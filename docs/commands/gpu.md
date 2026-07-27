@@ -82,3 +82,31 @@ the nodes.
 **Inputs**
 - `JOBID`: Slurm job id of a running job.
 - `--attach/--no-attach`: Attach after creating the session (default attach).
+
+## `gpu pulse [ARG]...`
+
+Live GPU utilization dashboard, via the bundled
+[kempnerpulse](https://github.com/KempnerInstitute/kempnerpulse) tool. It shows a
+real-time per-GPU view (SM, tensor, and memory activity, real-utilization, and
+workload classification) from DCGM metrics. Every argument is forwarded to
+kempnerpulse unchanged, so its full option set is available; run `clustertools
+gpu pulse --help` for the complete list.
+
+Run this on a GPU node (for example inside a Slurm job); by default it reads the
+node's GPU counters directly via `dcgmi dmon` (the `dcgm` backend), or a
+dcgm-exporter Prometheus endpoint with `--backend prometheus`. For completed-job
+efficiency use `jobs scope`; for a multi-node overview use `gpu
+monitor-partition` or `gpu monitor-job`.
+
+**Most useful**
+- `gpu pulse`: live fleet dashboard (dcgm backend, about 100 ms refresh).
+- `gpu pulse --once`: render one snapshot and exit.
+- `gpu pulse --focus-gpu 0`: start focused on a single GPU.
+- `gpu pulse --gpus 0,1`: limit to specific GPUs (otherwise uses CUDA_VISIBLE_DEVICES or the SLURM GPU env).
+- `gpu pulse --backend prometheus --source http://host:9400/metrics`: read from a Prometheus or dcgm-exporter endpoint.
+- `gpu pulse --export all --once`: write a one-shot CSV snapshot to stdout.
+
+In the live view, type `:focus <id>`, `:plot`, or `:job` to switch views, and `:exit` (or Ctrl-C) to quit.
+
+**Inputs**
+- `[ARG]...`: any kempnerpulse arguments (`--backend`, `--source`, `--poll`, `--focus-gpu`, `--gpus`, `--once`, `--export`, the weight presets, ...), forwarded verbatim.

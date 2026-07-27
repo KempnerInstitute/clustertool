@@ -24,7 +24,10 @@ inputs.
   `diag nvlink` needs `nvcc` and NCCL; `diag nccl` needs `torch`;
   `storage home --ncdu` needs `ncdu`. `jobs scope` uses the bundled `jobscope`
   tool (installed automatically); its GPU views also read a Prometheus endpoint,
-  auto-discovered from the cluster's jobstats install.
+  auto-discovered from the cluster's jobstats install. `gpu pulse` uses the
+  bundled `kempnerpulse`; run it on a GPU node, where by default it reads GPU
+  counters via `dcgmi` (or a dcgm-exporter Prometheus endpoint with `--backend
+  prometheus`).
 
 ## Install
 
@@ -57,6 +60,7 @@ clustertools jobs stats 1234567              # utilization for a job
 clustertools jobs scope -D 3                  # efficiency of your completed jobs (last 3 days)
 clustertools gpu avail kempner_h100          # nodes with allocatable GPUs (ratio-capped)
 clustertools gpu monitor-job 1234567         # live per-node GPU/CPU/mem/net table
+clustertools gpu pulse                       # live per-GPU dashboard (run on a GPU node)
 ```
 
 ## Commands
@@ -68,7 +72,7 @@ what each does, its use cases, and inputs, see the linked
 
 | Group | Commands | Scope |
 | --- | --- | --- |
-| [`gpu`](docs/commands/gpu.md) | `usage`, `avail`, `monitor-partition`, `monitor-job`, `nvtop` | GPU usage and availability |
+| [`gpu`](docs/commands/gpu.md) | `usage`, `avail`, `monitor-partition`, `monitor-job`, `nvtop`, `pulse` | GPU usage and availability |
 | [`jobs`](docs/commands/jobs.md) | `stats`, `scope` | Job queue and history |
 | [`account`](docs/commands/account.md) | `members` | Account membership, limits, fairshare |
 | [`nodes`](docs/commands/nodes.md) | `list` | Node status and health |
@@ -86,7 +90,7 @@ src/cluster_tools/
   monitor.py          # shared live per-node monitor (monitor-partition/-job)
   data/               # bundled payloads (monitor sample, nccl test, nvlink .cu)
   commands/           # one package per group; one file per command
-    gpu/              # usage, avail, monitor_partition, monitor_job, nvtop
+    gpu/              # usage, avail, monitor_partition, monitor_job, nvtop, pulse
     jobs/             # stats, scope, violators
     account/          # members
     nodes/            # list
