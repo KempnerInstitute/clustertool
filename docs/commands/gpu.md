@@ -37,6 +37,25 @@ partitions show raw free GPUs unless `--cpu-per-gpu` / `--mem-per-gpu` are given
 - `--cpu-per-gpu`: Cores per GPU (overrides the per-partition default).
 - `--mem-per-gpu`: Memory per GPU in MB (overrides the per-partition default).
 
+## `gpu session -A ACCOUNT [OPTIONS]`
+
+Start an interactive GPU session (via `salloc`). Allocates GPUs on a partition
+with Kempner defaults and drops you into a shell on the node. Requires your
+fairshare `--account`. Exit the shell (or let the time limit lapse) to release
+the allocation.
+
+**Use cases**
+- Grab a GPU for interactive development or debugging.
+
+**Inputs**
+- `-A, --account`: Fairshare account to charge (required).
+- `-p, --partition`: Partition (default `kempner`).
+- `-g, --gpus`: GPUs to request (default 1).
+- `-c, --cpus`: CPUs to request (default 16).
+- `-m, --mem`: Memory (default 64G).
+- `-t, --time`: Time limit D-HH:MM (default 0-01:00).
+- `--constraint`: Node feature constraint (e.g. `a100`).
+
 ## `gpu monitor-partition PARTITION [--interval S] [--filter PREFIX]`
 
 Live GPU/CPU/memory/InfiniBand monitor for a partition's nodes.

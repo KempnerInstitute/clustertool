@@ -16,9 +16,10 @@ inputs.
 
 - [uv](https://docs.astral.sh/uv/) for environment and dependency management.
 - Run on a cluster login node. Commands shell out to the host's own tools:
-  Slurm (`squeue`, `sacct`, `sacctmgr`, `sinfo`, `sshare`, `scontrol`, `srun`),
-  `jobstats`, the FASRC `quota` tool, and `getent`. A command only needs
-  the tools it uses.
+  Slurm (`squeue`, `sacct`, `sacctmgr`, `sinfo`, `sshare`, `sprio`, `scontrol`,
+  `salloc`, `sbatch`, `scancel`, `srun`), the FASRC wrappers (`spart`, `stotal`,
+  `seff-account`) and `quota` tool, `lfs`, `jobstats`, and `getent`. A command
+  only needs the tools it uses.
 - Some commands need more: the live monitors and `diag ib` need passwordless
   `ssh` to nodes running `nvidia-smi`; `gpu nvtop` needs `tmux` and `nvtop`;
   `diag nvlink` needs `nvcc` and NCCL; `diag nccl` needs `torch`;
@@ -57,19 +58,25 @@ clustertools gpu --help  # list a group's commands
 clustertools gpu usage                   # rank every lab by base-partition GPU usage
 clustertools gpu usage kempner_sham_lab  # one lab's usage, by user and partition
 clustertools gpu avail kempner_h100      # nodes with allocatable GPUs (ratio-capped)
+clustertools gpu session -A kempner_dev  # interactive GPU shell (needs your account)
 clustertools gpu monitor-job 1234567     # live per-node GPU/CPU/memory/network table
 clustertools gpu pulse                   # live per-GPU dashboard (on a GPU node)
 
 # Jobs
+clustertools jobs list           # your queued and running jobs
+clustertools jobs why 1234567    # why a job is pending, and its priority
 clustertools jobs stats 1234567  # utilization for a job
 clustertools jobs scope -D 3     # efficiency of your completed jobs (last 3 days)
 
 # Accounts and nodes
+clustertools account fairshare            # your fairshare and priority standing
 clustertools account members kempner_dev  # users in a fairshare account
+clustertools nodes partitions -f kempner  # partitions, GPUs, and limits
 clustertools nodes list kempner_h100      # nodes and states in a partition
 
 # Storage
 clustertools storage quota netscratch  # your quota on a filesystem (-g LAB for a lab)
+clustertools storage scratch           # netscratch usage and the 90-day purge reminder
 clustertools storage home              # home directory usage and quota
 ```
 
@@ -82,11 +89,11 @@ what each does, its use cases, and inputs, see the linked
 
 | Group | Commands | Scope |
 | --- | --- | --- |
-| [`gpu`](docs/commands/gpu.md) | `usage`, `avail`, `monitor-partition`, `monitor-job`, `nvtop`, `pulse` | GPU usage and availability |
-| [`jobs`](docs/commands/jobs.md) | `stats`, `scope` | Job queue and history |
-| [`account`](docs/commands/account.md) | `members` | Account membership, limits, fairshare |
-| [`nodes`](docs/commands/nodes.md) | `list` | Node status and health |
-| [`storage`](docs/commands/storage.md) | `quota`, `home` | Filesystem quotas |
+| [`gpu`](docs/commands/gpu.md) | `usage`, `avail`, `session`, `monitor-partition`, `monitor-job`, `nvtop`, `pulse` | GPU usage, availability, and sessions |
+| [`jobs`](docs/commands/jobs.md) | `list`, `show`, `why`, `stats`, `scope`, `history`, `cancel`, `submit` | Job queue, status, history, and control |
+| [`account`](docs/commands/account.md) | `members`, `fairshare`, `usage`, `limits` | Account membership, fairshare, usage, limits |
+| [`nodes`](docs/commands/nodes.md) | `list`, `partitions` | Node and partition status |
+| [`storage`](docs/commands/storage.md) | `quota`, `home`, `usage`, `scratch`, `stripe` | Filesystem quotas, usage, and striping |
 | [`diag`](docs/commands/diag.md) | `ib`, `nccl`, `nvlink` | Diagnostics and benchmarks |
 
 ## Project layout
@@ -100,11 +107,11 @@ src/cluster_tools/
   monitor.py          # shared live per-node monitor (monitor-partition/-job)
   data/               # bundled payloads (monitor sample, nccl test, nvlink .cu)
   commands/           # one package per group; one file per command
-    gpu/              # usage, avail, monitor_partition, monitor_job, nvtop, pulse
-    jobs/             # stats, scope, violators
-    account/          # members
-    nodes/            # list
-    storage/          # quota, home
+    gpu/              # usage, avail, session, monitor_partition, monitor_job, nvtop, pulse
+    jobs/             # list, show, why, stats, scope, history, violators, cancel, submit
+    account/          # members, fairshare, usage, limits
+    nodes/            # list, partitions
+    storage/          # quota, home, usage, scratch, stripe
     diag/             # ib, nccl, nvlink
 tests/                # unit tests
 docs/commands/        # extended per-group command reference (gpu.md, jobs.md, ...)

@@ -12,3 +12,15 @@ List node names and states for one or more partitions.
 
 **Inputs**
 - `PARTITION...`: One or more Slurm partition names (e.g. `kempner_h100`).
+
+## `nodes partitions [-f TEXT]`
+
+List partitions with their cores, GPUs, average memory, node counts, and time
+limits (via `spart`).
+
+**Use cases**
+- See which partitions exist and how big their nodes are.
+- Find GPU partitions (filter by name, e.g. `-f kempner`).
+
+**Inputs**
+- `-f, --filter`: Only show rows containing this text (the header is kept).

@@ -1,6 +1,7 @@
 # storage
 
-Inspect storage quotas. Run `clustertools storage --help` to list these commands.
+Inspect storage quotas and usage. Run `clustertools storage --help` to list
+these commands.
 
 ## `storage quota PATH [-g GROUP | -u USER] [-v]`
 
@@ -40,3 +41,45 @@ instead.
 - `-s, --scan`: Also list the largest subdirectories under home.
 - `-n, --top`: How many directories to list with `--scan` (default 10).
 - `--ncdu`: Launch the interactive ncdu explorer on home.
+
+## `storage usage PATH -g GROUP`
+
+Show per-user usage for a group on a VAST filesystem such as `/n/netscratch`
+(via the FASRC `quota` tool). Lists how much each member of GROUP is using under
+PATH. A bare name like `netscratch` becomes `/n/netscratch`.
+
+**Use cases**
+- See who in a lab is filling a shared scratch or VAST allocation.
+
+**Inputs**
+- `PATH`: Filesystem path, or a bare name that becomes `/n/<name>`.
+- `-g, --group`: Unix group to break usage down by.
+
+## `storage scratch [PATH]`
+
+Show networked scratch usage and the purge policy (via the FASRC `quota` tool).
+Reports quota and usage for your netscratch path and reminds you that files on
+`/n/netscratch` are deleted after 90 days and are not backed up. PATH defaults
+to `$SCRATCH`, then `/n/netscratch`.
+
+**Use cases**
+- Check how full your lab's netscratch allocation is.
+- Remember the 90-day auto-deletion before staging data there.
+
+**Inputs**
+- `PATH`: Scratch path (default: `$SCRATCH`, else `/n/netscratch`).
+
+## `storage stripe PATH [-c COUNT]`
+
+Show or set Lustre striping for a path (via `lfs`). Without `--count`, print the
+current stripe layout (`lfs getstripe`). With `--count`, set the stripe count
+for newly created files under PATH (`lfs setstripe`); existing files are not
+restriped. Use 8 to 16 for large multi-GB or TB files.
+
+**Use cases**
+- Check how a directory is striped across Lustre targets.
+- Widen striping before writing very large files for throughput.
+
+**Inputs**
+- `PATH`: A path on a Lustre filesystem (e.g. `/n/holylfs06/...`).
+- `-c, --count`: Stripe count to set for new files under PATH.

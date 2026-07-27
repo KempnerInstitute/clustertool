@@ -125,6 +125,213 @@ def test_storage_quota_infer(monkeypatch):
     assert captured["cmd"] == ["quota", "/n/netscratch"]
 
 
+def _capture_stream(monkeypatch):
+    calls = []
+    monkeypatch.setattr(process, "stream", lambda cmd, extra_env=None: calls.append(cmd) or 0)
+    return calls
+
+
+def test_jobs_list_default(monkeypatch):
+    monkeypatch.setenv("USER", "alice")
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "list"])
+    assert result.exit_code == 0
+    assert calls[0] == ["squeue", "-u", "alice"]
+
+
+def test_jobs_list_filters(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(
+        main, ["jobs", "list", "-u", "bob", "-t", "pending", "-p", "kempner", "-A", "kempner_dev"]
+    )
+    assert result.exit_code == 0
+    assert calls[0] == [
+        "squeue",
+        "-u",
+        "bob",
+        "-t",
+        "PENDING",
+        "-p",
+        "kempner",
+        "-A",
+        "kempner_dev",
+    ]
+
+
+def test_jobs_show(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "show", "111", "222"])
+    assert result.exit_code == 0
+    assert calls[0] == ["scontrol", "show", "job", "-dd", "111,222"]
+
+
+def test_jobs_why(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    monkeypatch.setattr(process, "run", lambda cmd, input_text=None: "PENDING Priority\n")
+    result = CliRunner().invoke(main, ["jobs", "why", "12345"])
+    assert result.exit_code == 0
+    assert "Priority" in result.output
+    assert calls[0] == ["sprio", "-j", "12345", "-l"]
+
+
+def test_jobs_history(monkeypatch):
+    monkeypatch.setenv("USER", "alice")
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "history", "--days", "3"])
+    assert result.exit_code == 0
+    assert calls[0][:5] == ["sacct", "-u", "alice", "-S", "now-3days"]
+    assert "-X" in calls[0]
+
+
+def test_jobs_cancel_ids(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "cancel", "111", "222"])
+    assert result.exit_code == 0
+    assert calls[0] == ["scancel", "111", "222"]
+
+
+def test_jobs_cancel_all_confirmed(monkeypatch):
+    monkeypatch.setenv("USER", "alice")
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "cancel", "--all"], input="y\n")
+    assert result.exit_code == 0
+    assert calls[0] == ["scancel", "-u", "alice"]
+
+
+def test_jobs_cancel_pending_yes(monkeypatch):
+    monkeypatch.setenv("USER", "alice")
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "cancel", "--pending", "--yes"])
+    assert result.exit_code == 0
+    assert calls[0] == ["scancel", "-u", "alice", "-t", "PENDING"]
+
+
+def test_jobs_cancel_none_errors(monkeypatch):
+    _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "cancel"])
+    assert result.exit_code != 0
+
+
+def test_jobs_submit_passthrough(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "submit", "-p", "kempner", "job.sh"])
+    assert result.exit_code == 0
+    assert calls[0] == ["sbatch", "-p", "kempner", "job.sh"]
+
+
+def test_account_fairshare_self(monkeypatch):
+    monkeypatch.setenv("USER", "alice")
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["account", "fairshare"])
+    assert result.exit_code == 0
+    assert calls[0] == ["sshare", "-U", "-u", "alice"]
+
+
+def test_account_fairshare_account(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["account", "fairshare", "kempner_dev"])
+    assert result.exit_code == 0
+    assert calls[0] == ["sshare", "--account=kempner_dev", "-a"]
+
+
+def test_account_usage_self(monkeypatch):
+    monkeypatch.setenv("USER", "alice")
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["account", "usage", "--days", "7"])
+    assert result.exit_code == 0
+    assert calls[0][0] == "stotal"
+    assert calls[0][1:3] == ["-u", "alice"]
+    assert "-S" in calls[0] and "-E" in calls[0] and "-d" in calls[0]
+
+
+def test_account_usage_efficiency_account(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["account", "usage", "kempner_dev", "--efficiency"])
+    assert result.exit_code == 0
+    assert calls[0][0] == "seff-account"
+    assert calls[0][1:3] == ["-A", "kempner_dev"]
+
+
+def test_account_usage_account_and_user_error(monkeypatch):
+    _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["account", "usage", "kempner_dev", "-u", "alice"])
+    assert result.exit_code != 0
+
+
+def test_account_limits(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["account", "limits", "kempner_dev"])
+    assert result.exit_code == 0
+    assert calls[0][:4] == ["sacctmgr", "show", "assoc", "account=kempner_dev"]
+    assert calls[0][4].startswith("format=")
+
+
+def test_nodes_partitions_default(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["nodes", "partitions"])
+    assert result.exit_code == 0
+    assert calls[0] == ["spart"]
+
+
+def test_nodes_partitions_filter(monkeypatch):
+    monkeypatch.setattr(
+        process, "run", lambda cmd, input_text=None: "HEADER\nkempner row\nother row\n"
+    )
+    result = CliRunner().invoke(main, ["nodes", "partitions", "--filter", "kempner"])
+    assert result.exit_code == 0
+    assert "HEADER" in result.output
+    assert "kempner row" in result.output
+    assert "other row" not in result.output
+
+
+def test_storage_usage(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["storage", "usage", "netscratch", "-g", "kempner_dev"])
+    assert result.exit_code == 0
+    assert calls[0] == ["quota", "--group-user-usage", "kempner_dev", "/n/netscratch"]
+
+
+def test_storage_scratch(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["storage", "scratch", "/n/netscratch"])
+    assert result.exit_code == 0
+    assert calls[0] == ["quota", "/n/netscratch"]
+    assert "90 days" in result.output
+
+
+def test_storage_stripe_get(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["storage", "stripe", "/n/holylfs06/x"])
+    assert result.exit_code == 0
+    assert calls[0] == ["lfs", "getstripe", "/n/holylfs06/x"]
+
+
+def test_storage_stripe_set(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["storage", "stripe", "/n/holylfs06/x", "-c", "8"])
+    assert result.exit_code == 0
+    assert calls[0] == ["lfs", "setstripe", "-c", "8", "/n/holylfs06/x"]
+
+
+def test_gpu_session(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(
+        main, ["gpu", "session", "-A", "kempner_dev", "-g", "2", "--constraint", "a100"]
+    )
+    assert result.exit_code == 0
+    cmd = calls[0]
+    assert cmd[0] == "salloc"
+    assert "--account=kempner_dev" in cmd
+    assert "--gres=gpu:2" in cmd
+    assert "--constraint=a100" in cmd
+
+
+def test_gpu_session_requires_account(monkeypatch):
+    _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["gpu", "session"])
+    assert result.exit_code != 0
+
+
 def test_gpu_pulse_passthrough(monkeypatch):
     calls = []
     monkeypatch.setattr(process, "stream", lambda cmd, extra_env=None: calls.append(cmd) or 0)

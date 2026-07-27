@@ -3,6 +3,45 @@
 Inspect Slurm jobs. Run `clustertools jobs --help` to list these commands, or
 `clustertools jobs <command> --help` for one.
 
+## `jobs list [-t running|pending] [-p PARTITION] [-A ACCOUNT]`
+
+List your queued and running jobs (via `squeue`).
+
+**Use cases**
+- See what you have running and pending right now.
+- Check why a job is pending (the NODELIST(REASON) column).
+
+**Inputs**
+- `-u, --user`: User whose jobs to list (default: current user).
+- `-t, --state`: Limit to `running` or `pending` jobs.
+- `-p, --partition`: Limit to one partition.
+- `-A, --account`: Limit to one account.
+
+## `jobs show JOBID...`
+
+Show live detail for one or more jobs, including the pending reason (via
+`scontrol show job -dd`).
+
+**Use cases**
+- Inspect a running job's allocation (nodes, GPUs, TRES).
+- See exactly why a job is still pending (the Reason field).
+
+**Inputs**
+- `JOBID...`: One or more Slurm job ids.
+
+## `jobs why JOBID`
+
+Explain a job's priority and, if pending, why it is waiting. Prints the state
+and reason (from `squeue`), then the priority factor breakdown (from `sprio`):
+fairshare, age, partition, QOS, and so on.
+
+**Use cases**
+- Understand what is holding a pending job back.
+- Compare fairshare and age contributions to a job's priority.
+
+**Inputs**
+- `JOBID`: A Slurm job id.
+
 ## `jobs stats JOBID...`
 
 Show utilization for one or more jobs (via `jobstats`).
@@ -44,3 +83,45 @@ jobstats install, so no setup is needed on the Kempner AI Cluster (the offline
 
 **Inputs**
 - `[ARG]...`: any jobscope arguments (job ids; `-D`/`-N`/`-S`/`-E` time selectors; `-u`/`-A`/`-p` filters; `--cpu`/`--gpu`/`--cgpu` views; `--csv`; the `detail`, `dcgm`, `plot`, and `describe` subcommands), forwarded verbatim.
+
+## `jobs history [-d DAYS] [-u USER]`
+
+List your recent finished jobs (via `sacct`): job id, name, partition, state,
+elapsed, peak memory, and nodes.
+
+**Use cases**
+- Review what ran over the last few days and how it ended.
+- Find a past job's id, runtime, or peak memory.
+
+**Inputs**
+- `-d, --days`: How many days back to include (default 7).
+- `-u, --user`: User whose history to show (default: current user).
+
+## `jobs cancel [JOBID...] [--all] [--pending]`
+
+Cancel jobs (via `scancel`). Pass explicit ids, or use `--all` / `--pending` to
+cancel your own jobs in bulk (which prompt for confirmation unless `-y`).
+
+**Use cases**
+- Kill a specific job or list of jobs.
+- Clear all of your pending jobs at once.
+
+**Inputs**
+- `JOBID...`: One or more job ids to cancel.
+- `--all`: Cancel every job you own.
+- `--pending`: Cancel only your pending jobs.
+- `-y, --yes`: Skip the confirmation prompt for bulk cancels.
+
+## `jobs submit [ARG]...`
+
+Submit a batch job (passthrough to `sbatch`). All arguments are forwarded to
+`sbatch` unchanged, so a script path, `--wrap`, `--array`, `--dependency`, and
+mail flags all work. Run `sbatch --help` for the full list.
+
+**Most useful**
+- `jobs submit job.sh`: submit a batch script.
+- `jobs submit -p kempner_h100 --account=LAB --gres=gpu:1 -t 0-01:00 job.sh`: submit with resources.
+- `jobs submit --array=1-10 job.sh`: submit an array job.
+
+**Inputs**
+- `[ARG]...`: any sbatch arguments (script path, `--wrap`, directives), forwarded verbatim.

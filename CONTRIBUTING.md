@@ -19,11 +19,11 @@ lands, so `--help` never shows an empty group.
 
 | Group | Scope |
 | --- | --- |
-| `gpu` | GPU usage and availability |
-| `jobs` | Job queue and history |
-| `account` | Account membership, limits, fairshare |
-| `nodes` | Node status and health |
-| `storage` | Filesystem quotas |
+| `gpu` | GPU usage, availability, and sessions |
+| `jobs` | Job queue, status, history, and control |
+| `account` | Account membership, fairshare, usage, limits |
+| `nodes` | Node and partition status |
+| `storage` | Filesystem quotas, usage, and striping |
 | `diag` | Diagnostics and benchmarks |
 
 ## Style rules
