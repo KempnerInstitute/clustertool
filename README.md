@@ -60,6 +60,7 @@ clustertools completion --install
 clustertools --help      # list command groups
 clustertools gpu --help  # list a group's commands
 clustertools search fairshare  # find a command by keyword (also: find, lookup)
+clustertools me                # your jobs, GPUs, and fairshare at a glance
 
 # GPU
 clustertools gpu usage                   # rank every lab by base-partition GPU usage

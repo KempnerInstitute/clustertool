@@ -356,3 +356,31 @@ def first_hostname() -> str:
     """Return the first hostname in the current job's node list."""
     hosts = _run(["scontrol", "show", "hostnames"]).split()
     return hosts[0] if hosts else ""
+
+
+def my_jobs(user: str) -> list[tuple[str, str, str, str, str]]:
+    """Return (jobid, state, partition, elapsed, reason) rows for a user's jobs."""
+    out = _run(["squeue", "-h", "-u", user, "-o", "%i|%T|%P|%M|%r"])
+    rows: list[tuple[str, str, str, str, str]] = []
+    for line in out.splitlines():
+        fields = line.split("|")
+        if len(fields) >= 5:
+            rows.append((fields[0], fields[1], fields[2], fields[3], fields[4]))
+    return rows
+
+
+def user_fairshare(user: str) -> list[tuple[str, str]]:
+    """Return (account, fairshare_score) rows for the accounts a user belongs to."""
+    out = _run(["sshare", "-h", "-P", "-U", "-u", user, "-o", "Account,FairShare"])
+    rows: list[tuple[str, str]] = []
+    for line in out.splitlines():
+        fields = line.split("|")
+        if len(fields) >= 2 and fields[0].strip():
+            rows.append((fields[0].strip(), fields[1].strip()))
+    return rows
+
+
+def user_gpu_count(user: str) -> int:
+    """Return the number of GPUs a user has allocated to running jobs."""
+    out = _run(["squeue", "-h", "-t", "R", "-u", user, "-O", "tres-alloc:512"])
+    return sum(parse_gpu_count(line) for line in out.splitlines())

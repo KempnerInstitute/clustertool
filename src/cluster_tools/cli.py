@@ -10,6 +10,7 @@ from cluster_tools.commands.completion import completion
 from cluster_tools.commands.diag import diag
 from cluster_tools.commands.gpu import gpu
 from cluster_tools.commands.jobs import jobs
+from cluster_tools.commands.me import me
 from cluster_tools.commands.nodes import nodes
 from cluster_tools.commands.search import search
 from cluster_tools.commands.storage import storage
@@ -51,6 +52,7 @@ main.add_command(storage)
 main.add_command(diag)
 main.add_command(search)
 main.add_command(completion)
+main.add_command(me)
 
 
 if __name__ == "__main__":
