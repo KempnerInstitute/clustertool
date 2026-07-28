@@ -14,6 +14,7 @@ out to.
 | --- | --- | --- | --- |
 | `gpu usage [ACCOUNT]` | user | squeue, sacctmgr | Rank labs by base-partition GPU usage, or break one lab down by user and partition. |
 | `gpu util [PARTITION...]` | user | sinfo, squeue | GPU occupancy per partition: total, down, available, used, and percent. |
+| `gpu status` | user | sinfo | Kempner GPU node counts by type (A100/H100/H200/RTX) and state. |
 | `gpu avail PARTITION` | user | scontrol, sinfo | Nodes with allocatable GPUs (free GPUs capped by the enforced per-GPU ratio). |
 | `gpu session GPU_TYPE -A ACCOUNT` | user | salloc | Interactive single-GPU session (a100/h100/h200/rtx), sized to the per-GPU limits. |
 | `gpu monitor-partition PARTITION` | user | ssh, nvidia-smi | Live per-node GPU/CPU/memory/network table for a partition. |
