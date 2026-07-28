@@ -38,6 +38,7 @@ out to.
 | `jobs queue PARTITION` | user | showq | A partition's pending jobs in priority order. |
 | `jobs show JOBID...` | user | scontrol | Live detail for one or more jobs, including the pending reason. |
 | `jobs why JOBID` | user | squeue, sprio | Why a job is pending, plus its priority factor breakdown. |
+| `jobs debug JOBID` | user | sacct, scontrol | Diagnose why a finished job failed, with a suggested fix. |
 | `jobs top JOBID` | user | sstat | Live resource use of a running job's steps. |
 | `jobs stats JOBID...` | user | jobstats | Utilization for one or more jobs. |
 | `jobs scope [ARG...]` | user | jobscope | Completed-job efficiency plus DCGM profiling (bundled jobscope). |

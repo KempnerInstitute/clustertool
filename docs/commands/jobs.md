@@ -43,6 +43,20 @@ fairshare, age, partition, QOS, and so on.
 **Inputs**
 - `JOBID`: A Slurm job id.
 
+## `jobs debug JOBID`
+
+Explain why a finished job failed, from its accounting and log (via `sacct`).
+Reads the final state, exit code, time, and memory, scans the stdout tail for
+common error patterns (out of memory, timeout, node failure, missing modules),
+and prints a plain-English diagnosis with suggestions. Best for finished jobs.
+
+**Use cases**
+- Understand why a job died without decoding Slurm and CUDA messages.
+- Get a suggested fix for out-of-memory, timeout, or code errors.
+
+**Inputs**
+- `JOBID`: A Slurm job id.
+
 ## `jobs priorities PARTITION`
 
 Show priority factors for pending jobs in a partition (via `sprio`): each job's
