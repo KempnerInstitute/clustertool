@@ -5,8 +5,10 @@ import os
 import click
 
 from cluster_tools import process
+from cluster_tools.grouping import keywords
 
 
+@keywords("share", "rank", "weight")
 @click.command("fairshare")
 @click.argument("account", required=False)
 @click.option("-u", "--user", default=None, help="User to look up (default: you).")

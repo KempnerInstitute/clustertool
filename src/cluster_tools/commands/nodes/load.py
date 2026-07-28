@@ -3,8 +3,10 @@
 import click
 
 from cluster_tools import process
+from cluster_tools.grouping import keywords
 
 
+@keywords("busy", "free", "cpu", "memory")
 @click.command("load")
 @click.option(
     "-f", "--filter", "name_filter", default=None, help="Only show rows containing this text."

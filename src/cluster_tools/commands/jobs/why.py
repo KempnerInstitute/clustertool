@@ -3,8 +3,10 @@
 import click
 
 from cluster_tools import process
+from cluster_tools.grouping import keywords
 
 
+@keywords("pending", "waiting", "stuck", "blocked")
 @click.command("why")
 @click.argument("jobid")
 def why(jobid: str) -> None:

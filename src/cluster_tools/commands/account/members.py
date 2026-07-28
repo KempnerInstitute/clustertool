@@ -3,8 +3,10 @@
 import click
 
 from cluster_tools import slurm
+from cluster_tools.grouping import keywords
 
 
+@keywords("who", "roster", "people")
 @click.command("members")
 @click.argument("account_name", metavar="ACCOUNT", required=False)
 @click.option(

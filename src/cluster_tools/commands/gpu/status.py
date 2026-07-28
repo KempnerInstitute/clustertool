@@ -3,6 +3,7 @@
 import click
 
 from cluster_tools import slurm
+from cluster_tools.grouping import keywords
 
 _LABELS = {
     "idle": "Idle",
@@ -14,6 +15,7 @@ _LABELS = {
 }
 
 
+@keywords("health", "fleet", "broken")
 @click.command("status")
 def status() -> None:
     """Show Kempner GPU node status by type and state (via sinfo).

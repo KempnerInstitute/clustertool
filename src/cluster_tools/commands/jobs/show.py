@@ -3,8 +3,10 @@
 import click
 
 from cluster_tools import process
+from cluster_tools.grouping import keywords
 
 
+@keywords("detail", "info", "inspect", "describe")
 @click.command("show")
 @click.argument("jobids", nargs=-1, required=True, metavar="JOBID...")
 def show(jobids: tuple[str, ...]) -> None:

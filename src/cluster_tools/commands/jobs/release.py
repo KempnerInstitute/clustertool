@@ -3,8 +3,10 @@
 import click
 
 from cluster_tools import process
+from cluster_tools.grouping import keywords
 
 
+@keywords("unhold", "unblock", "resume", "unfreeze")
 @click.command("release")
 @click.argument("jobids", nargs=-1, required=True, metavar="JOBID...")
 def release(jobids: tuple[str, ...]) -> None:

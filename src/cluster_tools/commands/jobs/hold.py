@@ -3,8 +3,10 @@
 import click
 
 from cluster_tools import process
+from cluster_tools.grouping import keywords
 
 
+@keywords("pause", "suspend", "block", "freeze")
 @click.command("hold")
 @click.argument("jobids", nargs=-1, required=True, metavar="JOBID...")
 def hold(jobids: tuple[str, ...]) -> None:

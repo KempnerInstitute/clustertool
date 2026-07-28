@@ -3,8 +3,10 @@
 import click
 
 from cluster_tools import slurm
+from cluster_tools.grouping import keywords
 
 
+@keywords("busy", "occupancy", "load")
 @click.command("util")
 @click.argument("partitions", nargs=-1, metavar="[PARTITION...]")
 def util(partitions: tuple[str, ...]) -> None:

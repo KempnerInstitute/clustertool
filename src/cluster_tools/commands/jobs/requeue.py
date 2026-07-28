@@ -3,8 +3,10 @@
 import click
 
 from cluster_tools import process
+from cluster_tools.grouping import keywords
 
 
+@keywords("restart", "rerun", "resubmit")
 @click.command("requeue")
 @click.argument("jobids", nargs=-1, required=True, metavar="JOBID...")
 def requeue(jobids: tuple[str, ...]) -> None:

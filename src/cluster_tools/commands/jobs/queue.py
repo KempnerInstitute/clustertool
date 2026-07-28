@@ -3,8 +3,10 @@
 import click
 
 from cluster_tools import process
+from cluster_tools.grouping import keywords
 
 
+@keywords("pending", "waiting", "backlog", "showq")
 @click.command("queue")
 @click.argument("partition")
 def queue(partition: str) -> None:

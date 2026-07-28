@@ -8,6 +8,7 @@ import shutil
 import click
 
 from cluster_tools import process
+from cluster_tools.grouping import keywords
 
 _ENV_BASE = {"NCCL_DEBUG": "WARN", "NCCL_IB_DISABLE": "1"}
 
@@ -26,6 +27,7 @@ def _detect_gpus() -> int:
     return sum(1 for line in out.splitlines() if line.strip().startswith("GPU "))
 
 
+@keywords("bandwidth", "fabric", "interconnect")
 @click.command("nvlink")
 @click.argument("bytes_per_gpu", type=int, default=2147483648, required=False)
 @click.argument("warmup", type=int, default=20, required=False)

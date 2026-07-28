@@ -5,8 +5,10 @@ import os
 import click
 
 from cluster_tools import process
+from cluster_tools.grouping import keywords
 
 
+@keywords("mine", "myjobs", "running", "queued")
 @click.command("list")
 @click.option("-u", "--user", default=None, help="User whose jobs to list (default: you).")
 @click.option(

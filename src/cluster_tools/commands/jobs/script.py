@@ -3,8 +3,10 @@
 import click
 
 from cluster_tools import process
+from cluster_tools.grouping import keywords
 
 
+@keywords("sbatch", "submission", "batch", "source")
 @click.command("script")
 @click.argument("jobid")
 def script(jobid: str) -> None:

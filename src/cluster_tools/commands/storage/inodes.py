@@ -3,8 +3,10 @@
 import click
 
 from cluster_tools import process
+from cluster_tools.grouping import keywords
 
 
+@keywords("files", "count", "lustre")
 @click.command("inodes")
 @click.argument("path")
 def inodes(path: str) -> None:

@@ -3,10 +3,11 @@
 import click
 
 from cluster_tools import process
-from cluster_tools.grouping import admin
+from cluster_tools.grouping import admin, keywords
 
 
 @admin
+@keywords("grant", "join", "access", "enroll")
 @click.command("add-user")
 @click.argument("user")
 @click.argument("account")

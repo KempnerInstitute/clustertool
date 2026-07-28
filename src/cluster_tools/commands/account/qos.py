@@ -3,10 +3,12 @@
 import click
 
 from cluster_tools import process
+from cluster_tools.grouping import keywords
 
 _FORMAT = "Name%28,Priority,MaxWall,MaxTRESPU%22,MaxTRES%18,GrpTRES%18"
 
 
+@keywords("quality", "cap", "ceiling", "tier")
 @click.command("qos")
 @click.option(
     "-f", "--filter", "name_filter", default=None, help="Only show rows containing this text."

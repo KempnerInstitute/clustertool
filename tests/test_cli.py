@@ -6,7 +6,7 @@ import sys
 
 from click.testing import CliRunner
 
-from cluster_tools import process, slurm
+from cluster_tools import process, search, slurm
 from cluster_tools.cli import main
 
 
@@ -145,6 +145,78 @@ def test_nodes_list(monkeypatch):
     assert result.exit_code == 0
     assert "node01" in result.output
     assert "2 node(s)" in result.output
+
+
+def test_search_finds_command_by_name():
+    result = CliRunner().invoke(main, ["search", "fairshare"])
+    assert result.exit_code == 0
+    assert result.output.splitlines()[0].startswith("account fairshare")
+
+
+def test_search_matches_slang_keyword():
+    result = CliRunner().invoke(main, ["search", "kill"])
+    assert result.exit_code == 0
+    assert "jobs cancel" in result.output
+
+
+def test_search_ranks_rarer_term_first():
+    result = CliRunner().invoke(main, ["search", "gpu", "reservation"])
+    assert result.exit_code == 0
+    assert result.output.splitlines()[0].startswith("nodes reservations")
+
+
+def test_search_no_match():
+    result = CliRunner().invoke(main, ["search", "zzzznotacommand"])
+    assert result.exit_code == 0
+    assert "No commands matched" in result.output
+
+
+def test_search_alias_find_works():
+    result = CliRunner().invoke(main, ["find", "fairshare"])
+    assert result.exit_code == 0
+    assert "account fairshare" in result.output
+
+
+def test_did_you_mean_group():
+    result = CliRunner().invoke(main, ["accont"])
+    assert result.exit_code != 0
+    assert "Did you mean" in result.output
+    assert "account" in result.output
+
+
+def test_did_you_mean_subcommand():
+    result = CliRunner().invoke(main, ["account", "membrs"])
+    assert result.exit_code != 0
+    assert "members" in result.output
+
+
+def test_search_rank_unit():
+    def rec(path, short="", kw=()):
+        name_tokens = set(search._tokens(path))
+        kw_tokens = {t for term in kw for t in search._tokens(term)}
+        short_tokens = set(search._tokens(short))
+        return {
+            "path": path,
+            "name": path.split()[-1],
+            "short": short,
+            "scope": "user",
+            "name_tokens": name_tokens,
+            "kw_tokens": kw_tokens,
+            "short_tokens": short_tokens,
+            "full_tokens": set(),
+            "all_tokens": name_tokens | kw_tokens | short_tokens,
+        }
+
+    records = [
+        rec("account fairshare", "Show fairshare standing and priority"),
+        rec("nodes reservations", "List active reservations", kw=("reservation",)),
+        rec("gpu util", "GPU occupancy per partition"),
+        rec("jobs cancel", "Cancel jobs", kw=("kill",)),
+    ]
+    assert search.rank(records, ["fairshare"])[0]["path"] == "account fairshare"
+    assert search.rank(records, ["kill"])[0]["path"] == "jobs cancel"
+    assert search.rank(records, ["reservation"])[0]["path"] == "nodes reservations"
+    assert search.rank(records, ["zzz"]) == []
 
 
 def test_account_members(monkeypatch):

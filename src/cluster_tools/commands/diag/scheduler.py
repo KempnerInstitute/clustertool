@@ -3,8 +3,10 @@
 import click
 
 from cluster_tools import process
+from cluster_tools.grouping import keywords
 
 
+@keywords("sdiag", "backfill", "slurm", "health")
 @click.command("scheduler")
 def scheduler() -> None:
     """Show Slurm scheduler diagnostics (via sdiag).

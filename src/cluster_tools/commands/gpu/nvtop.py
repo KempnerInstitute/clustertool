@@ -3,6 +3,7 @@
 import click
 
 from cluster_tools import process, slurm
+from cluster_tools.grouping import keywords
 
 _SSH_OPTS = "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -t"
 
@@ -24,6 +25,7 @@ def _build_session(session: str, hosts: list[str]) -> None:
     process.run(["tmux", "select-layout", "-t", f"{session}:0", "tiled"])
 
 
+@keywords("htop", "monitor", "watch", "live")
 @click.command("nvtop")
 @click.argument("jobid")
 @click.option("--attach/--no-attach", default=True, help="Attach to the session after creating it.")

@@ -3,10 +3,12 @@
 import click
 
 from cluster_tools import process
+from cluster_tools.grouping import keywords
 
 _FORMAT = "JobID,AveCPU,AveRSS,MaxRSS,AveVMSize,NTasks"
 
 
+@keywords("monitor", "live", "watch", "resources")
 @click.command("top")
 @click.argument("jobid")
 def top(jobid: str) -> None:

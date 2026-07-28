@@ -1,6 +1,7 @@
 """Command-line entry point for Kempner AI Cluster Tools."""
 
 import importlib.metadata
+from typing import ClassVar
 
 import click
 
@@ -9,6 +10,7 @@ from cluster_tools.commands.diag import diag
 from cluster_tools.commands.gpu import gpu
 from cluster_tools.commands.jobs import jobs
 from cluster_tools.commands.nodes import nodes
+from cluster_tools.commands.search import search
 from cluster_tools.commands.storage import storage
 from cluster_tools.grouping import SectionedGroup
 from cluster_tools.process import CommandError
@@ -24,6 +26,8 @@ def _version() -> str:
 
 class ClusterToolsGroup(SectionedGroup):
     """Group that reports command failures as clean CLI errors."""
+
+    aliases: ClassVar[dict[str, str]] = {"find": "search", "lookup": "search"}
 
     def invoke(self, ctx: click.Context):
         try:
@@ -44,6 +48,7 @@ main.add_command(account)
 main.add_command(nodes)
 main.add_command(storage)
 main.add_command(diag)
+main.add_command(search)
 
 
 if __name__ == "__main__":

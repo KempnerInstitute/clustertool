@@ -5,9 +5,11 @@ import os
 import click
 
 from cluster_tools import process
+from cluster_tools.grouping import keywords
 from cluster_tools.storage import humanize_bytes, parse_du_top
 
 
+@keywords("disk", "space", "du", "homedir")
 @click.command("home")
 @click.option(
     "--scan", "-s", is_flag=True, help="Also scan home and list its largest subdirectories."

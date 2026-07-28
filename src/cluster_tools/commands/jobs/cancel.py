@@ -5,8 +5,10 @@ import os
 import click
 
 from cluster_tools import process
+from cluster_tools.grouping import keywords
 
 
+@keywords("kill", "stop", "abort", "terminate")
 @click.command("cancel")
 @click.argument("jobids", nargs=-1, metavar="[JOBID...]")
 @click.option("--all", "all_jobs", is_flag=True, help="Cancel all of your jobs.")
