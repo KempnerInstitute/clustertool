@@ -95,3 +95,32 @@ unless `-y`. Operator only.
 - `ACCOUNT`: Slurm account to add them to.
 - `--fairshare`: Fairshare value (default `parent`).
 - `-y, --yes`: Skip the confirmation prompt.
+
+## `account remove-user USER ACCOUNT`
+
+Remove a user's association with an account (via `sacctmgr`). Removes only the
+USER and ACCOUNT association, not the user's other accounts. Prompts for
+confirmation unless `-y`. Operator only.
+
+**Use cases**
+- Remove a former member from a lab's Slurm account.
+
+**Inputs**
+- `USER`: Username to remove.
+- `ACCOUNT`: Slurm account to remove them from.
+- `-y, --yes`: Skip the confirmation prompt.
+
+## `account set-fairshare USER ACCOUNT SHARE`
+
+Set a user's fairshare in an account (via `sacctmgr`). SHARE is an integer
+number of raw shares, or `parent` to inherit the account's shares. Prompts for
+confirmation unless `-y`. Operator only.
+
+**Use cases**
+- Adjust a member's fairshare weight within a lab.
+
+**Inputs**
+- `USER`: Username.
+- `ACCOUNT`: Slurm account.
+- `SHARE`: Raw shares (integer) or `parent`.
+- `-y, --yes`: Skip the confirmation prompt.

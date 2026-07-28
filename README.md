@@ -95,7 +95,7 @@ host tool it wraps, is in
 | --- | --- | --- |
 | [`gpu`](docs/commands/gpu.md) | `usage`, `util`, `avail`, `session`, `monitor-partition`, `monitor-job`, `nvtop`, `pulse` | GPU usage, availability, and sessions |
 | [`jobs`](docs/commands/jobs.md) | `list`, `queue`, `show`, `why`, `top`, `stats`, `scope`, `history`, `log`, `script`, `priorities`, `cancel`, `hold`, `release`, `requeue`, `setprio`, `submit` | Job queue, status, history, logs, and control |
-| [`account`](docs/commands/account.md) | `members`, `fairshare`, `usage`, `limits`, `top-users`, `qos`, `add-user` | Account membership, fairshare, usage, limits, QOS |
+| [`account`](docs/commands/account.md) | `members`, `fairshare`, `usage`, `limits`, `top-users`, `qos`, `add-user`, `remove-user`, `set-fairshare` | Account membership, fairshare, usage, limits, QOS |
 | [`nodes`](docs/commands/nodes.md) | `list`, `partitions`, `down`, `load`, `reservations`, `resume` | Node, partition, and reservation status |
 | [`storage`](docs/commands/storage.md) | `quota`, `home`, `usage`, `scratch`, `stripe`, `inodes` | Filesystem quotas, usage, and striping |
 | [`diag`](docs/commands/diag.md) | `ib`, `nccl`, `nvlink`, `scheduler` | Diagnostics and benchmarks |
@@ -113,7 +113,7 @@ src/cluster_tools/
   commands/           # one package per group; one file per command
     gpu/              # usage, util, avail, session, monitor_partition, monitor_job, nvtop, pulse
     jobs/             # list, queue, show, why, top, stats, scope, history, log, script, priorities, violators, cancel, hold, release, requeue, setprio, submit
-    account/          # members, fairshare, usage, limits, topusers, qos, adduser
+    account/          # members, fairshare, usage, limits, topusers, qos, adduser, removeuser, setfairshare
     nodes/            # list, partitions, down, load, reservations, resume
     storage/          # quota, home, usage, scratch, stripe, inodes
     diag/             # ib, nccl, nvlink, scheduler

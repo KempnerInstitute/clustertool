@@ -55,6 +55,8 @@ out to.
 | `account top-users ACCOUNT` | user | sshare | Rank an account's members by RawUsage. |
 | `account qos [-f TEXT]` | user | sacctmgr | QOS definitions and their TRES limits. |
 | `account add-user USER ACCOUNT` | admin | sacctmgr | Add a user to a fairshare account. |
+| `account remove-user USER ACCOUNT` | admin | sacctmgr | Remove a user's association with an account. |
+| `account set-fairshare USER ACCOUNT SHARE` | admin | sacctmgr | Set a user's fairshare in an account. |
 
 ## nodes
 

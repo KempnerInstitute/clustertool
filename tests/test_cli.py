@@ -552,6 +552,32 @@ def test_account_add_user(monkeypatch):
     ]
 
 
+def test_account_remove_user(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["account", "remove-user", "alice", "kempner_dev", "-y"])
+    assert result.exit_code == 0
+    assert calls[0] == ["sacctmgr", "-i", "remove", "user", "alice", "account=kempner_dev"]
+
+
+def test_account_set_fairshare(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(
+        main, ["account", "set-fairshare", "alice", "kempner_dev", "50", "-y"]
+    )
+    assert result.exit_code == 0
+    assert calls[0] == [
+        "sacctmgr",
+        "-i",
+        "modify",
+        "user",
+        "where",
+        "name=alice",
+        "account=kempner_dev",
+        "set",
+        "fairshare=50",
+    ]
+
+
 def test_storage_inodes(monkeypatch):
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["storage", "inodes", "holylfs06"])
