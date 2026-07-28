@@ -20,9 +20,10 @@ from cluster_tools.commands.jobs.submit import submit
 from cluster_tools.commands.jobs.top import top
 from cluster_tools.commands.jobs.violators import violators
 from cluster_tools.commands.jobs.why import why
+from cluster_tools.grouping import SectionedGroup
 
 
-@click.group()
+@click.group(cls=SectionedGroup)
 def jobs() -> None:
     """Inspect, submit, and control Slurm jobs."""
 

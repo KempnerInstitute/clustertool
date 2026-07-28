@@ -3,8 +3,10 @@
 import click
 
 from cluster_tools import process
+from cluster_tools.grouping import admin
 
 
+@admin
 @click.command("set-fairshare")
 @click.argument("user")
 @click.argument("account")

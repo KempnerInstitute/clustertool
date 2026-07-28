@@ -552,6 +552,26 @@ def test_account_add_user(monkeypatch):
     ]
 
 
+def test_account_help_splits_user_and_admin():
+    result = CliRunner().invoke(main, ["account", "--help"])
+    assert result.exit_code == 0
+    out = result.output
+    assert "User Commands:" in out
+    assert "Admin Commands:" in out
+    admin_idx = out.index("Admin Commands:")
+    assert out.index("User Commands:") < admin_idx
+    assert out.index("members") < admin_idx
+    for name in ("add-user", "remove-user", "set-fairshare"):
+        assert out.index(name) > admin_idx
+
+
+def test_gpu_help_has_no_admin_section():
+    result = CliRunner().invoke(main, ["gpu", "--help"])
+    assert result.exit_code == 0
+    assert "Admin Commands:" not in result.output
+    assert "Commands:" in result.output
+
+
 def test_account_remove_user(monkeypatch):
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["account", "remove-user", "alice", "kempner_dev", "-y"])

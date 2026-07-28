@@ -10,9 +10,10 @@ from cluster_tools.commands.gpu.pulse import pulse
 from cluster_tools.commands.gpu.session import session
 from cluster_tools.commands.gpu.usage import usage
 from cluster_tools.commands.gpu.util import util
+from cluster_tools.grouping import SectionedGroup
 
 
-@click.group()
+@click.group(cls=SectionedGroup)
 def gpu() -> None:
     """GPU usage, availability, sessions, and monitoring."""
 

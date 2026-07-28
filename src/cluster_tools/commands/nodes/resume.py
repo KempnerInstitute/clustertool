@@ -3,8 +3,10 @@
 import click
 
 from cluster_tools import process, slurm
+from cluster_tools.grouping import admin
 
 
+@admin
 @click.command("resume")
 @click.argument("nodes", nargs=-1, metavar="[NODE...]")
 @click.option("-p", "--partition", default=None, help="Resume drained nodes in this partition.")

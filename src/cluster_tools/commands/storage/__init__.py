@@ -8,9 +8,10 @@ from cluster_tools.commands.storage.quota import quota
 from cluster_tools.commands.storage.scratch import scratch
 from cluster_tools.commands.storage.stripe import stripe
 from cluster_tools.commands.storage.usage import usage
+from cluster_tools.grouping import SectionedGroup
 
 
-@click.group()
+@click.group(cls=SectionedGroup)
 def storage() -> None:
     """Storage quotas, usage, and Lustre striping."""
 
