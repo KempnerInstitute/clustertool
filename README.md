@@ -53,6 +53,7 @@ uv run clustertools --help
 # Discover
 clustertools --help      # list command groups
 clustertools gpu --help  # list a group's commands
+clustertools search fairshare  # find a command by keyword (also: find, lookup)
 
 # GPU
 clustertools gpu usage                   # rank every lab by base-partition GPU usage
@@ -90,6 +91,10 @@ what each does, its use cases, and inputs, see the linked
 A flat, greppable index of every command, with its scope (user or admin) and the
 host tool it wraps, is in
 [`clustertools-commands-index.md`](clustertools-commands-index.md).
+
+Not sure which command you need? `clustertools search <words>` (also `find` or
+`lookup`) ranks commands by relevance, for example `clustertools search
+fairshare` or `clustertools search gpu reservation`.
 
 | Group | Commands | Scope |
 | --- | --- | --- |

@@ -5,10 +5,12 @@ import os
 import click
 
 from cluster_tools import process
+from cluster_tools.grouping import keywords
 
 _PURGE_DAYS = 90
 
 
+@keywords("temp", "purge", "netscratch")
 @click.command("scratch")
 @click.argument("path", required=False)
 def scratch(path: str | None) -> None:

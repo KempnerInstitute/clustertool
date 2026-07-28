@@ -3,8 +3,10 @@
 import click
 
 from cluster_tools import process
+from cluster_tools.grouping import keywords
 
 
+@keywords("disk", "space", "du", "consumption")
 @click.command("usage")
 @click.argument("path")
 @click.option("-g", "--group", required=True, help="Unix group to break usage down by.")

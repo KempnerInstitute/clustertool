@@ -3,8 +3,10 @@
 import click
 
 from cluster_tools import process
+from cluster_tools.grouping import keywords
 
 
+@keywords("reserved", "booked", "reservation")
 @click.command("reservations")
 def reservations() -> None:
     """List active reservations on the cluster (via scontrol).

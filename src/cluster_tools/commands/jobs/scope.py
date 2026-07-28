@@ -5,8 +5,10 @@ import sys
 import click
 
 from cluster_tools import process
+from cluster_tools.grouping import keywords
 
 
+@keywords("efficiency", "profiling", "completed", "jobscope")
 @click.command(
     "scope",
     context_settings={"ignore_unknown_options": True, "help_option_names": []},

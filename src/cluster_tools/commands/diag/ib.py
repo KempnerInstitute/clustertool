@@ -5,6 +5,7 @@ import concurrent.futures
 import click
 
 from cluster_tools import process, slurm
+from cluster_tools.grouping import keywords
 
 _SSH_OPTS = [
     "-o",
@@ -24,6 +25,7 @@ def _host_ib_down(host: str) -> str:
     return process.run(["ssh", *_SSH_OPTS, host, _IB_CHECK]).strip()
 
 
+@keywords("infiniband", "network", "fabric")
 @click.command("ib")
 @click.argument("partitions", nargs=-1, required=True, metavar="PARTITION...")
 @click.option("--parallel", default=24, show_default=True, help="Maximum parallel ssh checks.")

@@ -5,10 +5,12 @@ import os
 import click
 
 from cluster_tools import process
+from cluster_tools.grouping import keywords
 
 _FORMAT = "JobID,JobName%25,Partition,State,Elapsed,MaxRSS,NodeList"
 
 
+@keywords("past", "finished", "completed", "recent")
 @click.command("history")
 @click.option(
     "-d", "--days", type=int, default=7, show_default=True, help="How many days back to list."

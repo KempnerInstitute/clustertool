@@ -3,8 +3,10 @@
 import click
 
 from cluster_tools import process
+from cluster_tools.grouping import keywords
 
 
+@keywords("broken", "offline", "dead")
 @click.command("down")
 @click.option("-p", "--partition", default=None, help="Limit to one partition.")
 def down(partition: str | None) -> None:

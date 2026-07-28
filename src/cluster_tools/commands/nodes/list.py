@@ -3,8 +3,10 @@
 import click
 
 from cluster_tools import slurm
+from cluster_tools.grouping import keywords
 
 
+@keywords("hosts", "machines", "state")
 @click.command("list")
 @click.argument("partitions", nargs=-1, required=True, metavar="PARTITION...")
 def list_nodes(partitions: tuple[str, ...]) -> None:

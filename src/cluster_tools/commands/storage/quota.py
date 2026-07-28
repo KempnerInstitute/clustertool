@@ -3,9 +3,11 @@
 import click
 
 from cluster_tools import process
+from cluster_tools.grouping import keywords
 from cluster_tools.storage import quota_cmd
 
 
+@keywords("disk", "space", "limit")
 @click.command("quota")
 @click.argument("path")
 @click.option("--group", "-g", help="Group/lab name for the quota lookup.")

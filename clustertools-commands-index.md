@@ -8,6 +8,12 @@ Scope: **user** commands need no special privilege; **admin** commands require
 Slurm operator rights. The Wraps column names the host tool each command shells
 out to.
 
+## top-level
+
+| Command | Scope | Wraps | Description |
+| --- | --- | --- | --- |
+| `search TERMS...` | user | (none) | Find commands by keyword, ranked by relevance (also: find, lookup). |
+
 ## gpu
 
 | Command | Scope | Wraps | Description |

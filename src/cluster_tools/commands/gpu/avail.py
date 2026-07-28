@@ -3,8 +3,10 @@
 import click
 
 from cluster_tools import slurm
+from cluster_tools.grouping import keywords
 
 
+@keywords("free", "available", "empty", "where")
 @click.command("avail")
 @click.argument("partition")
 @click.option(

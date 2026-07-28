@@ -3,10 +3,11 @@
 import click
 
 from cluster_tools import process
-from cluster_tools.grouping import admin
+from cluster_tools.grouping import admin, keywords
 
 
 @admin
+@keywords("revoke", "kick", "delete", "unenroll")
 @click.command("remove-user")
 @click.argument("user")
 @click.argument("account")

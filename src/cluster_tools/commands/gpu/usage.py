@@ -3,8 +3,10 @@
 import click
 
 from cluster_tools import slurm
+from cluster_tools.grouping import keywords
 
 
+@keywords("consumption", "who", "hogs", "leaderboard")
 @click.command("usage")
 @click.argument("account", required=False)
 def usage(account: str | None) -> None:

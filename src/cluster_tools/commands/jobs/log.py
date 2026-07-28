@@ -5,10 +5,12 @@ import re
 import click
 
 from cluster_tools import process
+from cluster_tools.grouping import keywords
 
 _FIELD = re.compile(r"(StdOut|StdErr)=(\S+)")
 
 
+@keywords("output", "stdout", "stderr", "tail")
 @click.command("log")
 @click.argument("jobid")
 @click.option("-f", "--follow", is_flag=True, help="Tail the stdout file live.")

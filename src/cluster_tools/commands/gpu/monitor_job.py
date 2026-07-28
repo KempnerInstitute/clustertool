@@ -3,8 +3,10 @@
 import click
 
 from cluster_tools import monitor, slurm
+from cluster_tools.grouping import keywords
 
 
+@keywords("watch", "live", "realtime", "dashboard")
 @click.command("monitor-job")
 @click.argument("jobid")
 @click.option("--interval", default=5, show_default=True, help="Refresh interval in seconds.")

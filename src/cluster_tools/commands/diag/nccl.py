@@ -8,6 +8,7 @@ import socket
 import click
 
 from cluster_tools import process, slurm
+from cluster_tools.grouping import keywords
 
 
 def _free_port() -> int:
@@ -16,6 +17,7 @@ def _free_port() -> int:
         return sock.getsockname()[1]
 
 
+@keywords("network", "bandwidth", "allreduce", "collective")
 @click.command("nccl")
 @click.option(
     "--python",

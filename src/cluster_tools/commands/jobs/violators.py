@@ -3,8 +3,10 @@
 import click
 
 from cluster_tools import slurm
+from cluster_tools.grouping import keywords
 
 
+@keywords("abuse", "overuse", "hogs", "greedy")
 @click.command("violators")
 @click.argument("partition")
 @click.option(

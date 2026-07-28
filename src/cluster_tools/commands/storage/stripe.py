@@ -3,8 +3,10 @@
 import click
 
 from cluster_tools import process
+from cluster_tools.grouping import keywords
 
 
+@keywords("lustre", "layout")
 @click.command("stripe")
 @click.argument("path")
 @click.option(

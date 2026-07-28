@@ -86,6 +86,18 @@ command lives in its own file.
    `cluster_tools.grouping`, placed above `@click.command`, so `--help` lists
    them under Admin Commands rather than User Commands.
 
+   Add search keywords for words users might type that are not already in the
+   help text, with the `keywords` decorator from `cluster_tools.grouping`, so
+   `clustertools search` can find the command:
+
+   ```python
+   from cluster_tools.grouping import keywords
+
+   @keywords("kill", "stop", "abort")
+   @click.command("cancel")
+   def cancel(...): ...
+   ```
+
 3. Register it in the group's `__init__.py`:
 
    ```python

@@ -6,8 +6,10 @@ import os
 import click
 
 from cluster_tools import process
+from cluster_tools.grouping import keywords
 
 
+@keywords("hours", "spend", "cost")
 @click.command("usage")
 @click.argument("account", required=False)
 @click.option(

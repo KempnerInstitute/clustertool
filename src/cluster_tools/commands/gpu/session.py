@@ -3,6 +3,7 @@
 import click
 
 from cluster_tools import process, slurm
+from cluster_tools.grouping import keywords
 
 _GPU_PARTITION = {
     "a100": "kempner",
@@ -12,6 +13,7 @@ _GPU_PARTITION = {
 }
 
 
+@keywords("shell", "salloc", "srun", "notebook", "devshell")
 @click.command("session", context_settings={"ignore_unknown_options": True})
 @click.argument("gpu_type", type=click.Choice(list(_GPU_PARTITION), case_sensitive=False))
 @click.argument("salloc_args", nargs=-1, type=click.UNPROCESSED, metavar="[SALLOC_ARG]...")
