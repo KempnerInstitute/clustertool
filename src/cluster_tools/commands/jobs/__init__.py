@@ -24,7 +24,7 @@ from cluster_tools.commands.jobs.why import why
 
 @click.group()
 def jobs() -> None:
-    """Inspect Slurm jobs."""
+    """Inspect, submit, and control Slurm jobs."""
 
 
 jobs.add_command(list_jobs)

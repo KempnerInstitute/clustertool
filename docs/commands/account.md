@@ -1,6 +1,6 @@
 # account
 
-Inspect Slurm accounts. Run `clustertools account --help` to list these commands.
+Account membership, fairshare, usage, and limits. Run `clustertools account --help` to list these commands.
 
 ## `account members ACCOUNT | --all`
 

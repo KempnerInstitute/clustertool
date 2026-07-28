@@ -14,7 +14,7 @@ from cluster_tools.commands.gpu.util import util
 
 @click.group()
 def gpu() -> None:
-    """Inspect GPU usage on the cluster."""
+    """GPU usage, availability, sessions, and monitoring."""
 
 
 gpu.add_command(usage)

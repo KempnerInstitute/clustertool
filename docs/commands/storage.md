@@ -1,6 +1,6 @@
 # storage
 
-Inspect storage quotas and usage. Run `clustertools storage --help` to list
+Storage quotas, usage, and Lustre striping. Run `clustertools storage --help` to list
 these commands.
 
 ## `storage quota PATH [-g GROUP | -u USER] [-v]`

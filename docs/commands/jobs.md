@@ -1,6 +1,6 @@
 # jobs
 
-Inspect Slurm jobs. Run `clustertools jobs --help` to list these commands, or
+Inspect, submit, and control Slurm jobs. Run `clustertools jobs --help` to list these commands, or
 `clustertools jobs <command> --help` for one.
 
 ## `jobs list [-t STATE] [-p PARTITION] [-A ACCOUNT] [--start]`

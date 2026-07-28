@@ -10,7 +10,7 @@ from cluster_tools.commands.diag.scheduler import scheduler
 
 @click.group()
 def diag() -> None:
-    """Run cluster diagnostics."""
+    """Cluster diagnostics and benchmarks."""
 
 
 diag.add_command(ib)

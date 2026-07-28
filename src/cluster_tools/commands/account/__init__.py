@@ -13,7 +13,7 @@ from cluster_tools.commands.account.usage import usage
 
 @click.group()
 def account() -> None:
-    """Inspect Slurm accounts."""
+    """Account membership, fairshare, usage, and limits."""
 
 
 account.add_command(members)

@@ -1,6 +1,6 @@
 # gpu
 
-Inspect GPU usage on the cluster. Run `clustertools gpu --help` to list these
+GPU usage, availability, sessions, and monitoring. Run `clustertools gpu --help` to list these
 commands, or `clustertools gpu <command> --help` for one.
 
 ## `gpu usage [ACCOUNT]`

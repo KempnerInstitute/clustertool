@@ -12,7 +12,7 @@ from cluster_tools.commands.storage.usage import usage
 
 @click.group()
 def storage() -> None:
-    """Inspect storage quotas and usage."""
+    """Storage quotas, usage, and Lustre striping."""
 
 
 storage.add_command(quota)

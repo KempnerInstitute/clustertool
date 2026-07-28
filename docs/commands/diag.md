@@ -1,6 +1,6 @@
 # diag
 
-Run cluster diagnostics. Run `clustertools diag --help` to list these commands,
+Cluster diagnostics and benchmarks. Run `clustertools diag --help` to list these commands,
 or `clustertools diag <command> --help` for one.
 
 ## `diag ib PARTITION... [--parallel N]`
