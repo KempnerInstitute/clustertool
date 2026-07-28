@@ -13,6 +13,7 @@ out to.
 | Command | Scope | Wraps | Description |
 | --- | --- | --- | --- |
 | `search TERMS...` | user | (none) | Find commands by keyword, ranked by relevance (also: find, lookup). |
+| `completion [SHELL]` | user | (none) | Set up tab completion for bash, zsh, or fish (--install writes it). |
 
 ## gpu
 

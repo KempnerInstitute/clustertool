@@ -2,7 +2,7 @@
 
 import click
 
-from cluster_tools import process, slurm
+from cluster_tools import completion, process, slurm
 from cluster_tools.grouping import admin, keywords
 
 
@@ -10,7 +10,13 @@ from cluster_tools.grouping import admin, keywords
 @keywords("undrain", "restore", "fix", "enable")
 @click.command("resume")
 @click.argument("nodes", nargs=-1, metavar="[NODE...]")
-@click.option("-p", "--partition", default=None, help="Resume drained nodes in this partition.")
+@click.option(
+    "-p",
+    "--partition",
+    default=None,
+    help="Resume drained nodes in this partition.",
+    shell_complete=completion.complete_partitions,
+)
 @click.option("-y", "--yes", is_flag=True, help="Skip the confirmation prompt.")
 def resume(nodes: tuple[str, ...], partition: str | None, yes: bool) -> None:
     """Return drained or down nodes to service (via scontrol). Operator only.

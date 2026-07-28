@@ -2,7 +2,7 @@
 
 import click
 
-from cluster_tools import process, slurm
+from cluster_tools import completion, process, slurm
 from cluster_tools.grouping import keywords
 
 _SSH_OPTS = "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -t"
@@ -27,7 +27,7 @@ def _build_session(session: str, hosts: list[str]) -> None:
 
 @keywords("htop", "monitor", "watch", "live")
 @click.command("nvtop")
-@click.argument("jobid")
+@click.argument("jobid", shell_complete=completion.complete_job_ids)
 @click.option("--attach/--no-attach", default=True, help="Attach to the session after creating it.")
 def nvtop(jobid: str, attach: bool) -> None:
     """Open a tmux session running nvtop on each of a job's nodes.

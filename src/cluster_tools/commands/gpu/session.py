@@ -2,7 +2,7 @@
 
 import click
 
-from cluster_tools import process, slurm
+from cluster_tools import completion, process, slurm
 from cluster_tools.grouping import keywords
 
 _GPU_PARTITION = {
@@ -17,7 +17,13 @@ _GPU_PARTITION = {
 @click.command("session", context_settings={"ignore_unknown_options": True})
 @click.argument("gpu_type", type=click.Choice(list(_GPU_PARTITION), case_sensitive=False))
 @click.argument("salloc_args", nargs=-1, type=click.UNPROCESSED, metavar="[SALLOC_ARG]...")
-@click.option("-A", "--account", required=True, help="Fairshare account to charge.")
+@click.option(
+    "-A",
+    "--account",
+    required=True,
+    help="Fairshare account to charge.",
+    shell_complete=completion.complete_accounts,
+)
 @click.option(
     "-t", "--time", "time_limit", default="0-01:00", show_default=True, help="Time limit (D-HH:MM)."
 )

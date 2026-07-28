@@ -2,7 +2,7 @@
 
 import click
 
-from cluster_tools import process
+from cluster_tools import completion, process
 from cluster_tools.grouping import keywords
 
 _FORMAT = "JobID,AveCPU,AveRSS,MaxRSS,AveVMSize,NTasks"
@@ -10,7 +10,7 @@ _FORMAT = "JobID,AveCPU,AveRSS,MaxRSS,AveVMSize,NTasks"
 
 @keywords("monitor", "live", "watch", "resources")
 @click.command("top")
-@click.argument("jobid")
+@click.argument("jobid", shell_complete=completion.complete_job_ids)
 def top(jobid: str) -> None:
     """Show live resource use of a running job's steps (via sstat).
 

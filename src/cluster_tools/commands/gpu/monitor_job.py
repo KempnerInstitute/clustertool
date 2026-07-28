@@ -2,13 +2,13 @@
 
 import click
 
-from cluster_tools import monitor, slurm
+from cluster_tools import completion, monitor, slurm
 from cluster_tools.grouping import keywords
 
 
 @keywords("watch", "live", "realtime", "dashboard")
 @click.command("monitor-job")
-@click.argument("jobid")
+@click.argument("jobid", shell_complete=completion.complete_job_ids)
 @click.option("--interval", default=5, show_default=True, help="Refresh interval in seconds.")
 def monitor_job(jobid: str, interval: int) -> None:
     """Live GPU/CPU/memory/InfiniBand monitor for a running job's nodes.

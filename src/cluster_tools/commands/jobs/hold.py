@@ -2,13 +2,19 @@
 
 import click
 
-from cluster_tools import process
+from cluster_tools import completion, process
 from cluster_tools.grouping import keywords
 
 
 @keywords("pause", "suspend", "block", "freeze")
 @click.command("hold")
-@click.argument("jobids", nargs=-1, required=True, metavar="JOBID...")
+@click.argument(
+    "jobids",
+    nargs=-1,
+    required=True,
+    metavar="JOBID...",
+    shell_complete=completion.complete_job_ids,
+)
 def hold(jobids: tuple[str, ...]) -> None:
     """Prevent pending jobs from starting (via scontrol hold).
 

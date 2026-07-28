@@ -2,13 +2,19 @@
 
 import click
 
-from cluster_tools import process
+from cluster_tools import completion, process
 from cluster_tools.grouping import keywords
 
 
 @keywords("efficiency", "utilization", "performance")
 @click.command("stats")
-@click.argument("jobids", nargs=-1, required=True, metavar="JOBID...")
+@click.argument(
+    "jobids",
+    nargs=-1,
+    required=True,
+    metavar="JOBID...",
+    shell_complete=completion.complete_job_ids,
+)
 def stats(jobids: tuple[str, ...]) -> None:
     """Show utilization for one or more jobs (via jobstats).
 

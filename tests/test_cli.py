@@ -6,7 +6,7 @@ import sys
 
 from click.testing import CliRunner
 
-from cluster_tools import process, search, slurm
+from cluster_tools import completion, process, search, slurm
 from cluster_tools.cli import main
 
 
@@ -217,6 +217,53 @@ def test_search_rank_unit():
     assert search.rank(records, ["kill"])[0]["path"] == "jobs cancel"
     assert search.rank(records, ["reservation"])[0]["path"] == "nodes reservations"
     assert search.rank(records, ["zzz"]) == []
+
+
+def test_completion_prints_eval_line():
+    result = CliRunner().invoke(main, ["completion", "bash"])
+    assert result.exit_code == 0
+    assert "_CLUSTERTOOLS_COMPLETE=bash_source clustertools" in result.output
+
+
+def test_completion_install_is_idempotent(tmp_path, monkeypatch):
+    rc = tmp_path / ".bashrc"
+    monkeypatch.setattr(completion, "rc_path", lambda shell: rc)
+    first = CliRunner().invoke(main, ["completion", "bash", "--install"])
+    assert first.exit_code == 0
+    assert "eval " in rc.read_text()
+    second = CliRunner().invoke(main, ["completion", "bash", "--install"])
+    assert "already set up" in second.output
+    assert rc.read_text().count("eval ") == 1
+
+
+def test_complete_job_ids(monkeypatch):
+    monkeypatch.setenv("USER", "alice")
+    monkeypatch.setattr(completion, "_run", lambda cmd: "101\n102\n1123\n")
+    assert completion.complete_job_ids(None, None, "1") == ["101", "102", "1123"]
+    assert completion.complete_job_ids(None, None, "11") == ["1123"]
+
+
+def test_complete_partitions_strips_default_marker(monkeypatch):
+    monkeypatch.setattr(completion, "_run", lambda cmd: "kempner*\nkempner_h100\nsapphire\n")
+    assert completion.complete_partitions(None, None, "kempner") == ["kempner", "kempner_h100"]
+
+
+def test_complete_accounts(monkeypatch):
+    monkeypatch.setenv("USER", "alice")
+    monkeypatch.setattr(completion, "_run", lambda cmd: "kempner_dev\nkempner_grads\n")
+    assert completion.complete_accounts(None, None, "kempner_d") == ["kempner_dev"]
+
+
+def test_completion_callbacks_safe_on_error(monkeypatch):
+    monkeypatch.setenv("USER", "alice")
+
+    def boom(cmd):
+        raise process.CommandError("nope")
+
+    monkeypatch.setattr(completion, "_run", boom)
+    assert completion.complete_job_ids(None, None, "") == []
+    assert completion.complete_partitions(None, None, "") == []
+    assert completion.complete_accounts(None, None, "") == []
 
 
 def test_account_members(monkeypatch):

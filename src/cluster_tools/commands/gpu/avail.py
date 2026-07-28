@@ -2,13 +2,13 @@
 
 import click
 
-from cluster_tools import slurm
+from cluster_tools import completion, slurm
 from cluster_tools.grouping import keywords
 
 
 @keywords("free", "available", "empty", "where")
 @click.command("avail")
-@click.argument("partition")
+@click.argument("partition", shell_complete=completion.complete_partitions)
 @click.option(
     "--cpu-per-gpu", type=int, default=None, help="Cores per GPU (overrides the partition default)."
 )

@@ -47,6 +47,12 @@ uv sync
 uv run clustertools --help
 ```
 
+Enable tab completion for your shell (bash, zsh, fish), then restart it:
+
+```bash
+clustertools completion --install
+```
+
 ## Usage
 
 ```bash

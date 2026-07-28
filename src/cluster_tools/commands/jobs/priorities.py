@@ -2,13 +2,13 @@
 
 import click
 
-from cluster_tools import process
+from cluster_tools import completion, process
 from cluster_tools.grouping import keywords
 
 
 @keywords("priority", "ranking", "factors", "order")
 @click.command("priorities")
-@click.argument("partition")
+@click.argument("partition", shell_complete=completion.complete_partitions)
 def priorities(partition: str) -> None:
     """Show priority factors for pending jobs in a partition (via sprio).
 

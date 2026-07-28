@@ -2,7 +2,7 @@
 
 import click
 
-from cluster_tools import process
+from cluster_tools import completion, process
 from cluster_tools.grouping import admin, keywords
 
 
@@ -10,7 +10,7 @@ from cluster_tools.grouping import admin, keywords
 @keywords("revoke", "kick", "delete", "unenroll")
 @click.command("remove-user")
 @click.argument("user")
-@click.argument("account")
+@click.argument("account", shell_complete=completion.complete_accounts)
 @click.option("-y", "--yes", is_flag=True, help="Skip the confirmation prompt.")
 def remove_user(user: str, account: str, yes: bool) -> None:
     """Remove a user's association with an account (via sacctmgr). Operator only.

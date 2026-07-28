@@ -6,6 +6,7 @@ from typing import ClassVar
 import click
 
 from cluster_tools.commands.account import account
+from cluster_tools.commands.completion import completion
 from cluster_tools.commands.diag import diag
 from cluster_tools.commands.gpu import gpu
 from cluster_tools.commands.jobs import jobs
@@ -49,6 +50,7 @@ main.add_command(nodes)
 main.add_command(storage)
 main.add_command(diag)
 main.add_command(search)
+main.add_command(completion)
 
 
 if __name__ == "__main__":
