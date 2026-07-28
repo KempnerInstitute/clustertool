@@ -100,7 +100,8 @@ elapsed, peak memory, and nodes.
 ## `jobs cancel [JOBID...] [--all] [--pending]`
 
 Cancel jobs (via `scancel`). Pass explicit ids, or use `--all` / `--pending` to
-cancel your own jobs in bulk (which prompt for confirmation unless `-y`).
+cancel your own jobs in bulk. This is a direct wrapper: it cancels immediately,
+exactly as `scancel` does.
 
 **Use cases**
 - Kill a specific job or list of jobs.
@@ -110,7 +111,6 @@ cancel your own jobs in bulk (which prompt for confirmation unless `-y`).
 - `JOBID...`: One or more job ids to cancel.
 - `--all`: Cancel every job you own.
 - `--pending`: Cancel only your pending jobs.
-- `-y, --yes`: Skip the confirmation prompt for bulk cancels.
 
 ## `jobs submit [ARG]...`
 

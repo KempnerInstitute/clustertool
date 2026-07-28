@@ -190,18 +190,18 @@ def test_jobs_cancel_ids(monkeypatch):
     assert calls[0] == ["scancel", "111", "222"]
 
 
-def test_jobs_cancel_all_confirmed(monkeypatch):
+def test_jobs_cancel_all(monkeypatch):
     monkeypatch.setenv("USER", "alice")
     calls = _capture_stream(monkeypatch)
-    result = CliRunner().invoke(main, ["jobs", "cancel", "--all"], input="y\n")
+    result = CliRunner().invoke(main, ["jobs", "cancel", "--all"])
     assert result.exit_code == 0
     assert calls[0] == ["scancel", "-u", "alice"]
 
 
-def test_jobs_cancel_pending_yes(monkeypatch):
+def test_jobs_cancel_pending(monkeypatch):
     monkeypatch.setenv("USER", "alice")
     calls = _capture_stream(monkeypatch)
-    result = CliRunner().invoke(main, ["jobs", "cancel", "--pending", "--yes"])
+    result = CliRunner().invoke(main, ["jobs", "cancel", "--pending"])
     assert result.exit_code == 0
     assert calls[0] == ["scancel", "-u", "alice", "-t", "PENDING"]
 

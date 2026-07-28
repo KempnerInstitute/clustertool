@@ -11,12 +11,12 @@ from cluster_tools import process
 @click.argument("jobids", nargs=-1, metavar="[JOBID...]")
 @click.option("--all", "all_jobs", is_flag=True, help="Cancel all of your jobs.")
 @click.option("--pending", is_flag=True, help="Cancel all of your pending jobs.")
-@click.option("-y", "--yes", is_flag=True, help="Do not prompt for confirmation.")
-def cancel(jobids: tuple[str, ...], all_jobs: bool, pending: bool, yes: bool) -> None:
+def cancel(jobids: tuple[str, ...], all_jobs: bool, pending: bool) -> None:
     """Cancel jobs (via scancel).
 
     Pass explicit job ids, or use --all / --pending to cancel your own jobs in
-    bulk (which prompt for confirmation unless --yes is given).
+    bulk. This is a direct wrapper: it cancels immediately, exactly as scancel
+    does.
 
     \b
     Use cases:
@@ -25,19 +25,14 @@ def cancel(jobids: tuple[str, ...], all_jobs: bool, pending: bool, yes: bool) ->
 
     \b
     Inputs:
-      JOBID...    One or more job ids to cancel.
-      --all       Cancel every job you own.
-      --pending   Cancel only your pending jobs.
-      -y, --yes   Skip the confirmation prompt for bulk cancels.
+      JOBID...   One or more job ids to cancel.
+      --all      Cancel every job you own.
+      --pending  Cancel only your pending jobs.
     """
-    user = os.environ.get("USER", "")
     if jobids:
         cmd = ["scancel", *jobids]
     elif all_jobs or pending:
-        target = "your pending jobs" if pending else "all of your jobs"
-        if not yes:
-            click.confirm(f"Cancel {target} ({user})?", abort=True)
-        cmd = ["scancel", "-u", user]
+        cmd = ["scancel", "-u", os.environ.get("USER", "")]
         if pending:
             cmd += ["-t", "PENDING"]
     else:
