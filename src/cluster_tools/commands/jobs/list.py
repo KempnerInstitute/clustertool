@@ -18,8 +18,13 @@ from cluster_tools import process
 )
 @click.option("-p", "--partition", default=None, help="Only jobs in this partition.")
 @click.option("-A", "--account", default=None, help="Only jobs in this account.")
+@click.option("--start", is_flag=True, help="Show estimated start time for pending jobs.")
 def list_jobs(
-    user: str | None, state: str | None, partition: str | None, account: str | None
+    user: str | None,
+    state: str | None,
+    partition: str | None,
+    account: str | None,
+    start: bool,
 ) -> None:
     """List your queued and running jobs (via squeue).
 
@@ -27,6 +32,7 @@ def list_jobs(
     Use cases:
       - See what you have running and pending right now.
       - Check why a job is pending (the NODELIST(REASON) column).
+      - Estimate when pending jobs will start (--start).
 
     \b
     Inputs:
@@ -34,6 +40,7 @@ def list_jobs(
       -t, --state      Limit to running or pending jobs.
       -p, --partition  Limit to one partition.
       -A, --account    Limit to one account.
+      --start          Show the estimated start time of pending jobs.
     """
     cmd = ["squeue", "-u", user or os.environ.get("USER", "")]
     if state:
@@ -42,6 +49,8 @@ def list_jobs(
         cmd += ["-p", partition]
     if account:
         cmd += ["-A", account]
+    if start:
+        cmd.append("--start")
     code = process.stream(cmd)
     if code:
         raise SystemExit(code)

@@ -3,7 +3,7 @@
 Inspect Slurm jobs. Run `clustertools jobs --help` to list these commands, or
 `clustertools jobs <command> --help` for one.
 
-## `jobs list [-t running|pending] [-p PARTITION] [-A ACCOUNT]`
+## `jobs list [-t STATE] [-p PARTITION] [-A ACCOUNT] [--start]`
 
 List your queued and running jobs (via `squeue`).
 
@@ -16,6 +16,7 @@ List your queued and running jobs (via `squeue`).
 - `-t, --state`: Limit to `running` or `pending` jobs.
 - `-p, --partition`: Limit to one partition.
 - `-A, --account`: Limit to one account.
+- `--start`: Show the estimated start time of pending jobs.
 
 ## `jobs show JOBID...`
 
@@ -38,6 +39,55 @@ fairshare, age, partition, QOS, and so on.
 **Use cases**
 - Understand what is holding a pending job back.
 - Compare fairshare and age contributions to a job's priority.
+
+**Inputs**
+- `JOBID`: A Slurm job id.
+
+## `jobs queue PARTITION`
+
+Show a partition's pending jobs in priority order (via `showq`). Unlike
+`jobs list` (your jobs), this is the whole partition's pending queue, so you can
+see where you sit.
+
+**Use cases**
+- See how far back your pending job is in a partition.
+- Gauge contention before submitting.
+
+**Inputs**
+- `PARTITION`: Slurm partition name (e.g. `kempner_h100`).
+
+## `jobs top JOBID`
+
+Show live resource use of a running job's steps (via `sstat`): current CPU and
+memory (AveRSS/MaxRSS), which `sacct` and `jobstats` cannot report until the job
+finishes. Only jobs with an active step report data.
+
+**Use cases**
+- Watch a running job's memory before it hits the limit.
+
+**Inputs**
+- `JOBID`: A running Slurm job id.
+
+## `jobs log JOBID [-f]`
+
+Show a job's stdout and stderr paths, or tail its output (via `scontrol`). With
+`--follow`, tails the stdout file live. Interactive jobs have no output file, and
+only running or recent jobs are in `scontrol`.
+
+**Use cases**
+- Find where a job is writing its output.
+- Watch a running job's log in real time.
+
+**Inputs**
+- `JOBID`: A Slurm job id.
+- `-f, --follow`: Tail the stdout file live.
+
+## `jobs script JOBID`
+
+Print the batch script a job was submitted with (via `sacct --batch`).
+
+**Use cases**
+- Recover or reproduce exactly how a job was submitted.
 
 **Inputs**
 - `JOBID`: A Slurm job id.

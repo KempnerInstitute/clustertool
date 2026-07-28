@@ -6,12 +6,16 @@ from cluster_tools.commands.jobs.cancel import cancel
 from cluster_tools.commands.jobs.history import history
 from cluster_tools.commands.jobs.hold import hold
 from cluster_tools.commands.jobs.list import list_jobs
+from cluster_tools.commands.jobs.log import log
+from cluster_tools.commands.jobs.queue import queue
 from cluster_tools.commands.jobs.release import release
 from cluster_tools.commands.jobs.requeue import requeue
 from cluster_tools.commands.jobs.scope import scope
+from cluster_tools.commands.jobs.script import script
 from cluster_tools.commands.jobs.show import show
 from cluster_tools.commands.jobs.stats import stats
 from cluster_tools.commands.jobs.submit import submit
+from cluster_tools.commands.jobs.top import top
 from cluster_tools.commands.jobs.violators import violators
 from cluster_tools.commands.jobs.why import why
 
@@ -22,11 +26,15 @@ def jobs() -> None:
 
 
 jobs.add_command(list_jobs)
+jobs.add_command(queue)
 jobs.add_command(show)
 jobs.add_command(why)
+jobs.add_command(top)
 jobs.add_command(stats)
 jobs.add_command(scope)
 jobs.add_command(history)
+jobs.add_command(log)
+jobs.add_command(script)
 jobs.add_command(violators)
 jobs.add_command(cancel)
 jobs.add_command(hold)

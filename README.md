@@ -16,10 +16,10 @@ inputs.
 
 - [uv](https://docs.astral.sh/uv/) for environment and dependency management.
 - Run on a cluster login node. Commands shell out to the host's own tools:
-  Slurm (`squeue`, `sacct`, `sacctmgr`, `sinfo`, `sshare`, `sprio`, `scontrol`,
-  `salloc`, `sbatch`, `scancel`, `srun`), the FASRC wrappers (`spart`, `stotal`,
-  `seff-account`) and `quota` tool, `lfs`, `jobstats`, and `getent`. A command
-  only needs the tools it uses.
+  Slurm (`squeue`, `sacct`, `sacctmgr`, `sinfo`, `sshare`, `sprio`, `sstat`,
+  `sdiag`, `scontrol`, `salloc`, `sbatch`, `scancel`, `srun`), the FASRC wrappers
+  (`spart`, `stotal`, `seff-account`, `showq`, `lsload`) and `quota` tool, `lfs`,
+  `jobstats`, and `getent`. A command only needs the tools it uses.
 - Some commands need more: the live monitors and `diag ib` need passwordless
   `ssh` to nodes running `nvidia-smi`; `gpu nvtop` needs `tmux` and `nvtop`;
   `diag nvlink` needs `nvcc` and NCCL; `diag nccl` needs `torch`;
@@ -90,11 +90,11 @@ what each does, its use cases, and inputs, see the linked
 | Group | Commands | Scope |
 | --- | --- | --- |
 | [`gpu`](docs/commands/gpu.md) | `usage`, `avail`, `session`, `monitor-partition`, `monitor-job`, `nvtop`, `pulse` | GPU usage, availability, and sessions |
-| [`jobs`](docs/commands/jobs.md) | `list`, `show`, `why`, `stats`, `scope`, `history`, `cancel`, `hold`, `release`, `requeue`, `submit` | Job queue, status, history, and control |
+| [`jobs`](docs/commands/jobs.md) | `list`, `queue`, `show`, `why`, `top`, `stats`, `scope`, `history`, `log`, `script`, `cancel`, `hold`, `release`, `requeue`, `submit` | Job queue, status, history, logs, and control |
 | [`account`](docs/commands/account.md) | `members`, `fairshare`, `usage`, `limits` | Account membership, fairshare, usage, limits |
-| [`nodes`](docs/commands/nodes.md) | `list`, `partitions` | Node and partition status |
+| [`nodes`](docs/commands/nodes.md) | `list`, `partitions`, `down`, `load`, `reservations` | Node, partition, and reservation status |
 | [`storage`](docs/commands/storage.md) | `quota`, `home`, `usage`, `scratch`, `stripe` | Filesystem quotas, usage, and striping |
-| [`diag`](docs/commands/diag.md) | `ib`, `nccl`, `nvlink` | Diagnostics and benchmarks |
+| [`diag`](docs/commands/diag.md) | `ib`, `nccl`, `nvlink`, `scheduler` | Diagnostics and benchmarks |
 
 ## Project layout
 
@@ -108,11 +108,11 @@ src/cluster_tools/
   data/               # bundled payloads (monitor sample, nccl test, nvlink .cu)
   commands/           # one package per group; one file per command
     gpu/              # usage, avail, session, monitor_partition, monitor_job, nvtop, pulse
-    jobs/             # list, show, why, stats, scope, history, violators, cancel, hold, release, requeue, submit
+    jobs/             # list, queue, show, why, top, stats, scope, history, log, script, violators, cancel, hold, release, requeue, submit
     account/          # members, fairshare, usage, limits
-    nodes/            # list, partitions
+    nodes/            # list, partitions, down, load, reservations
     storage/          # quota, home, usage, scratch, stripe
-    diag/             # ib, nccl, nvlink
+    diag/             # ib, nccl, nvlink, scheduler
 tests/                # unit tests
 docs/commands/        # extended per-group command reference (gpu.md, jobs.md, ...)
 ```

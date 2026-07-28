@@ -380,6 +380,96 @@ def test_gpu_session_extra_args(monkeypatch):
     assert cmd[-3:] == ["--mem=500000", "-J", "dev"]
 
 
+def test_nodes_down(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["nodes", "down", "-p", "kempner"])
+    assert result.exit_code == 0
+    assert calls[0] == ["sinfo", "-R", "-p", "kempner"]
+
+
+def test_nodes_load_default(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["nodes", "load"])
+    assert result.exit_code == 0
+    assert calls[0] == ["lsload"]
+
+
+def test_nodes_load_filter(monkeypatch):
+    monkeypatch.setattr(process, "run", lambda cmd, input_text=None: "HEADER\nholygpu row\nother\n")
+    result = CliRunner().invoke(main, ["nodes", "load", "-f", "holygpu"])
+    assert result.exit_code == 0
+    assert "HEADER" in result.output and "holygpu row" in result.output
+    assert "other" not in result.output
+
+
+def test_nodes_reservations(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["nodes", "reservations"])
+    assert result.exit_code == 0
+    assert calls[0] == ["scontrol", "show", "reservation"]
+
+
+def test_jobs_top(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "top", "123"])
+    assert result.exit_code == 0
+    assert calls[0][:4] == ["sstat", "-a", "-j", "123"]
+
+
+def test_jobs_queue(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "queue", "kempner_h100"])
+    assert result.exit_code == 0
+    assert calls[0] == ["showq", "-o", "-p", "kempner_h100"]
+
+
+def test_jobs_log_paths(monkeypatch):
+    monkeypatch.setattr(
+        process, "run", lambda cmd, input_text=None: "JobId=1 StdOut=/n/out.log StdErr=/n/err.log"
+    )
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "log", "1"])
+    assert result.exit_code == 0
+    assert "/n/out.log" in result.output and "/n/err.log" in result.output
+    assert not calls
+
+
+def test_jobs_log_follow(monkeypatch):
+    monkeypatch.setattr(process, "run", lambda cmd, input_text=None: "StdOut=/n/out.log")
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "log", "1", "-f"])
+    assert result.exit_code == 0
+    assert calls[0] == ["tail", "-f", "/n/out.log"]
+
+
+def test_jobs_log_missing(monkeypatch):
+    monkeypatch.setattr(process, "run", lambda cmd, input_text=None: "JobId=1 JobState=RUNNING")
+    result = CliRunner().invoke(main, ["jobs", "log", "1"])
+    assert result.exit_code != 0
+
+
+def test_jobs_script(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "script", "123"])
+    assert result.exit_code == 0
+    assert calls[0] == ["sacct", "-j", "123", "--batch"]
+
+
+def test_jobs_list_start(monkeypatch):
+    monkeypatch.setenv("USER", "alice")
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "list", "--start"])
+    assert result.exit_code == 0
+    assert calls[0] == ["squeue", "-u", "alice", "--start"]
+
+
+def test_diag_scheduler(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["diag", "scheduler"])
+    assert result.exit_code == 0
+    assert calls[0] == ["sdiag"]
+
+
 def test_gpu_pulse_passthrough(monkeypatch):
     calls = []
     monkeypatch.setattr(process, "stream", lambda cmd, extra_env=None: calls.append(cmd) or 0)

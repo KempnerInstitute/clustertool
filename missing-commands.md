@@ -106,6 +106,46 @@ completeness.
   (could be a `storage sync` or `data transfer` helper). Globus has no CLI here.
   Source: FASRC rsync, globus; Handbook data_transfer.
 
+## Second pass (deeper search)
+
+A follow-up sweep of the FASRC docs, the Kempner Handbook, and the deployed
+Kempner `cluster_scripts` bin surfaced these additional gaps.
+
+Implemented in this pass:
+
+- `nodes down [-p PARTITION]`: down and drained nodes with the scheduler's
+  reason. Wraps `sinfo -R`. Read-only.
+- `nodes load [-f TEXT]`: per-node load and free CPU/GPU/memory. Wraps `lsload`.
+  Read-only.
+- `nodes reservations`: active reservations on the cluster. Wraps
+  `scontrol show reservation`. Read-only.
+- `jobs top JOBID`: live resource use (CPU/memory) of a running job's steps.
+  Wraps `sstat -a -j <id> --format=...`. Read-only. Only jobs with an active
+  step report data.
+- `jobs queue PARTITION`: the partition's pending jobs in priority order (where
+  you sit). Wraps `showq -o -p <partition>`. Read-only.
+- `jobs log JOBID [-f]`: print, or tail, a job's stdout/stderr. Reads the
+  `StdOut`/`StdErr` paths from `scontrol show job`. Read-only.
+- `jobs script JOBID`: the stored batch script of a submitted job. Wraps
+  `sacct -j <id> --batch`. Read-only.
+- `jobs list --start`: estimated start time for your pending jobs. Wraps
+  `squeue -u $USER --start`. Read-only.
+- `diag scheduler`: scheduler cycle, backfill, and queue diagnostics. Wraps
+  `sdiag`. Read-only.
+
+Noted but not implemented:
+
+- `account resources` (or a top-level `whoami`): a consolidated "your resources"
+  overview (identity, accounts, submit rights, fairshare, QOS limits, storage),
+  as in the deployed Kempner `cluster_resources.sh`. High value, but a larger
+  native port spanning several tools; a good dedicated follow-up. Read-only.
+- `account report`: `sreport` cluster/lab utilization over time. Overlaps
+  `account usage` (stotal); skipped to avoid redundancy.
+- Recurring jobs: `scrontab -l/-e/-r`. Editor-driven and niche; skipped.
+- `find-best-partition` and `scalc` (FASRC helpers): non-standard option parsing
+  and an interactive stdin prompt respectively, so neither wraps cleanly. Point
+  users to them directly.
+
 ## Feasibility notes
 
 - Present on the login node: all stock Slurm CLIs (`squeue`, `sacct`, `sstat`,
