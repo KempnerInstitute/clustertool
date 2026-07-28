@@ -58,7 +58,7 @@ clustertools gpu --help  # list a group's commands
 clustertools gpu usage                   # rank every lab by base-partition GPU usage
 clustertools gpu usage kempner_sham_lab  # one lab's usage, by user and partition
 clustertools gpu avail kempner_h100      # nodes with allocatable GPUs (ratio-capped)
-clustertools gpu session -A kempner_dev  # interactive GPU shell (needs your account)
+clustertools gpu session a100 -A LAB     # interactive single-GPU shell (a100/h100/h200/rtx)
 clustertools gpu monitor-job 1234567     # live per-node GPU/CPU/memory/network table
 clustertools gpu pulse                   # live per-GPU dashboard (on a GPU node)
 

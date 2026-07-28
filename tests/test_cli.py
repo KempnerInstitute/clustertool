@@ -334,23 +334,50 @@ def test_storage_stripe_set(monkeypatch):
     assert calls[0] == ["lfs", "setstripe", "-c", "8", "/n/holylfs06/x"]
 
 
-def test_gpu_session(monkeypatch):
+def test_gpu_session_a100(monkeypatch):
     calls = _capture_stream(monkeypatch)
-    result = CliRunner().invoke(
-        main, ["gpu", "session", "-A", "kempner_dev", "-g", "2", "--constraint", "a100"]
-    )
+    result = CliRunner().invoke(main, ["gpu", "session", "a100", "-A", "kempner_dev"])
     assert result.exit_code == 0
     cmd = calls[0]
     assert cmd[0] == "salloc"
+    assert "-p" in cmd and "kempner" in cmd
     assert "--account=kempner_dev" in cmd
-    assert "--gres=gpu:2" in cmd
-    assert "--constraint=a100" in cmd
+    assert "--gres=gpu:1" in cmd
+    assert "--cpus-per-task=16" in cmd
+    assert "--mem=240000" in cmd
+
+
+def test_gpu_session_h100(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["gpu", "session", "h100", "-A", "lab"])
+    assert result.exit_code == 0
+    cmd = calls[0]
+    assert "kempner_h100" in cmd
+    assert "--cpus-per-task=24" in cmd
+    assert "--mem=360000" in cmd
 
 
 def test_gpu_session_requires_account(monkeypatch):
     _capture_stream(monkeypatch)
-    result = CliRunner().invoke(main, ["gpu", "session"])
+    result = CliRunner().invoke(main, ["gpu", "session", "a100"])
     assert result.exit_code != 0
+
+
+def test_gpu_session_bad_type(monkeypatch):
+    _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["gpu", "session", "v100", "-A", "lab"])
+    assert result.exit_code != 0
+
+
+def test_gpu_session_extra_args(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(
+        main, ["gpu", "session", "a100", "-A", "lab", "--mem=500000", "-J", "dev"]
+    )
+    assert result.exit_code == 0
+    cmd = calls[0]
+    assert "--mem=240000" in cmd
+    assert cmd[-3:] == ["--mem=500000", "-J", "dev"]
 
 
 def test_gpu_pulse_passthrough(monkeypatch):
