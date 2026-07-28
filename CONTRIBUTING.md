@@ -81,6 +81,11 @@ command lives in its own file.
    Use `click.argument` for required inputs and `click.option` for optional
    ones. Document each input in the docstring.
 
+   Operator-only commands (those that change cluster state and need Slurm
+   operator rights) should be marked with the `admin` decorator from
+   `cluster_tools.grouping`, placed above `@click.command`, so `--help` lists
+   them under Admin Commands rather than User Commands.
+
 3. Register it in the group's `__init__.py`:
 
    ```python
@@ -99,9 +104,10 @@ command lives in its own file.
    import click
 
    from cluster_tools.commands.env.modules import modules
+   from cluster_tools.grouping import SectionedGroup
 
 
-   @click.group()
+   @click.group(cls=SectionedGroup)
    def env() -> None:
        """Inspect the software environment."""
 

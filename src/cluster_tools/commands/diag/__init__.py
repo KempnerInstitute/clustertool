@@ -6,9 +6,10 @@ from cluster_tools.commands.diag.ib import ib
 from cluster_tools.commands.diag.nccl import nccl
 from cluster_tools.commands.diag.nvlink import nvlink
 from cluster_tools.commands.diag.scheduler import scheduler
+from cluster_tools.grouping import SectionedGroup
 
 
-@click.group()
+@click.group(cls=SectionedGroup)
 def diag() -> None:
     """Cluster diagnostics and benchmarks."""
 

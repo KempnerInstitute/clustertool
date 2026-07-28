@@ -10,6 +10,7 @@ from cluster_tools.commands.gpu import gpu
 from cluster_tools.commands.jobs import jobs
 from cluster_tools.commands.nodes import nodes
 from cluster_tools.commands.storage import storage
+from cluster_tools.grouping import SectionedGroup
 from cluster_tools.process import CommandError
 
 
@@ -21,7 +22,7 @@ def _version() -> str:
         return "0.0.0"
 
 
-class ClusterToolsGroup(click.Group):
+class ClusterToolsGroup(SectionedGroup):
     """Group that reports command failures as clean CLI errors."""
 
     def invoke(self, ctx: click.Context):

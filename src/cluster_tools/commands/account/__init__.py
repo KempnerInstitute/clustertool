@@ -11,9 +11,10 @@ from cluster_tools.commands.account.removeuser import remove_user
 from cluster_tools.commands.account.setfairshare import set_fairshare
 from cluster_tools.commands.account.topusers import top_users
 from cluster_tools.commands.account.usage import usage
+from cluster_tools.grouping import SectionedGroup
 
 
-@click.group()
+@click.group(cls=SectionedGroup)
 def account() -> None:
     """Account membership, fairshare, usage, and limits."""
 

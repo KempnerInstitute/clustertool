@@ -8,9 +8,10 @@ from cluster_tools.commands.nodes.load import load
 from cluster_tools.commands.nodes.partitions import partitions
 from cluster_tools.commands.nodes.reservations import reservations
 from cluster_tools.commands.nodes.resume import resume
+from cluster_tools.grouping import SectionedGroup
 
 
-@click.group()
+@click.group(cls=SectionedGroup)
 def nodes() -> None:
     """Node and partition status, load, and reservations."""
 

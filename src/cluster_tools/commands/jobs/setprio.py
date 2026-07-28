@@ -3,8 +3,10 @@
 import click
 
 from cluster_tools import process
+from cluster_tools.grouping import admin
 
 
+@admin
 @click.command("setprio")
 @click.argument("jobid")
 @click.argument("priority", type=int)
