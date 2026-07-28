@@ -19,6 +19,19 @@ kempner_requeue usage that does not count toward the cap.
 **Inputs**
 - `ACCOUNT`: Slurm account name (e.g. `kempner_sham_lab`). Omit for all labs.
 
+## `gpu util [PARTITION...]`
+
+Show GPU occupancy per partition (via `sinfo` and `squeue`): total, down,
+available, used, and percent. Available excludes GPUs on down or drained nodes,
+and percent is used over available. With no PARTITION, reports the Kempner base
+partitions.
+
+**Use cases**
+- See how full each Kempner GPU partition is right now.
+
+**Inputs**
+- `PARTITION...`: One or more partitions (default: the Kempner base partitions).
+
 ## `gpu avail PARTITION [--cpu-per-gpu N] [--mem-per-gpu MB]`
 
 List nodes with GPUs you can actually allocate, most first.

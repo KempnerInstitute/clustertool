@@ -29,6 +29,51 @@ def parse_gpu_count(text: str) -> int:
     return int(match.group(1)) if match else 0
 
 
+_GRES_GPU_RE = re.compile(r"gpu:(?:[^:()]+:)?(\d+)")
+
+
+def _gres_gpus(text: str) -> int:
+    """Return the GPU count in a gres string like 'gpu:h100:4(...)' or 'gres/gpu:1'."""
+    match = _GRES_GPU_RE.search(text or "")
+    return int(match.group(1)) if match else 0
+
+
+def _sum_node_gpus(extra: list[str]) -> int:
+    total = 0
+    for line in _run(["sinfo", "-h", "-N", "-o", "%N %G", *extra]).splitlines():
+        parts = line.split(None, 1)
+        if len(parts) == 2:
+            total += _gres_gpus(parts[1])
+    return total
+
+
+def partition_gpu_util(partition: str) -> tuple[int, int, int, int, float]:
+    """Return (total, down, available, used, percent) GPUs for a partition.
+
+    Available excludes GPUs on down or drained nodes; percent is used/available.
+    """
+    total = _sum_node_gpus(["-p", partition])
+    down = _sum_node_gpus(["-R", "-p", partition])
+    available = max(total - down, 0)
+    used = 0
+    for line in _run(["squeue", "-h", "-t", "R", "-o", "%D %b", "-p", partition]).splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[0].isdigit():
+            used += int(parts[0]) * _gres_gpus(parts[1])
+    percent = (100.0 * used / available) if available else 0.0
+    return total, down, available, used, percent
+
+
+def drained_nodes(partition: str) -> list[str]:
+    """Return the names of drained or draining nodes in a partition."""
+    result = []
+    for line in _run(["sinfo", "-h", "-N", "-o", "%N %T", "-p", partition]).splitlines():
+        parts = line.split()
+        if len(parts) == 2 and "drain" in parts[1].lower():
+            result.append(parts[0])
+    return result
+
+
 def account_cap() -> int:
     """Return the per-account base GPU cap from the base QoS."""
     out = _run(["sacctmgr", "-nP", "show", "qos", BASE_QOS, "format=MaxTRESPA"])

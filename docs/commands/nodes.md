@@ -54,3 +54,17 @@ List active reservations on the cluster (via `scontrol show reservation`).
 **Use cases**
 - See time-boxed reserved compute and the nodes it holds.
 - Find a reservation name to submit into with `--reservation`.
+
+## `nodes resume [NODE...] [-p PARTITION]`
+
+Return drained or down nodes to service (via `scontrol update ... State=RESUME`).
+Give explicit node names, or `--partition` to resume every drained node in a
+partition. Prompts for confirmation unless `-y`. Operator only.
+
+**Use cases**
+- Bring auto-drained requeue nodes back after a transient issue.
+
+**Inputs**
+- `NODE...`: One or more node names to resume.
+- `-p, --partition`: Resume all drained nodes in this partition.
+- `-y, --yes`: Skip the confirmation prompt.

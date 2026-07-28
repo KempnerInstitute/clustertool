@@ -43,6 +43,17 @@ fairshare, age, partition, QOS, and so on.
 **Inputs**
 - `JOBID`: A Slurm job id.
 
+## `jobs priorities PARTITION`
+
+Show priority factors for pending jobs in a partition (via `sprio`): each job's
+total priority and its fairshare, age, and other contributions.
+
+**Use cases**
+- Compare pending jobs' priorities across a partition.
+
+**Inputs**
+- `PARTITION`: Slurm partition name (e.g. `kempner_h100`).
+
 ## `jobs queue PARTITION`
 
 Show a partition's pending jobs in priority order (via `showq`). Unlike
@@ -161,6 +172,18 @@ exactly as `scancel` does.
 - `JOBID...`: One or more job ids to cancel.
 - `--all`: Cancel every job you own.
 - `--pending`: Cancel only your pending jobs.
+
+## `jobs setprio JOBID PRIORITY`
+
+Set a job's scheduling priority (via `scontrol update`). Pins the job to the
+given priority, overriding fairshare until it runs. Operator only.
+
+**Use cases**
+- Boost a specific job ahead of the queue.
+
+**Inputs**
+- `JOBID`: A Slurm job id.
+- `PRIORITY`: The integer priority to set.
 
 ## `jobs hold JOBID...`
 

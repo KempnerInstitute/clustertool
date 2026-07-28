@@ -60,3 +60,38 @@ Show account associations: QOS, partitions, priority, and TRES limits (via
 **Inputs**
 - `ACCOUNT`: Slurm account. Omit to show your own associations.
 - `-u, --user`: User to look up (default: current user).
+
+## `account top-users ACCOUNT`
+
+Rank an account's members by RawUsage (via `sshare`), highest first.
+
+**Use cases**
+- See who in a lab has consumed the most recently.
+
+**Inputs**
+- `ACCOUNT`: Slurm account (e.g. `kempner_dev`).
+
+## `account qos [-f TEXT]`
+
+List QOS definitions and their limits (via `sacctmgr`): priority, max wall time,
+and TRES limits including the per-user and total GPU caps.
+
+**Use cases**
+- See the GPU cap and priority of a partition's QOS.
+
+**Inputs**
+- `-f, --filter`: Only show rows containing this text (the header is kept).
+
+## `account add-user USER ACCOUNT`
+
+Add a user to a fairshare account (via `sacctmgr`). Prompts for confirmation
+unless `-y`. Operator only.
+
+**Use cases**
+- Grant a new lab member access to the lab's Slurm account.
+
+**Inputs**
+- `USER`: Username to add.
+- `ACCOUNT`: Slurm account to add them to.
+- `--fairshare`: Fairshare value (default `parent`).
+- `-y, --yes`: Skip the confirmation prompt.

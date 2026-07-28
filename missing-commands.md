@@ -146,6 +146,33 @@ Noted but not implemented:
   and an interactive stdin prompt respectively, so neither wraps cleanly. Point
   users to them directly.
 
+## Third pass (from bash history and aliases)
+
+Candidates drawn from the maintainer's `.bashrc` aliases and most-run history
+commands. Most daily aliases were already covered; these eight were not. Some
+are operator-privileged admin actions.
+
+- `jobs setprio JOBID PRIORITY`: set a job's scheduling priority. Wraps
+  `scontrol update jobid= priority=`. Mutating, operator only. (From `jobp`, the
+  most-used custom command.)
+- `jobs priorities PARTITION`: priority factors for all pending jobs in a
+  partition. Wraps `sprio -p`. Read-only.
+- `gpu util [PARTITION...]`: GPU occupancy per partition (total, down,
+  available, used, percent), computed from `sinfo` and `squeue`. Available
+  excludes GPUs on down or drained nodes. Read-only. (From the `get_util` /
+  `util_*` alias family.)
+- `nodes resume [NODE...] [-p PARTITION]`: return drained or down nodes to
+  service. Wraps `scontrol update NodeName= State=RESUME`; `-p` resumes all
+  drained nodes in a partition. Mutating, operator only. (From `bback`.)
+- `account top-users ACCOUNT`: rank an account's members by RawUsage. Wraps
+  `sshare --account --all`. Read-only. (From `topusers`.)
+- `account qos [-f TEXT]`: QOS definitions and their TRES limits. Wraps
+  `sacctmgr show qos format=...`. Read-only.
+- `account add-user USER ACCOUNT`: add a user to a fairshare account. Wraps
+  `sacctmgr -i add user`. Mutating, operator only.
+- `storage inodes PATH`: inode capacity and usage for a Lustre filesystem.
+  Wraps `lfs df -i`. Read-only. (Needs a real Lustre path such as /n/holylfs06.)
+
 ## Feasibility notes
 
 - Present on the login node: all stock Slurm CLIs (`squeue`, `sacct`, `sstat`,

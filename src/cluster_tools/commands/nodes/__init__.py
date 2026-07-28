@@ -7,6 +7,7 @@ from cluster_tools.commands.nodes.list import list_nodes
 from cluster_tools.commands.nodes.load import load
 from cluster_tools.commands.nodes.partitions import partitions
 from cluster_tools.commands.nodes.reservations import reservations
+from cluster_tools.commands.nodes.resume import resume
 
 
 @click.group()
@@ -19,3 +20,4 @@ nodes.add_command(partitions)
 nodes.add_command(down)
 nodes.add_command(load)
 nodes.add_command(reservations)
+nodes.add_command(resume)

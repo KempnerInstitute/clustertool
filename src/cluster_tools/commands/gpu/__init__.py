@@ -9,6 +9,7 @@ from cluster_tools.commands.gpu.nvtop import nvtop
 from cluster_tools.commands.gpu.pulse import pulse
 from cluster_tools.commands.gpu.session import session
 from cluster_tools.commands.gpu.usage import usage
+from cluster_tools.commands.gpu.util import util
 
 
 @click.group()
@@ -17,6 +18,7 @@ def gpu() -> None:
 
 
 gpu.add_command(usage)
+gpu.add_command(util)
 gpu.add_command(avail)
 gpu.add_command(session)
 gpu.add_command(monitor_partition)

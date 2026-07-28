@@ -89,11 +89,11 @@ what each does, its use cases, and inputs, see the linked
 
 | Group | Commands | Scope |
 | --- | --- | --- |
-| [`gpu`](docs/commands/gpu.md) | `usage`, `avail`, `session`, `monitor-partition`, `monitor-job`, `nvtop`, `pulse` | GPU usage, availability, and sessions |
-| [`jobs`](docs/commands/jobs.md) | `list`, `queue`, `show`, `why`, `top`, `stats`, `scope`, `history`, `log`, `script`, `cancel`, `hold`, `release`, `requeue`, `submit` | Job queue, status, history, logs, and control |
-| [`account`](docs/commands/account.md) | `members`, `fairshare`, `usage`, `limits` | Account membership, fairshare, usage, limits |
-| [`nodes`](docs/commands/nodes.md) | `list`, `partitions`, `down`, `load`, `reservations` | Node, partition, and reservation status |
-| [`storage`](docs/commands/storage.md) | `quota`, `home`, `usage`, `scratch`, `stripe` | Filesystem quotas, usage, and striping |
+| [`gpu`](docs/commands/gpu.md) | `usage`, `util`, `avail`, `session`, `monitor-partition`, `monitor-job`, `nvtop`, `pulse` | GPU usage, availability, and sessions |
+| [`jobs`](docs/commands/jobs.md) | `list`, `queue`, `show`, `why`, `top`, `stats`, `scope`, `history`, `log`, `script`, `priorities`, `cancel`, `hold`, `release`, `requeue`, `setprio`, `submit` | Job queue, status, history, logs, and control |
+| [`account`](docs/commands/account.md) | `members`, `fairshare`, `usage`, `limits`, `top-users`, `qos`, `add-user` | Account membership, fairshare, usage, limits, QOS |
+| [`nodes`](docs/commands/nodes.md) | `list`, `partitions`, `down`, `load`, `reservations`, `resume` | Node, partition, and reservation status |
+| [`storage`](docs/commands/storage.md) | `quota`, `home`, `usage`, `scratch`, `stripe`, `inodes` | Filesystem quotas, usage, and striping |
 | [`diag`](docs/commands/diag.md) | `ib`, `nccl`, `nvlink`, `scheduler` | Diagnostics and benchmarks |
 
 ## Project layout
@@ -107,11 +107,11 @@ src/cluster_tools/
   monitor.py          # shared live per-node monitor (monitor-partition/-job)
   data/               # bundled payloads (monitor sample, nccl test, nvlink .cu)
   commands/           # one package per group; one file per command
-    gpu/              # usage, avail, session, monitor_partition, monitor_job, nvtop, pulse
-    jobs/             # list, queue, show, why, top, stats, scope, history, log, script, violators, cancel, hold, release, requeue, submit
-    account/          # members, fairshare, usage, limits
-    nodes/            # list, partitions, down, load, reservations
-    storage/          # quota, home, usage, scratch, stripe
+    gpu/              # usage, util, avail, session, monitor_partition, monitor_job, nvtop, pulse
+    jobs/             # list, queue, show, why, top, stats, scope, history, log, script, priorities, violators, cancel, hold, release, requeue, setprio, submit
+    account/          # members, fairshare, usage, limits, topusers, qos, adduser
+    nodes/            # list, partitions, down, load, reservations, resume
+    storage/          # quota, home, usage, scratch, stripe, inodes
     diag/             # ib, nccl, nvlink, scheduler
 tests/                # unit tests
 docs/commands/        # extended per-group command reference (gpu.md, jobs.md, ...)

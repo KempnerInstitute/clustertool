@@ -83,3 +83,15 @@ restriped. Use 8 to 16 for large multi-GB or TB files.
 **Inputs**
 - `PATH`: A path on a Lustre filesystem (e.g. `/n/holylfs06/...`).
 - `-c, --count`: Stripe count to set for new files under PATH.
+
+## `storage inodes PATH`
+
+Show inode capacity and usage for a Lustre filesystem (via `lfs df -i`). PATH
+must be on Lustre (for example `/n/holylfs06`); a bare name like `holylfs06`
+becomes `/n/holylfs06`.
+
+**Use cases**
+- Check whether a Lustre filesystem is running low on inodes.
+
+**Inputs**
+- `PATH`: A Lustre path, or a bare name that becomes `/n/<name>`.

@@ -470,6 +470,95 @@ def test_diag_scheduler(monkeypatch):
     assert calls[0] == ["sdiag"]
 
 
+def test_jobs_setprio(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "setprio", "123", "5000"])
+    assert result.exit_code == 0
+    assert calls[0] == ["scontrol", "update", "jobid=123", "priority=5000"]
+
+
+def test_jobs_priorities(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "priorities", "kempner_h100"])
+    assert result.exit_code == 0
+    assert calls[0] == ["sprio", "-p", "kempner_h100"]
+
+
+def test_gpu_util(monkeypatch):
+    monkeypatch.setattr(slurm, "partition_gpu_util", lambda p: (100, 20, 80, 40, 50.0))
+    result = CliRunner().invoke(main, ["gpu", "util", "kempner_h100"])
+    assert result.exit_code == 0
+    assert "kempner_h100" in result.output
+    assert "50.0%" in result.output
+
+
+def test_nodes_resume_explicit(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["nodes", "resume", "n1", "n2", "-y"])
+    assert result.exit_code == 0
+    assert calls[0] == ["scontrol", "update", "NodeName=n1,n2", "State=RESUME"]
+
+
+def test_nodes_resume_partition(monkeypatch):
+    monkeypatch.setattr(slurm, "drained_nodes", lambda p: ["n3", "n4"])
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["nodes", "resume", "-p", "kempner_requeue", "-y"])
+    assert result.exit_code == 0
+    assert calls[0] == ["scontrol", "update", "NodeName=n3,n4", "State=RESUME"]
+
+
+def test_nodes_resume_needs_target(monkeypatch):
+    _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["nodes", "resume"])
+    assert result.exit_code != 0
+
+
+def test_account_top_users(monkeypatch):
+    out = "acct 700 0.1 900 0.2\n acct alice 20 0.1 500 0.2 0.3\n acct bob 20 0.1 900 0.2 0.3\n"
+    monkeypatch.setattr(process, "run", lambda cmd, input_text=None: out)
+    result = CliRunner().invoke(main, ["account", "top-users", "kempner_dev"])
+    assert result.exit_code == 0
+    assert result.output.index("bob") < result.output.index("alice")
+
+
+def test_account_qos_default(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["account", "qos"])
+    assert result.exit_code == 0
+    assert calls[0][:3] == ["sacctmgr", "show", "qos"]
+
+
+def test_account_qos_filter(monkeypatch):
+    out = "Name Priority\n---- ----\nnormal 0\nkempner_h100_priority 0\n"
+    monkeypatch.setattr(process, "run", lambda cmd, input_text=None: out)
+    result = CliRunner().invoke(main, ["account", "qos", "-f", "kempner"])
+    assert result.exit_code == 0
+    assert "kempner_h100_priority" in result.output
+    assert "normal" not in result.output
+
+
+def test_account_add_user(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["account", "add-user", "alice", "kempner_dev", "-y"])
+    assert result.exit_code == 0
+    assert calls[0] == [
+        "sacctmgr",
+        "-i",
+        "add",
+        "user",
+        "name=alice",
+        "account=kempner_dev",
+        "fairshare=parent",
+    ]
+
+
+def test_storage_inodes(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["storage", "inodes", "holylfs06"])
+    assert result.exit_code == 0
+    assert calls[0] == ["lfs", "df", "-i", "/n/holylfs06"]
+
+
 def test_gpu_pulse_passthrough(monkeypatch):
     calls = []
     monkeypatch.setattr(process, "stream", lambda cmd, extra_env=None: calls.append(cmd) or 0)
