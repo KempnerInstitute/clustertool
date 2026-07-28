@@ -91,6 +91,8 @@ override or add flags (salloc uses the last value): for example
 - `GPU_TYPE`: One of `a100`, `h100`, `h200`, `rtx`.
 - `-A, --account`: Fairshare account to charge (required).
 - `-t, --time`: Time limit D-HH:MM (default 0-01:00).
+- `--jupyter`: Launch Jupyter Lab on the node and print the SSH tunnel to reach it.
+- `--port`: Port for `--jupyter` (default 8888).
 - `[SALLOC_ARG]...`: Extra salloc arguments, forwarded (they override the defaults).
 
 ## `gpu monitor-partition PARTITION [--interval S] [--filter PREFIX]`
