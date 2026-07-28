@@ -266,6 +266,60 @@ def test_completion_callbacks_safe_on_error(monkeypatch):
     assert completion.complete_accounts(None, None, "") == []
 
 
+def test_me_overview(monkeypatch):
+    monkeypatch.setenv("USER", "alice")
+    monkeypatch.setattr(
+        slurm,
+        "my_jobs",
+        lambda user: [
+            ("111", "RUNNING", "kempner_h100", "2:00:00", "None"),
+            ("222", "PENDING", "kempner", "0:00", "Priority"),
+        ],
+    )
+    monkeypatch.setattr(slurm, "user_gpu_count", lambda user: 4)
+    monkeypatch.setattr(slurm, "user_fairshare", lambda user: [("kempner_dev", "0.87")])
+    result = CliRunner().invoke(main, ["me"])
+    assert result.exit_code == 0
+    assert "overview for alice" in result.output
+    assert "1 running, 1 pending, 4 GPU(s)" in result.output
+    assert "Priority" in result.output
+    assert "kempner_dev" in result.output
+
+
+def test_me_explicit_user(monkeypatch):
+    monkeypatch.setattr(slurm, "my_jobs", lambda user: [])
+    monkeypatch.setattr(slurm, "user_gpu_count", lambda user: 0)
+    monkeypatch.setattr(slurm, "user_fairshare", lambda user: [])
+    result = CliRunner().invoke(main, ["me", "-u", "bob"])
+    assert result.exit_code == 0
+    assert "overview for bob" in result.output
+    assert "0 running, 0 pending, 0 GPU(s)" in result.output
+
+
+def test_my_jobs_parsing(monkeypatch):
+    monkeypatch.setattr(
+        slurm,
+        "_run",
+        lambda cmd: "111|RUNNING|shared|1:00|None\n222|PENDING|kempner|0:00|Priority\n",
+    )
+    assert slurm.my_jobs("alice") == [
+        ("111", "RUNNING", "shared", "1:00", "None"),
+        ("222", "PENDING", "kempner", "0:00", "Priority"),
+    ]
+
+
+def test_user_fairshare_parsing(monkeypatch):
+    monkeypatch.setattr(slurm, "_run", lambda cmd: "kempner_dev|0.5\nkempner_grads|0.3\n")
+    assert slurm.user_fairshare("alice") == [("kempner_dev", "0.5"), ("kempner_grads", "0.3")]
+
+
+def test_user_gpu_count(monkeypatch):
+    monkeypatch.setattr(
+        slurm, "_run", lambda cmd: "cpu=4,mem=32G,gres/gpu=2,node=1\ncpu=8,gres/gpu=1\n"
+    )
+    assert slurm.user_gpu_count("alice") == 3
+
+
 def test_account_members(monkeypatch):
     monkeypatch.setattr(slurm, "account_exists", lambda account: True)
     monkeypatch.setattr(slurm, "account_members", lambda account: ["alice", "bob"])
