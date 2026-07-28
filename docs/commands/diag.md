@@ -1,6 +1,6 @@
 # diag
 
-Run cluster diagnostics. Run `clustertools diag --help` to list these commands,
+Cluster diagnostics and benchmarks. Run `clustertools diag --help` to list these commands,
 or `clustertools diag <command> --help` for one.
 
 ## `diag ib PARTITION... [--parallel N]`
@@ -56,3 +56,11 @@ algorithm bandwidth. Uses every GPU on the node (2-8) unless `--gpus` limits it.
 - `--nvcc`: nvcc used to build the benchmark.
 - `--rebuild`: Force rebuild of the cached binary.
 - `--dry-run`: Print the build and run commands instead of running.
+
+## `diag scheduler`
+
+Show Slurm scheduler diagnostics (via `sdiag`): scheduling cycle times, backfill
+statistics, and queue depth.
+
+**Use cases**
+- Check scheduler health and backfill activity when jobs are slow to start.

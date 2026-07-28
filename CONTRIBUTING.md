@@ -19,11 +19,11 @@ lands, so `--help` never shows an empty group.
 
 | Group | Scope |
 | --- | --- |
-| `gpu` | GPU usage and availability |
-| `jobs` | Job queue and history |
-| `account` | Account membership, limits, fairshare |
-| `nodes` | Node status and health |
-| `storage` | Filesystem quotas |
+| `gpu` | GPU usage, availability, and sessions |
+| `jobs` | Job queue, status, history, logs, and control |
+| `account` | Account membership, fairshare, usage, limits, QOS |
+| `nodes` | Node, partition, and reservation status |
+| `storage` | Filesystem quotas, usage, and striping |
 | `diag` | Diagnostics and benchmarks |
 
 ## Style rules
@@ -136,7 +136,8 @@ command lives in its own file.
    and **Inputs** lists. For a new group, create that file, link it from
    `docs/commands/README.md`, and add a row to the README command table. For a
    new command in an existing group, add its name to that group's cell in the
-   README table.
+   README table. Also add a row to `clustertools-commands-index.md` (command,
+   scope, wraps, description).
 
 ## Add tests
 

@@ -7,10 +7,26 @@ license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.10"
 authors = [{ name = "Kempner Institute, Harvard University" }]
+keywords = ["slurm", "hpc", "gpu", "kempner", "fasrc", "cluster", "cli"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: System Administrators",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Clustering",
+    "Topic :: System :: Monitoring",
+]
 dependencies = ["click>=8.1", "jobscope>=0.1.1", "kempnerpulse>=0.5.0"]
 
 [project.urls]
+Homepage = "https://github.com/KempnerInstitute/cluster-tools"
 Repository = "https://github.com/KempnerInstitute/cluster-tools"
+Issues = "https://github.com/KempnerInstitute/cluster-tools/issues"
 
 [project.scripts]
 clustertools = "cluster_tools.cli:main"

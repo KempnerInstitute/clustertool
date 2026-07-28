@@ -1,6 +1,6 @@
 # gpu
 
-Inspect GPU usage on the cluster. Run `clustertools gpu --help` to list these
+GPU usage, availability, sessions, and monitoring. Run `clustertools gpu --help` to list these
 commands, or `clustertools gpu <command> --help` for one.
 
 ## `gpu usage [ACCOUNT]`
@@ -19,6 +19,19 @@ kempner_requeue usage that does not count toward the cap.
 **Inputs**
 - `ACCOUNT`: Slurm account name (e.g. `kempner_sham_lab`). Omit for all labs.
 
+## `gpu util [PARTITION...]`
+
+Show GPU occupancy per partition (via `sinfo` and `squeue`): total, down,
+available, used, and percent. Available excludes GPUs on down or drained nodes,
+and percent is used over available. With no PARTITION, reports the Kempner base
+partitions.
+
+**Use cases**
+- See how full each Kempner GPU partition is right now.
+
+**Inputs**
+- `PARTITION...`: One or more partitions (default: the Kempner base partitions).
+
 ## `gpu avail PARTITION [--cpu-per-gpu N] [--mem-per-gpu MB]`
 
 List nodes with GPUs you can actually allocate, most first.
@@ -36,6 +49,38 @@ partitions show raw free GPUs unless `--cpu-per-gpu` / `--mem-per-gpu` are given
 - `PARTITION`: Slurm partition name (e.g. `kempner_h100`).
 - `--cpu-per-gpu`: Cores per GPU (overrides the per-partition default).
 - `--mem-per-gpu`: Memory per GPU in MB (overrides the per-partition default).
+
+## `gpu session GPU_TYPE -A ACCOUNT [-t TIME] [SALLOC_ARG]...`
+
+Start an interactive single-GPU session on a Kempner base partition (via
+`salloc`). GPU_TYPE selects the partition, and the session requests one GPU plus
+the CPU and memory that partition enforces per GPU. Drops you into a shell on
+the node; exit it (or let the time limit lapse) to release the allocation.
+
+Per-GPU resources (one GPU each):
+
+| GPU_TYPE | Partition | CPUs | Memory |
+| --- | --- | --- | --- |
+| `a100` | `kempner` | 16 | 240000 MB |
+| `h100` | `kempner_h100` | 24 | 360000 MB |
+| `h200` | `kempner_h200` | 16 | 360000 MB |
+| `rtx` | `kempner_rtx` | 16 | 180000 MB |
+
+Memory is passed in MB (Slurm's default unit); the values above are the enforced
+per-GPU caps, so `--mem=360000`, not `360G`.
+
+Any extra arguments are forwarded to `salloc` after these defaults, so you can
+override or add flags (salloc uses the last value): for example
+`gpu session a100 -A LAB --mem=500000`, `... -J devshell`, or `... --x11`.
+
+**Use cases**
+- Grab one GPU for interactive development or debugging.
+
+**Inputs**
+- `GPU_TYPE`: One of `a100`, `h100`, `h200`, `rtx`.
+- `-A, --account`: Fairshare account to charge (required).
+- `-t, --time`: Time limit D-HH:MM (default 0-01:00).
+- `[SALLOC_ARG]...`: Extra salloc arguments, forwarded (they override the defaults).
 
 ## `gpu monitor-partition PARTITION [--interval S] [--filter PREFIX]`
 
