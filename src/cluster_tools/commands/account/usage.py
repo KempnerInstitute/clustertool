@@ -5,13 +5,13 @@ import os
 
 import click
 
-from cluster_tools import process
+from cluster_tools import completion, process
 from cluster_tools.grouping import keywords
 
 
 @keywords("hours", "spend", "cost")
 @click.command("usage")
-@click.argument("account", required=False)
+@click.argument("account", required=False, shell_complete=completion.complete_accounts)
 @click.option(
     "-d", "--days", type=int, default=30, show_default=True, help="Period length in days."
 )

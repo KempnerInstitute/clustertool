@@ -2,7 +2,7 @@
 
 import click
 
-from cluster_tools import process
+from cluster_tools import completion, process
 from cluster_tools.grouping import admin, keywords
 
 
@@ -10,7 +10,7 @@ from cluster_tools.grouping import admin, keywords
 @keywords("share", "adjust", "priority", "modify")
 @click.command("set-fairshare")
 @click.argument("user")
-@click.argument("account")
+@click.argument("account", shell_complete=completion.complete_accounts)
 @click.argument("share")
 @click.option("-y", "--yes", is_flag=True, help="Skip the confirmation prompt.")
 def set_fairshare(user: str, account: str, share: str, yes: bool) -> None:

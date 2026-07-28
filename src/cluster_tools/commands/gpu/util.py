@@ -2,13 +2,18 @@
 
 import click
 
-from cluster_tools import slurm
+from cluster_tools import completion, slurm
 from cluster_tools.grouping import keywords
 
 
 @keywords("busy", "occupancy", "load")
 @click.command("util")
-@click.argument("partitions", nargs=-1, metavar="[PARTITION...]")
+@click.argument(
+    "partitions",
+    nargs=-1,
+    metavar="[PARTITION...]",
+    shell_complete=completion.complete_partitions,
+)
 def util(partitions: tuple[str, ...]) -> None:
     """Show GPU occupancy per partition: total, down, available, used, and percent.
 

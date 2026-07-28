@@ -2,13 +2,13 @@
 
 import click
 
-from cluster_tools import slurm
+from cluster_tools import completion, slurm
 from cluster_tools.grouping import keywords
 
 
 @keywords("consumption", "who", "hogs", "leaderboard")
 @click.command("usage")
-@click.argument("account", required=False)
+@click.argument("account", required=False, shell_complete=completion.complete_accounts)
 def usage(account: str | None) -> None:
     """Show live base-partition GPU usage, for all labs or one lab.
 

@@ -2,13 +2,19 @@
 
 import click
 
-from cluster_tools import process
+from cluster_tools import completion, process
 from cluster_tools.grouping import keywords
 
 
 @keywords("unhold", "unblock", "resume", "unfreeze")
 @click.command("release")
-@click.argument("jobids", nargs=-1, required=True, metavar="JOBID...")
+@click.argument(
+    "jobids",
+    nargs=-1,
+    required=True,
+    metavar="JOBID...",
+    shell_complete=completion.complete_job_ids,
+)
 def release(jobids: tuple[str, ...]) -> None:
     """Release held jobs so they can be scheduled (via scontrol release).
 

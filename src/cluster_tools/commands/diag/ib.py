@@ -4,7 +4,7 @@ import concurrent.futures
 
 import click
 
-from cluster_tools import process, slurm
+from cluster_tools import completion, process, slurm
 from cluster_tools.grouping import keywords
 
 _SSH_OPTS = [
@@ -27,7 +27,13 @@ def _host_ib_down(host: str) -> str:
 
 @keywords("infiniband", "network", "fabric")
 @click.command("ib")
-@click.argument("partitions", nargs=-1, required=True, metavar="PARTITION...")
+@click.argument(
+    "partitions",
+    nargs=-1,
+    required=True,
+    metavar="PARTITION...",
+    shell_complete=completion.complete_partitions,
+)
 @click.option("--parallel", default=24, show_default=True, help="Maximum parallel ssh checks.")
 def ib(partitions: tuple[str, ...], parallel: int) -> None:
     """Report nodes with InfiniBand ports DOWN in one or more partitions.

@@ -2,13 +2,19 @@
 
 import click
 
-from cluster_tools import process
+from cluster_tools import completion, process
 from cluster_tools.grouping import keywords
 
 
 @keywords("detail", "info", "inspect", "describe")
 @click.command("show")
-@click.argument("jobids", nargs=-1, required=True, metavar="JOBID...")
+@click.argument(
+    "jobids",
+    nargs=-1,
+    required=True,
+    metavar="JOBID...",
+    shell_complete=completion.complete_job_ids,
+)
 def show(jobids: tuple[str, ...]) -> None:
     """Show live detail for one or more jobs, including the pending reason (via scontrol).
 

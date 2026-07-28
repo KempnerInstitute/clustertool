@@ -2,13 +2,13 @@
 
 import click
 
-from cluster_tools import process
+from cluster_tools import completion, process
 from cluster_tools.grouping import keywords
 
 
 @keywords("heaviest", "hogs", "leaderboard", "biggest")
 @click.command("top-users")
-@click.argument("account")
+@click.argument("account", shell_complete=completion.complete_accounts)
 def top_users(account: str) -> None:
     """Rank an account's members by raw usage (via sshare).
 

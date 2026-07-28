@@ -2,13 +2,13 @@
 
 import click
 
-from cluster_tools import monitor, slurm
+from cluster_tools import completion, monitor, slurm
 from cluster_tools.grouping import keywords
 
 
 @keywords("watch", "live", "realtime", "dashboard")
 @click.command("monitor-partition")
-@click.argument("partition")
+@click.argument("partition", shell_complete=completion.complete_partitions)
 @click.option("--interval", default=5, show_default=True, help="Refresh interval in seconds.")
 @click.option(
     "--filter", "prefix", default="", help="Only nodes whose name starts with this prefix."

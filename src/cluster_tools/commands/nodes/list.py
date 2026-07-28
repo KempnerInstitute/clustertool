@@ -2,13 +2,19 @@
 
 import click
 
-from cluster_tools import slurm
+from cluster_tools import completion, slurm
 from cluster_tools.grouping import keywords
 
 
 @keywords("hosts", "machines", "state")
 @click.command("list")
-@click.argument("partitions", nargs=-1, required=True, metavar="PARTITION...")
+@click.argument(
+    "partitions",
+    nargs=-1,
+    required=True,
+    metavar="PARTITION...",
+    shell_complete=completion.complete_partitions,
+)
 def list_nodes(partitions: tuple[str, ...]) -> None:
     """List node names and states for one or more partitions.
 

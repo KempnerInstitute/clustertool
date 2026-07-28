@@ -2,13 +2,13 @@
 
 import click
 
-from cluster_tools import slurm
+from cluster_tools import completion, slurm
 from cluster_tools.grouping import keywords
 
 
 @keywords("abuse", "overuse", "hogs", "greedy")
 @click.command("violators")
-@click.argument("partition")
+@click.argument("partition", shell_complete=completion.complete_partitions)
 @click.option(
     "--cpu-per-gpu", type=int, default=None, help="CPU-per-GPU norm (overrides the default)."
 )

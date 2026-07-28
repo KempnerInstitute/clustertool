@@ -2,13 +2,18 @@
 
 import click
 
-from cluster_tools import slurm
+from cluster_tools import completion, slurm
 from cluster_tools.grouping import keywords
 
 
 @keywords("who", "roster", "people")
 @click.command("members")
-@click.argument("account_name", metavar="ACCOUNT", required=False)
+@click.argument(
+    "account_name",
+    metavar="ACCOUNT",
+    required=False,
+    shell_complete=completion.complete_accounts,
+)
 @click.option(
     "--all",
     "all_accounts",

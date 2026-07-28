@@ -2,13 +2,13 @@
 
 import click
 
-from cluster_tools import process
+from cluster_tools import completion, process
 from cluster_tools.grouping import keywords
 
 
 @keywords("pending", "waiting", "backlog", "showq")
 @click.command("queue")
-@click.argument("partition")
+@click.argument("partition", shell_complete=completion.complete_partitions)
 def queue(partition: str) -> None:
     """Show a partition's pending jobs in priority order (via showq).
 

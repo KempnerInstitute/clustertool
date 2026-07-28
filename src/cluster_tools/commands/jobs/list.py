@@ -4,7 +4,7 @@ import os
 
 import click
 
-from cluster_tools import process
+from cluster_tools import completion, process
 from cluster_tools.grouping import keywords
 
 
@@ -18,8 +18,20 @@ from cluster_tools.grouping import keywords
     default=None,
     help="Only jobs in this state.",
 )
-@click.option("-p", "--partition", default=None, help="Only jobs in this partition.")
-@click.option("-A", "--account", default=None, help="Only jobs in this account.")
+@click.option(
+    "-p",
+    "--partition",
+    default=None,
+    help="Only jobs in this partition.",
+    shell_complete=completion.complete_partitions,
+)
+@click.option(
+    "-A",
+    "--account",
+    default=None,
+    help="Only jobs in this account.",
+    shell_complete=completion.complete_accounts,
+)
 @click.option("--start", is_flag=True, help="Show estimated start time for pending jobs.")
 def list_jobs(
     user: str | None,

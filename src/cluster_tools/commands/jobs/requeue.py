@@ -2,13 +2,19 @@
 
 import click
 
-from cluster_tools import process
+from cluster_tools import completion, process
 from cluster_tools.grouping import keywords
 
 
 @keywords("restart", "rerun", "resubmit")
 @click.command("requeue")
-@click.argument("jobids", nargs=-1, required=True, metavar="JOBID...")
+@click.argument(
+    "jobids",
+    nargs=-1,
+    required=True,
+    metavar="JOBID...",
+    shell_complete=completion.complete_job_ids,
+)
 def requeue(jobids: tuple[str, ...]) -> None:
     """Cancel and re-queue jobs (via scontrol requeue).
 

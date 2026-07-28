@@ -2,14 +2,14 @@
 
 import click
 
-from cluster_tools import process
+from cluster_tools import completion, process
 from cluster_tools.grouping import admin, keywords
 
 
 @admin
 @keywords("priority", "boost", "bump", "pin")
 @click.command("setprio")
-@click.argument("jobid")
+@click.argument("jobid", shell_complete=completion.complete_job_ids)
 @click.argument("priority", type=int)
 def setprio(jobid: str, priority: int) -> None:
     """Set a job's scheduling priority (via scontrol update). Operator only.

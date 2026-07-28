@@ -2,13 +2,13 @@
 
 import click
 
-from cluster_tools import process
+from cluster_tools import completion, process
 from cluster_tools.grouping import keywords
 
 
 @keywords("pending", "waiting", "stuck", "blocked")
 @click.command("why")
-@click.argument("jobid")
+@click.argument("jobid", shell_complete=completion.complete_job_ids)
 def why(jobid: str) -> None:
     """Explain a job's priority and, if pending, why it is waiting.
 

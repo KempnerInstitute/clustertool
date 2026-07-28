@@ -4,13 +4,13 @@ import os
 
 import click
 
-from cluster_tools import process
+from cluster_tools import completion, process
 from cluster_tools.grouping import keywords
 
 
 @keywords("share", "rank", "weight")
 @click.command("fairshare")
-@click.argument("account", required=False)
+@click.argument("account", required=False, shell_complete=completion.complete_accounts)
 @click.option("-u", "--user", default=None, help="User to look up (default: you).")
 def fairshare(account: str | None, user: str | None) -> None:
     """Show fairshare standing and priority (via sshare).

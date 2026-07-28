@@ -2,7 +2,7 @@
 
 import click
 
-from cluster_tools import process
+from cluster_tools import completion, process
 from cluster_tools.grouping import admin, keywords
 
 
@@ -10,7 +10,7 @@ from cluster_tools.grouping import admin, keywords
 @keywords("grant", "join", "access", "enroll")
 @click.command("add-user")
 @click.argument("user")
-@click.argument("account")
+@click.argument("account", shell_complete=completion.complete_accounts)
 @click.option("--fairshare", default="parent", show_default=True, help="Fairshare value.")
 @click.option("-y", "--yes", is_flag=True, help="Skip the confirmation prompt.")
 def add_user(user: str, account: str, fairshare: str, yes: bool) -> None:

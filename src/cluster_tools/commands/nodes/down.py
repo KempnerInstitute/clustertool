@@ -2,13 +2,19 @@
 
 import click
 
-from cluster_tools import process
+from cluster_tools import completion, process
 from cluster_tools.grouping import keywords
 
 
 @keywords("broken", "offline", "dead")
 @click.command("down")
-@click.option("-p", "--partition", default=None, help="Limit to one partition.")
+@click.option(
+    "-p",
+    "--partition",
+    default=None,
+    help="Limit to one partition.",
+    shell_complete=completion.complete_partitions,
+)
 def down(partition: str | None) -> None:
     """List down and drained nodes with the scheduler's reason (via sinfo).
 

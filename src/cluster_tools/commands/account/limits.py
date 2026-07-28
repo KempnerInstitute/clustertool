@@ -4,7 +4,7 @@ import os
 
 import click
 
-from cluster_tools import process
+from cluster_tools import completion, process
 from cluster_tools.grouping import keywords
 
 _FORMAT = "Account,User,Partition,QOS,Priority,GrpTRES,MaxTRES"
@@ -12,7 +12,7 @@ _FORMAT = "Account,User,Partition,QOS,Priority,GrpTRES,MaxTRES"
 
 @keywords("cap", "quota", "restrictions", "maximum")
 @click.command("limits")
-@click.argument("account", required=False)
+@click.argument("account", required=False, shell_complete=completion.complete_accounts)
 @click.option("-u", "--user", default=None, help="User to look up (default: you).")
 def limits(account: str | None, user: str | None) -> None:
     """Show account associations: QOS, partitions, and limits (via sacctmgr).

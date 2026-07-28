@@ -4,13 +4,15 @@ import os
 
 import click
 
-from cluster_tools import process
+from cluster_tools import completion, process
 from cluster_tools.grouping import keywords
 
 
 @keywords("kill", "stop", "abort", "terminate")
 @click.command("cancel")
-@click.argument("jobids", nargs=-1, metavar="[JOBID...]")
+@click.argument(
+    "jobids", nargs=-1, metavar="[JOBID...]", shell_complete=completion.complete_job_ids
+)
 @click.option("--all", "all_jobs", is_flag=True, help="Cancel all of your jobs.")
 @click.option("--pending", is_flag=True, help="Cancel all of your pending jobs.")
 def cancel(jobids: tuple[str, ...], all_jobs: bool, pending: bool) -> None:

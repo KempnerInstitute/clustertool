@@ -98,6 +98,11 @@ command lives in its own file.
    def cancel(...): ...
    ```
 
+   For a parameter that takes a live value (a job ID, account, or partition),
+   set `shell_complete` from `cluster_tools.completion` so tab completion
+   suggests real values, for example
+   `@click.argument("jobid", shell_complete=completion.complete_job_ids)`.
+
 3. Register it in the group's `__init__.py`:
 
    ```python
