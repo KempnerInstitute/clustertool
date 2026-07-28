@@ -17,6 +17,17 @@ PARTITION_LIMITS = {
     "kempner_rtx": (16, 180000),
 }
 
+GPU_STATUS_BUCKETS = ("idle", "mixed", "alloc", "resv", "drain", "down")
+
+_GPU_TYPE_BY_FEATURE = (
+    ("H200", "h200"),
+    ("H100", "h100"),
+    ("A100 MIG", "a100-mig"),
+    ("A100", "a100"),
+    ("RTX", "rtx6000pro"),
+)
+_GPU_TYPE_ORDER = ("A100", "A100 MIG", "H100", "H200", "RTX", "Other")
+
 SlurmError = CommandError
 
 _GPU_RE = re.compile(r"gres/gpu=(\d+)")
@@ -117,6 +128,53 @@ def partition_nodes(partition: str) -> list[tuple[str, str]]:
         if len(fields) >= 2:
             rows.append((fields[0], fields[1]))
     return rows
+
+
+def _gpu_type_from_features(features: str) -> str:
+    """Return the GPU type label for a node from its Slurm features."""
+    tags = {tag.strip().lower() for tag in features.split(",")}
+    for label, tag in _GPU_TYPE_BY_FEATURE:
+        if tag in tags:
+            return label
+    return "Other"
+
+
+def _status_bucket(state: str) -> str:
+    """Map a Slurm node state code (flags stripped) to a status bucket."""
+    match = re.match(r"[a-z]+", state.lower())
+    base = match.group() if match else ""
+    if base.startswith(("idle", "plnd", "plan")):
+        return "idle"
+    if base.startswith("mix"):
+        return "mixed"
+    if base.startswith(("alloc", "comp")):
+        return "alloc"
+    if base.startswith(("resv", "rese", "maint")):
+        return "resv"
+    if base.startswith("dr"):
+        return "drain"
+    return "down"
+
+
+def kempner_gpu_node_status() -> list[tuple[str, dict[str, int]]]:
+    """Return [(gpu_type, {bucket: count})] for kempner_requeue nodes.
+
+    Each node in the requeue partition (which spans every Kempner GPU node) is
+    mapped to a GPU type from its features and a status bucket from its state.
+    Types come back in a fixed order, omitting any with no nodes.
+    """
+    out = _run(["sinfo", "-h", "-N", "-p", REQUEUE_PARTITION, "-o", "%N|%t|%f"])
+    counts: dict[str, dict[str, int]] = {}
+    seen: set[str] = set()
+    for line in out.splitlines():
+        fields = line.split("|")
+        if len(fields) < 3 or fields[0] in seen:
+            continue
+        seen.add(fields[0])
+        gtype = _gpu_type_from_features(fields[2])
+        counts.setdefault(gtype, dict.fromkeys(GPU_STATUS_BUCKETS, 0))
+        counts[gtype][_status_bucket(fields[1])] += 1
+    return [(gtype, counts[gtype]) for gtype in _GPU_TYPE_ORDER if gtype in counts]
 
 
 def node_info(node: str) -> dict:

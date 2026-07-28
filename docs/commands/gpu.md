@@ -32,6 +32,17 @@ partitions.
 **Inputs**
 - `PARTITION...`: One or more partitions (default: the Kempner base partitions).
 
+## `gpu status`
+
+Show Kempner GPU node status by type and state (via `sinfo`). Reads
+`kempner_requeue`, which spans every Kempner GPU node, and breaks the nodes down
+by GPU type (A100, H100, H200, RTX) and state. Idle, Mixed, and Alloc nodes are
+up; Resv is reserved; Drain is draining; Down is offline.
+
+**Use cases**
+- See how many nodes of each GPU type are up, drained, or down.
+- Spot fleet health problems before submitting or debugging jobs.
+
 ## `gpu avail PARTITION [--cpu-per-gpu N] [--mem-per-gpu MB]`
 
 List nodes with GPUs you can actually allocate, most first.
