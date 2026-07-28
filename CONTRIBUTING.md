@@ -136,7 +136,8 @@ command lives in its own file.
    and **Inputs** lists. For a new group, create that file, link it from
    `docs/commands/README.md`, and add a row to the README command table. For a
    new command in an existing group, add its name to that group's cell in the
-   README table.
+   README table. Also add a row to `clustertools-commands-index.md` (command,
+   scope, wraps, description).
 
 ## Add tests
 

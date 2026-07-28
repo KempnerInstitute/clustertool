@@ -87,6 +87,10 @@ what each does, its use cases, and inputs, see the linked
 [`docs/commands/<group>.md`](docs/commands/) file, or run
 `clustertools <group> <command> --help`.
 
+A flat, greppable index of every command, with its scope (user or admin) and the
+host tool it wraps, is in
+[`clustertools-commands-index.md`](clustertools-commands-index.md).
+
 | Group | Commands | Scope |
 | --- | --- | --- |
 | [`gpu`](docs/commands/gpu.md) | `usage`, `util`, `avail`, `session`, `monitor-partition`, `monitor-job`, `nvtop`, `pulse` | GPU usage, availability, and sessions |
