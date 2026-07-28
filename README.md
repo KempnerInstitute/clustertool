@@ -90,7 +90,7 @@ what each does, its use cases, and inputs, see the linked
 | Group | Commands | Scope |
 | --- | --- | --- |
 | [`gpu`](docs/commands/gpu.md) | `usage`, `avail`, `session`, `monitor-partition`, `monitor-job`, `nvtop`, `pulse` | GPU usage, availability, and sessions |
-| [`jobs`](docs/commands/jobs.md) | `list`, `show`, `why`, `stats`, `scope`, `history`, `cancel`, `submit` | Job queue, status, history, and control |
+| [`jobs`](docs/commands/jobs.md) | `list`, `show`, `why`, `stats`, `scope`, `history`, `cancel`, `hold`, `release`, `requeue`, `submit` | Job queue, status, history, and control |
 | [`account`](docs/commands/account.md) | `members`, `fairshare`, `usage`, `limits` | Account membership, fairshare, usage, limits |
 | [`nodes`](docs/commands/nodes.md) | `list`, `partitions` | Node and partition status |
 | [`storage`](docs/commands/storage.md) | `quota`, `home`, `usage`, `scratch`, `stripe` | Filesystem quotas, usage, and striping |
@@ -108,7 +108,7 @@ src/cluster_tools/
   data/               # bundled payloads (monitor sample, nccl test, nvlink .cu)
   commands/           # one package per group; one file per command
     gpu/              # usage, avail, session, monitor_partition, monitor_job, nvtop, pulse
-    jobs/             # list, show, why, stats, scope, history, violators, cancel, submit
+    jobs/             # list, show, why, stats, scope, history, violators, cancel, hold, release, requeue, submit
     account/          # members, fairshare, usage, limits
     nodes/            # list, partitions
     storage/          # quota, home, usage, scratch, stripe

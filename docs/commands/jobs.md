@@ -112,6 +112,39 @@ exactly as `scancel` does.
 - `--all`: Cancel every job you own.
 - `--pending`: Cancel only your pending jobs.
 
+## `jobs hold JOBID...`
+
+Prevent pending jobs from starting (via `scontrol hold`). Held jobs stay in the
+queue but are not scheduled until released with `jobs release`.
+
+**Use cases**
+- Pause a pending job you are not ready to run.
+
+**Inputs**
+- `JOBID...`: One or more Slurm job ids.
+
+## `jobs release JOBID...`
+
+Release held jobs so they can be scheduled (via `scontrol release`). Undoes
+`jobs hold`.
+
+**Use cases**
+- Let a previously held job start.
+
+**Inputs**
+- `JOBID...`: One or more Slurm job ids.
+
+## `jobs requeue JOBID...`
+
+Cancel and re-queue jobs (via `scontrol requeue`); they return to the pending
+queue and run again from the start.
+
+**Use cases**
+- Restart a running or failed job without resubmitting it.
+
+**Inputs**
+- `JOBID...`: One or more Slurm job ids.
+
 ## `jobs submit [ARG]...`
 
 Submit a batch job (passthrough to `sbatch`). All arguments are forwarded to

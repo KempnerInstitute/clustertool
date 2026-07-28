@@ -4,7 +4,10 @@ import click
 
 from cluster_tools.commands.jobs.cancel import cancel
 from cluster_tools.commands.jobs.history import history
+from cluster_tools.commands.jobs.hold import hold
 from cluster_tools.commands.jobs.list import list_jobs
+from cluster_tools.commands.jobs.release import release
+from cluster_tools.commands.jobs.requeue import requeue
 from cluster_tools.commands.jobs.scope import scope
 from cluster_tools.commands.jobs.show import show
 from cluster_tools.commands.jobs.stats import stats
@@ -26,4 +29,7 @@ jobs.add_command(scope)
 jobs.add_command(history)
 jobs.add_command(violators)
 jobs.add_command(cancel)
+jobs.add_command(hold)
+jobs.add_command(release)
+jobs.add_command(requeue)
 jobs.add_command(submit)

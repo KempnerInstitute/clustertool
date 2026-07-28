@@ -212,6 +212,27 @@ def test_jobs_cancel_none_errors(monkeypatch):
     assert result.exit_code != 0
 
 
+def test_jobs_hold(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "hold", "111", "222"])
+    assert result.exit_code == 0
+    assert calls[0] == ["scontrol", "hold", "111,222"]
+
+
+def test_jobs_release(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "release", "111"])
+    assert result.exit_code == 0
+    assert calls[0] == ["scontrol", "release", "111"]
+
+
+def test_jobs_requeue(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "requeue", "111"])
+    assert result.exit_code == 0
+    assert calls[0] == ["scontrol", "requeue", "111"]
+
+
 def test_jobs_submit_passthrough(monkeypatch):
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "submit", "-p", "kempner", "job.sh"])
