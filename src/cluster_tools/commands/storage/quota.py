@@ -1,5 +1,7 @@
 """storage quota command."""
 
+import os
+
 import click
 
 from cluster_tools import process
@@ -20,7 +22,7 @@ def quota(path: str, group: str | None, user: str | None, verbose: bool) -> None
     (/n/netscratch), Lustre (/n/holylfs06, /n/holystore01, ...), home, and so on.
     Use --group for a lab's quota or --user for a user's; with neither, the quota
     tool infers from the path. A bare name like 'holylfs06' becomes
-    '/n/holylfs06'.
+    '/n/holylfs06', and 'home' resolves to your home directory.
 
     \b
     Use cases:
@@ -37,7 +39,10 @@ def quota(path: str, group: str | None, user: str | None, verbose: bool) -> None
     """
     if group and user:
         raise click.ClickException("give at most one of --group / --user")
-    target = path if path.startswith("/") else f"/n/{path}"
+    if path == "home":
+        target = os.path.expanduser("~")
+    else:
+        target = path if path.startswith("/") else f"/n/{path}"
     code = process.stream(quota_cmd(target, group=group, user=user, verbose=verbose))
     if code:
         raise SystemExit(code)

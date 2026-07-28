@@ -521,6 +521,17 @@ def test_storage_quota_infer(monkeypatch):
     assert captured["cmd"] == ["quota", "/n/netscratch"]
 
 
+def test_storage_quota_home(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        process, "stream", lambda cmd, extra_env=None: captured.update(cmd=cmd) or 0
+    )
+    monkeypatch.setenv("HOME", "/n/home14/alice")
+    result = CliRunner().invoke(main, ["storage", "quota", "home"])
+    assert result.exit_code == 0
+    assert captured["cmd"] == ["quota", "/n/home14/alice"]
+
+
 def _capture_stream(monkeypatch):
     calls = []
     monkeypatch.setattr(process, "stream", lambda cmd, extra_env=None: calls.append(cmd) or 0)
