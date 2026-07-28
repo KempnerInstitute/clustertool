@@ -52,6 +52,7 @@ out to.
 | `jobs requeue JOBID...` | user | scontrol | Cancel and re-queue jobs. |
 | `jobs setprio JOBID PRIORITY` | admin | scontrol update | Set (pin) a job's scheduling priority. |
 | `jobs submit [ARG...]` | user | sbatch | Submit a batch job (passthrough to sbatch). |
+| `jobs new` | user | sbatch | Build (and optionally submit) a Kempner GPU sbatch script. |
 
 ## account
 

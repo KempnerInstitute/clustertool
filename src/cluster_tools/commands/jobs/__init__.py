@@ -7,6 +7,7 @@ from cluster_tools.commands.jobs.history import history
 from cluster_tools.commands.jobs.hold import hold
 from cluster_tools.commands.jobs.list import list_jobs
 from cluster_tools.commands.jobs.log import log
+from cluster_tools.commands.jobs.new import new
 from cluster_tools.commands.jobs.priorities import priorities
 from cluster_tools.commands.jobs.queue import queue
 from cluster_tools.commands.jobs.release import release
@@ -46,3 +47,4 @@ jobs.add_command(release)
 jobs.add_command(requeue)
 jobs.add_command(setprio)
 jobs.add_command(submit)
+jobs.add_command(new)

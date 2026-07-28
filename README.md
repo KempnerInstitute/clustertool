@@ -75,6 +75,7 @@ clustertools jobs list           # your queued and running jobs
 clustertools jobs why 1234567    # why a job is pending, and its priority
 clustertools jobs stats 1234567  # utilization for a job
 clustertools jobs scope -D 3     # efficiency of your completed jobs (last 3 days)
+clustertools jobs new            # build a correct GPU sbatch script (prompts, or --submit)
 
 # Accounts and nodes
 clustertools account fairshare            # your fairshare and priority standing
@@ -106,7 +107,7 @@ fairshare` or `clustertools search gpu reservation`.
 | Group | Commands | Scope |
 | --- | --- | --- |
 | [`gpu`](docs/commands/gpu.md) | `usage`, `util`, `status`, `avail`, `session`, `monitor-partition`, `monitor-job`, `nvtop`, `pulse` | GPU usage, availability, and sessions |
-| [`jobs`](docs/commands/jobs.md) | `list`, `queue`, `show`, `why`, `top`, `stats`, `scope`, `history`, `log`, `script`, `priorities`, `cancel`, `hold`, `release`, `requeue`, `setprio`, `submit` | Job queue, status, history, logs, and control |
+| [`jobs`](docs/commands/jobs.md) | `list`, `queue`, `show`, `why`, `top`, `stats`, `scope`, `history`, `log`, `script`, `priorities`, `cancel`, `hold`, `release`, `requeue`, `setprio`, `submit`, `new` | Job queue, status, history, logs, and control |
 | [`account`](docs/commands/account.md) | `members`, `fairshare`, `usage`, `limits`, `top-users`, `qos`, `add-user`, `remove-user`, `set-fairshare` | Account membership, fairshare, usage, limits, QOS |
 | [`nodes`](docs/commands/nodes.md) | `list`, `partitions`, `down`, `load`, `reservations`, `resume` | Node, partition, and reservation status |
 | [`storage`](docs/commands/storage.md) | `quota`, `home`, `usage`, `scratch`, `stripe`, `inodes` | Filesystem quotas, usage, and striping |
@@ -124,7 +125,7 @@ src/cluster_tools/
   data/               # bundled payloads (monitor sample, nccl test, nvlink .cu)
   commands/           # one package per group; one file per command
     gpu/              # usage, util, status, avail, session, monitor_partition, monitor_job, nvtop, pulse
-    jobs/             # list, queue, show, why, top, stats, scope, history, log, script, priorities, violators, cancel, hold, release, requeue, setprio, submit
+    jobs/             # list, queue, show, why, top, stats, scope, history, log, script, priorities, violators, cancel, hold, release, requeue, setprio, submit, new
     account/          # members, fairshare, usage, limits, topusers, qos, adduser, removeuser, setfairshare
     nodes/            # list, partitions, down, load, reservations, resume
     storage/          # quota, home, usage, scratch, stripe, inodes

@@ -17,6 +17,13 @@ PARTITION_LIMITS = {
     "kempner_rtx": (16, 180000),
 }
 
+GPU_TYPE_PARTITION = {
+    "a100": "kempner",
+    "h100": "kempner_h100",
+    "h200": "kempner_h200",
+    "rtx": "kempner_rtx",
+}
+
 GPU_STATUS_BUCKETS = ("idle", "mixed", "alloc", "resv", "drain", "down")
 
 _GPU_TYPE_BY_FEATURE = (

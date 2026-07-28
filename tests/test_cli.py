@@ -320,6 +320,87 @@ def test_user_gpu_count(monkeypatch):
     assert slurm.user_gpu_count("alice") == 3
 
 
+def test_jobs_new_builds_script():
+    result = CliRunner().invoke(
+        main,
+        ["jobs", "new", "--gpu-type", "h100", "--gpus", "2", "-A", "kempner_dev", "-J", "train"],
+    )
+    assert result.exit_code == 0
+    out = result.output
+    assert "--partition=kempner_h100" in out
+    assert "--gres=gpu:2" in out
+    assert "--cpus-per-task=48" in out
+    assert "--mem=720000" in out
+    assert "--account=kempner_dev" in out
+    assert "--job-name=train" in out
+
+
+def test_jobs_new_submit(monkeypatch):
+    captured = {}
+
+    def fake_run(cmd, input_text=None):
+        captured["cmd"] = cmd
+        captured["script"] = input_text
+        return "Submitted batch job 999"
+
+    monkeypatch.setattr(process, "run", fake_run)
+    result = CliRunner().invoke(
+        main, ["jobs", "new", "--gpu-type", "a100", "-A", "LAB", "--submit"]
+    )
+    assert result.exit_code == 0
+    assert captured["cmd"] == ["sbatch"]
+    assert "--partition=kempner" in captured["script"]
+    assert "Submitted batch job 999" in result.output
+
+
+def test_jobs_new_output_file(tmp_path):
+    path = tmp_path / "job.sh"
+    result = CliRunner().invoke(
+        main, ["jobs", "new", "--gpu-type", "rtx", "-A", "LAB", "-o", str(path)]
+    )
+    assert result.exit_code == 0
+    assert "--partition=kempner_rtx" in path.read_text()
+
+
+def test_jobs_new_prompts():
+    result = CliRunner().invoke(main, ["jobs", "new"], input="h200\nkempner_dev\n")
+    assert result.exit_code == 0
+    assert "--partition=kempner_h200" in result.output
+
+
+def test_gpu_session_jupyter(monkeypatch):
+    captured = {}
+
+    def fake_stream(cmd):
+        captured["cmd"] = cmd
+        return 0
+
+    monkeypatch.setattr(process, "stream", fake_stream)
+    result = CliRunner().invoke(
+        main, ["gpu", "session", "h100", "-A", "LAB", "--jupyter", "--port", "9999"]
+    )
+    assert result.exit_code == 0
+    joined = " ".join(captured["cmd"])
+    assert "bash" in captured["cmd"]
+    assert "jupyter lab --no-browser" in joined
+    assert "9999" in joined
+    assert "--gres=gpu:1" in joined
+
+
+def test_gpu_session_plain(monkeypatch):
+    captured = {}
+
+    def fake_stream(cmd):
+        captured["cmd"] = cmd
+        return 0
+
+    monkeypatch.setattr(process, "stream", fake_stream)
+    result = CliRunner().invoke(main, ["gpu", "session", "a100", "-A", "LAB"])
+    assert result.exit_code == 0
+    assert "bash" not in captured["cmd"]
+    assert "--account=LAB" in captured["cmd"]
+
+
 def test_account_members(monkeypatch):
     monkeypatch.setattr(slurm, "account_exists", lambda account: True)
     monkeypatch.setattr(slurm, "account_members", lambda account: ["alice", "bob"])

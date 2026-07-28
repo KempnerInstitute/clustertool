@@ -231,3 +231,25 @@ mail flags all work. Run `sbatch --help` for the full list.
 
 **Inputs**
 - `[ARG]...`: any sbatch arguments (script path, `--wrap`, directives), forwarded verbatim.
+
+## `jobs new`
+
+Build a Kempner GPU sbatch script and print, save, or submit it. Prompts for the
+GPU type and account if not given, sizes CPUs and memory to the partition's
+enforced per-GPU limits, and writes a correct sbatch header. Prints the script
+by default; `-o` saves it and `--submit` submits it.
+
+**Use cases**
+- Generate a correct sbatch header without memorizing the conventions.
+- Submit a single-node or multi-node GPU job in one step.
+
+**Inputs**
+- `--gpu-type`: One of `a100`, `h100`, `h200`, `rtx` (prompted if omitted).
+- `-A, --account`: Fairshare account (prompted if omitted).
+- `--gpus`: GPUs per node (default 1).
+- `--nodes`: Number of nodes (default 1).
+- `-t, --time`: Time limit D-HH:MM (default 0-04:00).
+- `-J, --name`: Job name (default `job`).
+- `--cpus-per-gpu`, `--mem-per-gpu`: Override the per-GPU CPU or memory.
+- `-o, --output`: Write the script to a file.
+- `--submit`: Submit the script with `sbatch`.
