@@ -391,3 +391,55 @@ def user_gpu_count(user: str) -> int:
     """Return the number of GPUs a user has allocated to running jobs."""
     out = _run(["squeue", "-h", "-t", "R", "-u", user, "-O", "tres-alloc:512"])
     return sum(parse_gpu_count(line) for line in out.splitlines())
+
+
+def _mem_to_mb(value: str) -> float:
+    """Convert a Slurm memory string like '61.2G' or '2136K' to MB (0 if empty)."""
+    match = re.match(r"([\d.]+)([KMGT]?)", value)
+    if not match:
+        return 0.0
+    factors = {"K": 1 / 1024, "M": 1.0, "G": 1024.0, "T": 1024.0 * 1024, "": 1.0}
+    return float(match.group(1)) * factors[match.group(2)]
+
+
+def job_accounting(jobid: str) -> dict:
+    """Return the accounting fields for a finished job (via sacct), or {} if none."""
+    out = _run(
+        [
+            "sacct",
+            "-j",
+            jobid,
+            "-X",
+            "-n",
+            "-P",
+            "-o",
+            "State,ExitCode,Elapsed,Timelimit,ReqMem,ReqTRES,NodeList",
+        ]
+    )
+    line = next((row for row in out.splitlines() if row.strip()), "")
+    fields = line.split("|")
+    if len(fields) < 7:
+        return {}
+    keys = ("state", "exit_code", "elapsed", "timelimit", "req_mem", "req_tres", "nodelist")
+    return dict(zip(keys, fields, strict=False))
+
+
+def job_maxrss_mb(jobid: str) -> float:
+    """Return the peak MaxRSS across a job's steps in MB (0 if unknown)."""
+    out = _run(["sacct", "-j", jobid, "-n", "-P", "-o", "MaxRSS"])
+    return max((_mem_to_mb(row.strip()) for row in out.splitlines()), default=0.0)
+
+
+def job_output_tail(jobid: str, lines: int = 200) -> str:
+    """Return the tail of a job's stdout log, or empty if it cannot be read."""
+    try:
+        out = _run(["scontrol", "show", "job", jobid])
+    except CommandError:
+        return ""
+    match = re.search(r"StdOut=(\S+)", out)
+    if not match or match.group(1) in ("", "(null)"):
+        return ""
+    try:
+        return _run(["tail", "-n", str(lines), match.group(1)])
+    except CommandError:
+        return ""

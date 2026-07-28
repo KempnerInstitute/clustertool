@@ -401,6 +401,73 @@ def test_gpu_session_plain(monkeypatch):
     assert "--account=LAB" in captured["cmd"]
 
 
+def test_mem_to_mb():
+    assert 2.0 < slurm._mem_to_mb("2136K") < 2.1
+    assert slurm._mem_to_mb("1000G") == 1024000.0
+    assert slurm._mem_to_mb("") == 0.0
+
+
+def test_job_accounting_parsing(monkeypatch):
+    monkeypatch.setattr(
+        slurm, "_run", lambda cmd: "FAILED|1:0|00:14:51|03:00:00|1000G|cpu=96,gres/gpu=8|node01\n"
+    )
+    info = slurm.job_accounting("123")
+    assert info["state"] == "FAILED"
+    assert info["exit_code"] == "1:0"
+    assert info["req_mem"] == "1000G"
+    assert info["nodelist"] == "node01"
+
+
+def test_diagnose_oom_and_timeout():
+    from cluster_tools.commands.jobs.debug import _diagnose
+
+    oom = _diagnose({"state": "OUT_OF_MEMORY", "exit_code": "0:0"}, "")
+    assert any("out of memory" in cause.lower() for cause, _ in oom)
+    timeout = _diagnose({"state": "TIMEOUT", "exit_code": "0:0"}, "")
+    assert any("time limit" in cause.lower() for cause, _ in timeout)
+
+
+def test_diagnose_exit_code_and_log():
+    from cluster_tools.commands.jobs.debug import _diagnose
+
+    findings = _diagnose({"state": "FAILED", "exit_code": "1:0"}, "CUDA out of memory. Tried ...")
+    causes = [cause for cause, _ in findings]
+    assert any("code 1" in cause for cause in causes)
+    assert any("CUDA" in cause for cause in causes)
+
+
+def test_jobs_debug_command(monkeypatch):
+    monkeypatch.setattr(
+        slurm,
+        "job_accounting",
+        lambda jid: {
+            "state": "FAILED",
+            "exit_code": "1:0",
+            "elapsed": "0:14:51",
+            "timelimit": "3:00:00",
+            "req_mem": "1000G",
+            "req_tres": "",
+            "nodelist": "node01",
+        },
+    )
+    monkeypatch.setattr(slurm, "job_maxrss_mb", lambda jid: 2.0)
+    monkeypatch.setattr(
+        slurm, "job_output_tail", lambda jid: "ModuleNotFoundError: no module named x"
+    )
+    result = CliRunner().invoke(main, ["jobs", "debug", "123"])
+    assert result.exit_code == 0
+    assert "FAILED (exit 1:0)" in result.output
+    assert "Exited with non-zero code 1" in result.output
+    assert "module was missing" in result.output
+
+
+def test_jobs_debug_no_record(monkeypatch):
+    monkeypatch.setattr(slurm, "job_accounting", lambda jid: {})
+    result = CliRunner().invoke(main, ["jobs", "debug", "999"])
+    assert result.exit_code != 0
+    assert "No accounting record" in result.output
+
+
 def test_account_members(monkeypatch):
     monkeypatch.setattr(slurm, "account_exists", lambda account: True)
     monkeypatch.setattr(slurm, "account_members", lambda account: ["alice", "bob"])

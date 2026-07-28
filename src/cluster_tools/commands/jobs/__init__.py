@@ -3,6 +3,7 @@
 import click
 
 from cluster_tools.commands.jobs.cancel import cancel
+from cluster_tools.commands.jobs.debug import debug
 from cluster_tools.commands.jobs.history import history
 from cluster_tools.commands.jobs.hold import hold
 from cluster_tools.commands.jobs.list import list_jobs
@@ -48,3 +49,4 @@ jobs.add_command(requeue)
 jobs.add_command(setprio)
 jobs.add_command(submit)
 jobs.add_command(new)
+jobs.add_command(debug)
