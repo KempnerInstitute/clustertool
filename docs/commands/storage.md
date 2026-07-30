@@ -42,7 +42,7 @@ instead.
 - `-n, --top`: How many directories to list with `--scan` (default 10).
 - `--ncdu`: Launch the interactive ncdu explorer on home.
 
-## `storage usage PATH -g GROUP`
+## `storage vast-usage PATH -g GROUP`
 
 Show per-user usage for a group on a VAST filesystem such as `/n/netscratch`
 (via the FASRC `quota` tool). Lists how much each member of GROUP is using under

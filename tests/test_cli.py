@@ -712,9 +712,9 @@ def test_nodes_partitions_filter(monkeypatch):
     assert "other row" not in result.output
 
 
-def test_storage_usage(monkeypatch):
+def test_storage_vast_usage(monkeypatch):
     calls = _capture_stream(monkeypatch)
-    result = CliRunner().invoke(main, ["storage", "usage", "netscratch", "-g", "kempner_dev"])
+    result = CliRunner().invoke(main, ["storage", "vast-usage", "netscratch", "-g", "kempner_dev"])
     assert result.exit_code == 0
     assert calls[0] == ["quota", "--group-user-usage", "kempner_dev", "/n/netscratch"]
 

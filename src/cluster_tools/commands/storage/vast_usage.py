@@ -1,4 +1,4 @@
-"""storage usage command."""
+"""storage vast-usage command."""
 
 import click
 
@@ -7,10 +7,10 @@ from cluster_tools.grouping import keywords
 
 
 @keywords("disk", "space", "du", "consumption")
-@click.command("usage")
+@click.command("vast-usage")
 @click.argument("path")
 @click.option("-g", "--group", required=True, help="Unix group to break usage down by.")
-def usage(path: str, group: str) -> None:
+def vast_usage(path: str, group: str) -> None:
     """Show per-user usage for a group on a VAST filesystem (via the quota tool).
 
     Lists how much each member of GROUP is using under PATH. Works on VAST
