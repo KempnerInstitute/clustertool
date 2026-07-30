@@ -4,7 +4,7 @@ import os
 
 import click
 
-from cluster_tools import process
+from cluster_tools import process, site
 from cluster_tools.grouping import keywords
 from cluster_tools.storage import quota_cmd
 
@@ -42,7 +42,7 @@ def quota(path: str, group: str | None, user: str | None, verbose: bool) -> None
     if path == "home":
         target = os.path.expanduser("~")
     else:
-        target = path if path.startswith("/") else f"/n/{path}"
+        target = path if path.startswith("/") else f"{site.path_prefix()}/{path}"
     code = process.stream(quota_cmd(target, group=group, user=user, verbose=verbose))
     if code:
         raise SystemExit(code)

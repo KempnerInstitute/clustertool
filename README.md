@@ -114,6 +114,13 @@ fairshare` or `clustertools search gpu reservation`.
 | [`storage`](docs/commands/storage.md) | `quota`, `home`, `vast-usage`, `scratch`, `lfs-stripe`, `lfs-inodes` | Filesystem quotas, usage, and striping |
 | [`diag`](docs/commands/diag.md) | `ib`, `nccl`, `nvlink`, `scheduler` | Diagnostics and benchmarks |
 
+## Configuration
+
+clustertools defaults to the Kempner AI Cluster. The cluster-specific values
+(partitions, per-GPU limits, GPU types, account conventions, storage paths) live
+in a config file, so another center runs the same commands by supplying its own.
+See [`docs/configuration.md`](docs/configuration.md).
+
 ## Project layout
 
 ```

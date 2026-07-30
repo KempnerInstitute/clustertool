@@ -2,7 +2,7 @@
 
 import click
 
-from cluster_tools import process
+from cluster_tools import process, site
 from cluster_tools.grouping import keywords
 
 
@@ -23,7 +23,7 @@ def lfs_inodes(path: str) -> None:
     Inputs:
       PATH  A Lustre path, or a bare name that becomes /n/<name>.
     """
-    target = path if path.startswith("/") else f"/n/{path}"
+    target = path if path.startswith("/") else f"{site.path_prefix()}/{path}"
     code = process.stream(["lfs", "df", "-i", target])
     if code:
         raise SystemExit(code)
