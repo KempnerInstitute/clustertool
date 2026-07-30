@@ -159,3 +159,8 @@ def tool(key: str) -> str:
 def tool_available(key: str) -> bool:
     """Return True if the configured binary for a site tool is on PATH."""
     return shutil.which(tool(key)) is not None
+
+
+def disabled_commands() -> list[str]:
+    """Return the command paths a site has turned off."""
+    return list(config().get("commands", {}).get("disable", []))
