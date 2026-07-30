@@ -1,7 +1,7 @@
 [project]
 name = "cluster-tools"
 version = "0.1.0"
-description = "Kempner AI Cluster Tools: a single umbrella CLI for cluster scripts."
+description = "A single umbrella CLI for Slurm cluster tools."
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
