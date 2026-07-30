@@ -712,9 +712,9 @@ def test_nodes_partitions_filter(monkeypatch):
     assert "other row" not in result.output
 
 
-def test_storage_usage(monkeypatch):
+def test_storage_vast_usage(monkeypatch):
     calls = _capture_stream(monkeypatch)
-    result = CliRunner().invoke(main, ["storage", "usage", "netscratch", "-g", "kempner_dev"])
+    result = CliRunner().invoke(main, ["storage", "vast-usage", "netscratch", "-g", "kempner_dev"])
     assert result.exit_code == 0
     assert calls[0] == ["quota", "--group-user-usage", "kempner_dev", "/n/netscratch"]
 
@@ -727,16 +727,16 @@ def test_storage_scratch(monkeypatch):
     assert "90 days" in result.output
 
 
-def test_storage_stripe_get(monkeypatch):
+def test_storage_lfs_stripe_get(monkeypatch):
     calls = _capture_stream(monkeypatch)
-    result = CliRunner().invoke(main, ["storage", "stripe", "/n/holylfs06/x"])
+    result = CliRunner().invoke(main, ["storage", "lfs-stripe", "/n/holylfs06/x"])
     assert result.exit_code == 0
     assert calls[0] == ["lfs", "getstripe", "/n/holylfs06/x"]
 
 
-def test_storage_stripe_set(monkeypatch):
+def test_storage_lfs_stripe_set(monkeypatch):
     calls = _capture_stream(monkeypatch)
-    result = CliRunner().invoke(main, ["storage", "stripe", "/n/holylfs06/x", "-c", "8"])
+    result = CliRunner().invoke(main, ["storage", "lfs-stripe", "/n/holylfs06/x", "-c", "8"])
     assert result.exit_code == 0
     assert calls[0] == ["lfs", "setstripe", "-c", "8", "/n/holylfs06/x"]
 
@@ -1012,9 +1012,9 @@ def test_account_set_fairshare(monkeypatch):
     ]
 
 
-def test_storage_inodes(monkeypatch):
+def test_storage_lfs_inodes(monkeypatch):
     calls = _capture_stream(monkeypatch)
-    result = CliRunner().invoke(main, ["storage", "inodes", "holylfs06"])
+    result = CliRunner().invoke(main, ["storage", "lfs-inodes", "holylfs06"])
     assert result.exit_code == 0
     assert calls[0] == ["lfs", "df", "-i", "/n/holylfs06"]
 
