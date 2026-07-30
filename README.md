@@ -4,9 +4,10 @@
 
 # Cluster Tools
 
-Kempner AI Cluster Tools: a single umbrella CLI (`clustertools`) that
-centralizes the cluster scripts used by both researchers and the engineering
-team, so common tasks live in one place with consistent help and behavior.
+A single umbrella CLI (`clustertools`) that centralizes the Slurm cluster
+scripts used by both researchers and the engineering team, so common tasks live
+in one place with consistent help and behavior. It is built at the Kempner
+Institute and adapts to other clusters through a site config.
 
 Every task is a subcommand under a group (for example `clustertools gpu ...`).
 Each command has `--help` explaining what it does, its use cases, and its
@@ -119,7 +120,8 @@ fairshare` or `clustertools search gpu reservation`.
 clustertools defaults to the Kempner AI Cluster. The cluster-specific values
 (partitions, per-GPU limits, GPU types, account conventions, storage paths) live
 in a config file, so another center runs the same commands by supplying its own.
-See [`docs/configuration.md`](docs/configuration.md).
+See [`docs/configuration.md`](docs/configuration.md) for the config reference and
+[`docs/porting.md`](docs/porting.md) for a step-by-step adoption guide.
 
 ## Project layout
 
