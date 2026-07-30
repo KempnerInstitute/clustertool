@@ -93,7 +93,8 @@ clustertools storage home              # home directory usage and quota
 
 ## Commands
 
-Commands are grouped. The table lists every command. For the full reference of
+Most commands live in a group; a few are top-level (`search`, `completion`,
+`me`). The table below lists each group's commands. For the full reference of
 what each does, its use cases, and inputs, see the linked
 [`docs/commands/<group>.md`](docs/commands/) file, or run
 `clustertools <group> <command> --help`.
@@ -109,7 +110,7 @@ fairshare` or `clustertools search gpu reservation`.
 | Group | Commands | Scope |
 | --- | --- | --- |
 | [`gpu`](docs/commands/gpu.md) | `usage`, `util`, `status`, `avail`, `session`, `monitor-partition`, `monitor-job`, `nvtop`, `pulse` | GPU usage, availability, and sessions |
-| [`jobs`](docs/commands/jobs.md) | `list`, `queue`, `show`, `why`, `top`, `stats`, `scope`, `history`, `log`, `script`, `priorities`, `cancel`, `hold`, `release`, `requeue`, `set-priority`, `submit`, `new`, `debug` | Job queue, status, history, logs, and control |
+| [`jobs`](docs/commands/jobs.md) | `list`, `queue`, `show`, `why`, `top`, `stats`, `scope`, `history`, `log`, `script`, `priorities`, `violators`, `cancel`, `hold`, `release`, `requeue`, `set-priority`, `submit`, `new`, `debug` | Job queue, status, history, logs, and control |
 | [`account`](docs/commands/account.md) | `members`, `fairshare`, `usage`, `limits`, `top-users`, `qos`, `add-user`, `remove-user`, `set-fairshare` | Account membership, fairshare, usage, limits, QOS |
 | [`nodes`](docs/commands/nodes.md) | `list`, `partitions`, `down`, `load`, `reservations`, `resume` | Node, partition, and reservation status |
 | [`storage`](docs/commands/storage.md) | `quota`, `home`, `vast-usage`, `scratch`, `lfs-stripe`, `lfs-inodes` | Filesystem quotas, usage, and striping |
