@@ -68,6 +68,22 @@ total priority and its fairshare, age, and other contributions.
 **Inputs**
 - `PARTITION`: Slurm partition name (e.g. `kempner_h100`).
 
+## `jobs violators PARTITION [--cpus-per-gpu N] [--mem-per-gpu MB]`
+
+List running jobs requesting more CPU or memory per GPU than the norm (via
+`squeue` and `scontrol`). Norms default to the partition's enforced per-GPU
+policy; pass `--cpus-per-gpu` / `--mem-per-gpu` for partitions without a known
+policy. Jobs with no GPUs are not evaluated.
+
+**Use cases**
+- Find jobs hoarding CPU or memory relative to their GPU count.
+- Spot over-requests that block other jobs from a lab's GPUs.
+
+**Inputs**
+- `PARTITION`: Slurm partition name (e.g. `kempner_h100`).
+- `--cpus-per-gpu`: CPU-per-GPU norm (default: the per-partition policy).
+- `--mem-per-gpu`: Memory-per-GPU norm in MB (default: the per-partition policy).
+
 ## `jobs queue PARTITION`
 
 Show a partition's pending jobs in priority order (via `showq`). Unlike
