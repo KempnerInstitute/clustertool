@@ -5,12 +5,12 @@ import os
 
 import click
 
-from cluster_tools import completion, process
-from cluster_tools.grouping import keywords
+from cluster_tools import completion, process, site
+from cluster_tools.grouping import ToolCommand, keywords
 
 
 @keywords("hours", "spend", "cost")
-@click.command("usage")
+@click.command("usage", cls=ToolCommand, tool_key="account_usage")
 @click.argument("account", required=False, shell_complete=completion.complete_accounts)
 @click.option(
     "-d", "--days", type=int, default=30, show_default=True, help="Period length in days."
@@ -47,9 +47,14 @@ def usage(account: str | None, days: int, user: str | None, efficiency: bool) ->
     start = (end_dt - datetime.timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%S")
     end = end_dt.strftime("%Y-%m-%dT%H:%M:%S")
     if efficiency:
-        cmd = ["seff-account", *scope, "-S", start, "-E", end]
+        if not site.tool_available("account_efficiency"):
+            raise click.ClickException(
+                f"--efficiency needs '{site.tool('account_efficiency')}', which was not found. "
+                "Set [tools].account_efficiency in your site config."
+            )
+        cmd = [site.tool("account_efficiency"), *scope, "-S", start, "-E", end]
     else:
-        cmd = ["stotal", *scope, "-S", start, "-E", end, "-d"]
+        cmd = [site.tool("account_usage"), *scope, "-S", start, "-E", end, "-d"]
     code = process.stream(cmd)
     if code:
         raise SystemExit(code)

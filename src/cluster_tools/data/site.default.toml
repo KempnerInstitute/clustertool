@@ -56,3 +56,15 @@ lab_prefix = "kempner_"
 path_prefix = "/n"
 scratch = "/n/netscratch"
 scratch_purge_days = 90
+
+# Site tools each command shells out to. A command whose tool is not on PATH is
+# hidden from help and search. Point a key at your cluster's equivalent binary,
+# or leave it and the command stays hidden where the tool is absent.
+[tools]
+queue = "showq"
+partitions = "spart"
+node_load = "lsload"
+account_usage = "stotal"
+account_efficiency = "seff-account"
+job_stats = "jobstats"
+quota = "quota"

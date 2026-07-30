@@ -5,11 +5,11 @@ import os
 import click
 
 from cluster_tools import process, site
-from cluster_tools.grouping import keywords
+from cluster_tools.grouping import ToolCommand, keywords
 
 
 @keywords("temp", "purge", "netscratch")
-@click.command("scratch")
+@click.command("scratch", cls=ToolCommand, tool_key="quota")
 @click.argument("path", required=False)
 def scratch(path: str | None) -> None:
     """Show networked scratch usage and the purge policy (via the quota tool).
@@ -30,7 +30,7 @@ def scratch(path: str | None) -> None:
     scratch_dir = site.scratch_path()
     path = path or os.environ.get("SCRATCH") or scratch_dir
     target = path if path.startswith("/") else f"{site.path_prefix()}/{path}"
-    code = process.stream(["quota", target])
+    code = process.stream([site.tool("quota"), target])
     click.echo()
     click.echo(
         f"Note: files under {scratch_dir} are deleted after {site.scratch_purge_days()} days "

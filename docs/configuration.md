@@ -38,6 +38,11 @@ The packaged default lists every key with Kempner values; it is the reference:
   AllowAccounts enumerates lab accounts, and the prefix identifying them.
 - `[storage]` `path_prefix`, `scratch`, `scratch_purge_days`: the prefix a bare
   name expands to, the default scratch path, and its auto-purge age.
+- `[tools]`: the binary each tool-backed command runs (`queue`, `partitions`,
+  `node_load`, `account_usage`, `account_efficiency`, `job_stats`, `quota`). A
+  command whose tool is not on PATH is hidden from help and search, so a cluster
+  without `showq` simply does not show `jobs queue`. Point a key at your
+  cluster's equivalent binary, or leave it and the command stays hidden.
 
 ## Example: a second cluster
 
