@@ -43,6 +43,9 @@ The packaged default lists every key with Kempner values; it is the reference:
   command whose tool is not on PATH is hidden from help and search, so a cluster
   without `showq` simply does not show `jobs queue`. Point a key at your
   cluster's equivalent binary, or leave it and the command stays hidden.
+- `[commands]` `disable`: command paths to turn off at this site, e.g.
+  `["jobs scope", "diag nvlink"]`. Disabled commands vanish from help, search,
+  and resolution. Disable a whole group by its name, e.g. `["diag"]`.
 
 ## Example: a second cluster
 
@@ -72,3 +75,14 @@ Point clustertools at it with `export CLUSTERTOOLS_SITE_CONFIG=/path/site.toml`,
 or install it to `/etc/clustertools/site.toml` for everyone. Commands whose data
 the file does not define keep the packaged defaults, so start small and add keys
 as needed.
+
+## Adding commands without forking
+
+A site can ship extra commands in its own package that declares a
+`clustertools.commands` entry point for each top-level command or group:
+
+    [project.entry-points."clustertools.commands"]
+    mycmd = "my_package.cli:mycmd"
+
+clustertools loads them at startup and adds them next to the built-in commands.
+A plugin that fails to import is skipped, so a broken one never breaks the CLI.

@@ -15,7 +15,7 @@ from cluster_tools.commands.me import me
 from cluster_tools.commands.nodes import nodes
 from cluster_tools.commands.search import search
 from cluster_tools.commands.storage import storage
-from cluster_tools.grouping import SectionedGroup
+from cluster_tools.grouping import SectionedGroup, annotate_paths
 from cluster_tools.process import CommandError
 
 
@@ -39,6 +39,17 @@ class ClusterToolsGroup(SectionedGroup):
             raise click.ClickException(str(exc)) from exc
 
 
+def _register_plugins(group: click.Group) -> None:
+    """Add commands published under the clustertools.commands entry point group."""
+    for entry in importlib.metadata.entry_points(group="clustertools.commands"):
+        try:
+            command = entry.load()
+        except Exception:
+            continue
+        if isinstance(command, click.Command):
+            group.add_command(command)
+
+
 @click.group(
     cls=ClusterToolsGroup,
     context_settings={"help_option_names": ["-h", "--help"]},
@@ -58,6 +69,9 @@ main.add_command(diag)
 main.add_command(search)
 main.add_command(completion)
 main.add_command(me)
+
+_register_plugins(main)
+annotate_paths(main)
 
 
 if __name__ == "__main__":

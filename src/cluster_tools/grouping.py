@@ -25,6 +25,14 @@ def keywords(*terms: str) -> Callable[[click.Command], click.Command]:
     return decorator
 
 
+def annotate_paths(group: click.Group, prefix: str = "") -> None:
+    """Record each command's full path so groups can honor the disable list."""
+    for name, command in group.commands.items():
+        command._path = f"{prefix}{name}"
+        if isinstance(command, click.Group):
+            annotate_paths(command, f"{prefix}{name} ")
+
+
 class ToolCommand(click.Command):
     """A command backed by a site tool; hidden and erroring when it is absent."""
 
@@ -62,10 +70,21 @@ class SectionedGroup(click.Group):
 
     aliases: ClassVar[dict[str, str]] = {}
 
+    def list_commands(self, ctx: click.Context) -> list[str]:
+        disabled = site.disabled_commands()
+        names = []
+        for name in super().list_commands(ctx):
+            command = super().get_command(ctx, name)
+            if command is not None and getattr(command, "_path", None) not in disabled:
+                names.append(name)
+        return names
+
     def get_command(self, ctx: click.Context, name: str) -> click.Command | None:
         command = super().get_command(ctx, name)
         if command is None and name in self.aliases:
             command = super().get_command(ctx, self.aliases[name])
+        if command is not None and getattr(command, "_path", None) in site.disabled_commands():
+            return None
         return command
 
     def resolve_command(self, ctx, args):
