@@ -4,10 +4,8 @@ import os
 
 import click
 
-from cluster_tools import process
+from cluster_tools import process, site
 from cluster_tools.grouping import keywords
-
-_PURGE_DAYS = 90
 
 
 @keywords("temp", "purge", "netscratch")
@@ -29,12 +27,13 @@ def scratch(path: str | None) -> None:
     Inputs:
       PATH  Scratch path (default: $SCRATCH, else /n/netscratch).
     """
-    path = path or os.environ.get("SCRATCH") or "/n/netscratch"
-    target = path if path.startswith("/") else f"/n/{path}"
+    scratch_dir = site.scratch_path()
+    path = path or os.environ.get("SCRATCH") or scratch_dir
+    target = path if path.startswith("/") else f"{site.path_prefix()}/{path}"
     code = process.stream(["quota", target])
     click.echo()
     click.echo(
-        f"Note: files under /n/netscratch are deleted after {_PURGE_DAYS} days "
+        f"Note: files under {scratch_dir} are deleted after {site.scratch_purge_days()} days "
         "and are not backed up."
     )
     if code:

@@ -1,10 +1,11 @@
-"""Command-line entry point for Kempner AI Cluster Tools."""
+"""Command-line entry point for the cluster tools CLI."""
 
 import importlib.metadata
 from typing import ClassVar
 
 import click
 
+from cluster_tools import site
 from cluster_tools.commands.account import account
 from cluster_tools.commands.completion import completion
 from cluster_tools.commands.diag import diag
@@ -38,10 +39,14 @@ class ClusterToolsGroup(SectionedGroup):
             raise click.ClickException(str(exc)) from exc
 
 
-@click.group(cls=ClusterToolsGroup, context_settings={"help_option_names": ["-h", "--help"]})
+@click.group(
+    cls=ClusterToolsGroup,
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help=f"{site.site_name()}: a single umbrella for cluster scripts.",
+)
 @click.version_option(version=_version(), prog_name="clustertools")
 def main() -> None:
-    """Kempner AI Cluster Tools: a single umbrella for cluster scripts."""
+    pass
 
 
 main.add_command(gpu)

@@ -2,38 +2,29 @@
 
 import re
 
+from cluster_tools import site
 from cluster_tools.process import CommandError
 from cluster_tools.process import run as _run
 
-BASE_PARTITIONS = ("kempner", "kempner_h100", "kempner_h200", "kempner_rtx")
-REQUEUE_PARTITION = "kempner_requeue"
-BASE_QOS = "kempner_base"
-DEFAULT_CAP = 96
-
-PARTITION_LIMITS = {
-    "kempner": (16, 240000),
-    "kempner_h100": (24, 360000),
-    "kempner_h200": (16, 360000),
-    "kempner_rtx": (16, 180000),
-}
-
-GPU_TYPE_PARTITION = {
-    "a100": "kempner",
-    "h100": "kempner_h100",
-    "h200": "kempner_h200",
-    "rtx": "kempner_rtx",
-}
-
 GPU_STATUS_BUCKETS = ("idle", "mixed", "alloc", "resv", "drain", "down")
 
-_GPU_TYPE_BY_FEATURE = (
-    ("H200", "h200"),
-    ("H100", "h100"),
-    ("A100 MIG", "a100-mig"),
-    ("A100", "a100"),
-    ("RTX", "rtx6000pro"),
-)
-_GPU_TYPE_ORDER = ("A100", "A100 MIG", "H100", "H200", "RTX", "Other")
+_SITE_CONSTANTS = {
+    "BASE_PARTITIONS": "base_partitions",
+    "REQUEUE_PARTITION": "requeue_partition",
+    "BASE_QOS": "base_qos",
+    "DEFAULT_CAP": "default_cap",
+    "PARTITION_LIMITS": "partition_limits",
+    "GPU_TYPE_PARTITION": "gpu_type_partition",
+}
+
+
+def __getattr__(name: str):
+    """Serve site-derived constants dynamically from the active configuration."""
+    accessor = _SITE_CONSTANTS.get(name)
+    if accessor is not None:
+        return getattr(site, accessor)()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 SlurmError = CommandError
 
@@ -94,12 +85,12 @@ def drained_nodes(partition: str) -> list[str]:
 
 def account_cap() -> int:
     """Return the per-account base GPU cap from the base QoS."""
-    out = _run(["sacctmgr", "-nP", "show", "qos", BASE_QOS, "format=MaxTRESPA"])
+    out = _run(["sacctmgr", "-nP", "show", "qos", site.base_qos(), "format=MaxTRESPA"])
     gpus = parse_gpu_count(out)
     if gpus:
         return gpus
     match = _INT_RE.search(out)
-    return int(match.group()) if match else DEFAULT_CAP
+    return int(match.group()) if match else site.default_cap()
 
 
 def account_exists(account: str) -> bool:
@@ -120,10 +111,11 @@ def account_members(account: str) -> list[str]:
 
 
 def priority_partitions() -> list[str]:
-    """Return the live list of Kempner priority partitions."""
+    """Return the live list of priority partitions matching the site pattern."""
     out = _run(["scontrol", "show", "partition"])
     names = re.findall(r"PartitionName=(\S+)", out)
-    return sorted(n for n in names if re.search(r"kempner.*priority", n, re.IGNORECASE))
+    pattern = site.priority_pattern()
+    return sorted(n for n in names if re.search(pattern, n, re.IGNORECASE))
 
 
 def partition_nodes(partition: str) -> list[tuple[str, str]]:
@@ -140,7 +132,7 @@ def partition_nodes(partition: str) -> list[tuple[str, str]]:
 def _gpu_type_from_features(features: str) -> str:
     """Return the GPU type label for a node from its Slurm features."""
     tags = {tag.strip().lower() for tag in features.split(",")}
-    for label, tag in _GPU_TYPE_BY_FEATURE:
+    for label, tag in site.gpu_status_types():
         if tag in tags:
             return label
     return "Other"
@@ -170,7 +162,7 @@ def kempner_gpu_node_status() -> list[tuple[str, dict[str, int]]]:
     mapped to a GPU type from its features and a status bucket from its state.
     Types come back in a fixed order, omitting any with no nodes.
     """
-    out = _run(["sinfo", "-h", "-N", "-p", REQUEUE_PARTITION, "-o", "%N|%t|%f"])
+    out = _run(["sinfo", "-h", "-N", "-p", site.requeue_partition(), "-o", "%N|%t|%f"])
     counts: dict[str, dict[str, int]] = {}
     seen: set[str] = set()
     for line in out.splitlines():
@@ -181,7 +173,8 @@ def kempner_gpu_node_status() -> list[tuple[str, dict[str, int]]]:
         gtype = _gpu_type_from_features(fields[2])
         counts.setdefault(gtype, dict.fromkeys(GPU_STATUS_BUCKETS, 0))
         counts[gtype][_status_bucket(fields[1])] += 1
-    return [(gtype, counts[gtype]) for gtype in _GPU_TYPE_ORDER if gtype in counts]
+    order = [label for label, _ in site.gpu_status_types()] + ["Other"]
+    return [(gtype, counts[gtype]) for gtype in order if gtype in counts]
 
 
 def node_info(node: str) -> dict:

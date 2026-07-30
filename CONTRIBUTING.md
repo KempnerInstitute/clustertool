@@ -32,6 +32,9 @@ lands, so `--help` never shows an empty group.
 - No extra comments in code. A simple docstring is enough.
 - Type-hint public functions.
 - Keep lines within 100 characters (enforced by ruff).
+- Do not hardcode site-specific values (partition names, limits, paths). Add them
+  to `src/cluster_tools/data/site.default.toml` and read them via `cluster_tools.site`
+  (see [docs/configuration.md](docs/configuration.md)).
 
 ## Set up
 

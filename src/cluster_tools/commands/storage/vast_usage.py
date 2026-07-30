@@ -2,7 +2,7 @@
 
 import click
 
-from cluster_tools import process
+from cluster_tools import process, site
 from cluster_tools.grouping import keywords
 
 
@@ -26,7 +26,7 @@ def vast_usage(path: str, group: str) -> None:
       PATH         Filesystem path, or a bare name that becomes /n/<name>.
       -g, --group  Unix group to break usage down by.
     """
-    target = path if path.startswith("/") else f"/n/{path}"
+    target = path if path.startswith("/") else f"{site.path_prefix()}/{path}"
     code = process.stream(["quota", "--group-user-usage", group, target])
     if code:
         raise SystemExit(code)
