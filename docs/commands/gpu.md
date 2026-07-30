@@ -43,14 +43,14 @@ up; Resv is reserved; Drain is draining; Down is offline.
 - See how many nodes of each GPU type are up, drained, or down.
 - Spot fleet health problems before submitting or debugging jobs.
 
-## `gpu avail PARTITION [--cpu-per-gpu N] [--mem-per-gpu MB]`
+## `gpu avail PARTITION [--cpus-per-gpu N] [--mem-per-gpu MB]`
 
 List nodes with GPUs you can actually allocate, most first.
 
 Available GPUs per node are the free GPUs, capped by how many the free CPU and
 memory support at the enforced per-GPU ratio (kempner: 16 CPU / 240 GB;
 kempner_h100: 24 / 360; kempner_h200: 16 / 360; kempner_rtx: 16 / 180). Other
-partitions show raw free GPUs unless `--cpu-per-gpu` / `--mem-per-gpu` are given.
+partitions show raw free GPUs unless `--cpus-per-gpu` / `--mem-per-gpu` are given.
 
 **Use cases**
 - Find where you can actually place a GPU job.
@@ -58,7 +58,7 @@ partitions show raw free GPUs unless `--cpu-per-gpu` / `--mem-per-gpu` are given
 
 **Inputs**
 - `PARTITION`: Slurm partition name (e.g. `kempner_h100`).
-- `--cpu-per-gpu`: Cores per GPU (overrides the per-partition default).
+- `--cpus-per-gpu`: Cores per GPU (overrides the per-partition default).
 - `--mem-per-gpu`: Memory per GPU in MB (overrides the per-partition default).
 
 ## `gpu session GPU_TYPE -A ACCOUNT [-t TIME] [SALLOC_ARG]...`

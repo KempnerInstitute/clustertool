@@ -51,7 +51,7 @@ out to.
 | `jobs hold JOBID...` | user | scontrol | Prevent pending jobs from starting. |
 | `jobs release JOBID...` | user | scontrol | Release held jobs. |
 | `jobs requeue JOBID...` | user | scontrol | Cancel and re-queue jobs. |
-| `jobs setprio JOBID PRIORITY` | admin | scontrol update | Set (pin) a job's scheduling priority. |
+| `jobs set-priority JOBID PRIORITY` | admin | scontrol update | Set (pin) a job's scheduling priority (alias: setprio). |
 | `jobs submit [ARG...]` | user | sbatch | Submit a batch job (passthrough to sbatch). |
 | `jobs new` | user | sbatch | Build (and optionally submit) a Kempner GPU sbatch script. |
 

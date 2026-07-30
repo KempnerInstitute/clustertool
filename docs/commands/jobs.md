@@ -187,10 +187,11 @@ exactly as `scancel` does.
 - `--all`: Cancel every job you own.
 - `--pending`: Cancel only your pending jobs.
 
-## `jobs setprio JOBID PRIORITY`
+## `jobs set-priority JOBID PRIORITY`
 
 Set a job's scheduling priority (via `scontrol update`). Pins the job to the
-given priority, overriding fairshare until it runs. Operator only.
+given priority, overriding fairshare until it runs. Operator only. Also
+available as `jobs setprio`.
 
 **Use cases**
 - Boost a specific job ahead of the queue.

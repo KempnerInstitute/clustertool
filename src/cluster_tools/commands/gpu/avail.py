@@ -10,7 +10,10 @@ from cluster_tools.grouping import keywords
 @click.command("avail")
 @click.argument("partition", shell_complete=completion.complete_partitions)
 @click.option(
-    "--cpu-per-gpu", type=int, default=None, help="Cores per GPU (overrides the partition default)."
+    "--cpus-per-gpu",
+    type=int,
+    default=None,
+    help="Cores per GPU (overrides the partition default).",
 )
 @click.option(
     "--mem-per-gpu",
@@ -18,13 +21,13 @@ from cluster_tools.grouping import keywords
     default=None,
     help="Memory per GPU in MB (overrides the partition default).",
 )
-def avail(partition: str, cpu_per_gpu: int | None, mem_per_gpu: int | None) -> None:
+def avail(partition: str, cpus_per_gpu: int | None, mem_per_gpu: int | None) -> None:
     """List nodes with GPUs you can actually allocate, most first.
 
     Available GPUs per node are the free GPUs, capped by how many the free CPU
     and memory support at the enforced per-GPU ratio (kempner: 16 CPU / 240 GB;
     kempner_h100: 24 / 360; kempner_h200: 16 / 360; kempner_rtx: 16 / 180). Other
-    partitions show raw free GPUs unless --cpu-per-gpu / --mem-per-gpu are given.
+    partitions show raw free GPUs unless --cpus-per-gpu / --mem-per-gpu are given.
 
     \b
     Use cases:
@@ -33,13 +36,13 @@ def avail(partition: str, cpu_per_gpu: int | None, mem_per_gpu: int | None) -> N
 
     \b
     Inputs:
-      PARTITION      Slurm partition name (e.g. kempner_h100).
-      --cpu-per-gpu  Cores per GPU (overrides the per-partition default).
-      --mem-per-gpu  Memory per GPU in MB (overrides the per-partition default).
+      PARTITION       Slurm partition name (e.g. kempner_h100).
+      --cpus-per-gpu  Cores per GPU (overrides the per-partition default).
+      --mem-per-gpu   Memory per GPU in MB (overrides the per-partition default).
     """
     default = slurm.PARTITION_LIMITS.get(partition)
-    if cpu_per_gpu is None and default:
-        cpu_per_gpu = default[0]
+    if cpus_per_gpu is None and default:
+        cpus_per_gpu = default[0]
     if mem_per_gpu is None and default:
         mem_per_gpu = default[1]
 
@@ -51,16 +54,16 @@ def avail(partition: str, cpu_per_gpu: int | None, mem_per_gpu: int | None) -> N
     for node in nodes:
         free_gpu, free_cpu, free_mem = slurm.node_free_resources(node)
         avail_gpu = free_gpu
-        if cpu_per_gpu:
-            avail_gpu = min(avail_gpu, free_cpu // cpu_per_gpu)
+        if cpus_per_gpu:
+            avail_gpu = min(avail_gpu, free_cpu // cpus_per_gpu)
         if mem_per_gpu:
             avail_gpu = min(avail_gpu, int(free_mem // mem_per_gpu))
         if avail_gpu > 0:
             rows.append((node, avail_gpu, free_gpu, free_cpu, round(free_mem / 1024)))
     rows.sort(key=lambda row: row[1], reverse=True)
 
-    if cpu_per_gpu and mem_per_gpu:
-        limit = f"capped by {cpu_per_gpu} CPU / {mem_per_gpu // 1000} GB per GPU"
+    if cpus_per_gpu and mem_per_gpu:
+        limit = f"capped by {cpus_per_gpu} CPU / {mem_per_gpu // 1000} GB per GPU"
     else:
         limit = "raw free; no per-GPU ratio known"
     click.echo(f"Allocatable GPUs on '{partition}' ({limit}), most first")

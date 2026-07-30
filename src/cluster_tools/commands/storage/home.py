@@ -12,10 +12,10 @@ from cluster_tools.storage import humanize_bytes, parse_du_top
 @keywords("disk", "space", "du", "homedir")
 @click.command("home")
 @click.option(
-    "--scan", "-s", is_flag=True, help="Also scan home and list its largest subdirectories."
+    "-s", "--scan", is_flag=True, help="Also scan home and list its largest subdirectories."
 )
 @click.option(
-    "--top", "-n", "top_n", type=int, default=10, show_default=True, help="Directories to list."
+    "-n", "--top", "top_n", type=int, default=10, show_default=True, help="Directories to list."
 )
 @click.option("--ncdu", is_flag=True, help="Launch the interactive ncdu explorer on home instead.")
 def home(scan: bool, top_n: int, ncdu: bool) -> None:

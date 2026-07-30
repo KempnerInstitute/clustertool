@@ -12,9 +12,9 @@ from cluster_tools.storage import quota_cmd
 @keywords("disk", "space", "limit")
 @click.command("quota")
 @click.argument("path")
-@click.option("--group", "-g", help="Group/lab name for the quota lookup.")
-@click.option("--user", "-u", help="User name for the quota lookup.")
-@click.option("--verbose", "-v", is_flag=True, help="Show the underlying quota command.")
+@click.option("-g", "--group", help="Group/lab name for the quota lookup.")
+@click.option("-u", "--user", help="User name for the quota lookup.")
+@click.option("-v", "--verbose", is_flag=True, help="Show the underlying quota command.")
 def quota(path: str, group: str | None, user: str | None, verbose: bool) -> None:
     """Show a storage quota on any filesystem (via the FASRC quota tool).
 

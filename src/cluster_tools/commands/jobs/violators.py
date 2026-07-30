@@ -10,7 +10,7 @@ from cluster_tools.grouping import keywords
 @click.command("violators")
 @click.argument("partition", shell_complete=completion.complete_partitions)
 @click.option(
-    "--cpu-per-gpu", type=int, default=None, help="CPU-per-GPU norm (overrides the default)."
+    "--cpus-per-gpu", type=int, default=None, help="CPU-per-GPU norm (overrides the default)."
 )
 @click.option(
     "--mem-per-gpu",
@@ -18,12 +18,12 @@ from cluster_tools.grouping import keywords
     default=None,
     help="Memory-per-GPU norm in MB (overrides the default).",
 )
-def violators(partition: str, cpu_per_gpu: int | None, mem_per_gpu: int | None) -> None:
+def violators(partition: str, cpus_per_gpu: int | None, mem_per_gpu: int | None) -> None:
     """List running jobs requesting more CPU or memory per GPU than the norm.
 
     Norms default to the per-partition policy (kempner_h100: 24 CPU / 360000 MB
     per GPU; kempner: 16 CPU / 240000 MB per GPU). For other partitions, pass
-    --cpu-per-gpu and --mem-per-gpu. Jobs with no GPUs are not evaluated.
+    --cpus-per-gpu and --mem-per-gpu. Jobs with no GPUs are not evaluated.
 
     \b
     Use cases:
@@ -32,33 +32,33 @@ def violators(partition: str, cpu_per_gpu: int | None, mem_per_gpu: int | None) 
 
     \b
     Inputs:
-      PARTITION      Slurm partition name (e.g. kempner_h100).
-      --cpu-per-gpu  CPU-per-GPU norm (default: per-partition policy).
-      --mem-per-gpu  Memory-per-GPU norm in MB (default: per-partition policy).
+      PARTITION       Slurm partition name (e.g. kempner_h100).
+      --cpus-per-gpu  CPU-per-GPU norm (default: per-partition policy).
+      --mem-per-gpu   Memory-per-GPU norm in MB (default: per-partition policy).
     """
     default = slurm.PARTITION_LIMITS.get(partition)
-    if cpu_per_gpu is None:
-        cpu_per_gpu = default[0] if default else None
+    if cpus_per_gpu is None:
+        cpus_per_gpu = default[0] if default else None
     if mem_per_gpu is None:
         mem_per_gpu = default[1] if default else None
-    if cpu_per_gpu is None or mem_per_gpu is None:
+    if cpus_per_gpu is None or mem_per_gpu is None:
         known = ", ".join(sorted(slurm.PARTITION_LIMITS))
         raise click.ClickException(
             f"unknown partition '{partition}'; known partitions: {known}. "
-            "Pass --cpu-per-gpu and --mem-per-gpu for others."
+            "Pass --cpus-per-gpu and --mem-per-gpu for others."
         )
 
     rows = []
     for jobid, user, cpu, gpu, mem_mb in slurm.running_jobs_reqtres(partition):
         if gpu <= 0:
             continue
-        if cpu / gpu > cpu_per_gpu or mem_mb / gpu > mem_per_gpu:
+        if cpu / gpu > cpus_per_gpu or mem_mb / gpu > mem_per_gpu:
             rows.append((jobid, cpu, gpu, mem_mb, user))
     rows.sort(key=lambda row: row[2], reverse=True)
 
     click.echo(
         f"Jobs over the per-GPU norm on '{partition}' "
-        f"(> {cpu_per_gpu} CPU/GPU or > {mem_per_gpu} MB/GPU)"
+        f"(> {cpus_per_gpu} CPU/GPU or > {mem_per_gpu} MB/GPU)"
     )
     click.echo()
     if not rows:

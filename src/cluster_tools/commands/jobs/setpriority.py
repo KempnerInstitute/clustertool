@@ -1,4 +1,4 @@
-"""jobs setprio command."""
+"""jobs set-priority command."""
 
 import click
 
@@ -7,11 +7,11 @@ from cluster_tools.grouping import admin, keywords
 
 
 @admin
-@keywords("priority", "boost", "bump", "pin")
-@click.command("setprio")
+@keywords("priority", "boost", "bump", "pin", "setprio")
+@click.command("set-priority")
 @click.argument("jobid", shell_complete=completion.complete_job_ids)
 @click.argument("priority", type=int)
-def setprio(jobid: str, priority: int) -> None:
+def set_priority(jobid: str, priority: int) -> None:
     """Set a job's scheduling priority (via scontrol update). Operator only.
 
     Pins the job to the given priority, overriding fairshare until the job runs.

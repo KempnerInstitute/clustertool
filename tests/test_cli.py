@@ -877,7 +877,14 @@ def test_diag_scheduler(monkeypatch):
     assert calls[0] == ["sdiag"]
 
 
-def test_jobs_setprio(monkeypatch):
+def test_jobs_set_priority(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "set-priority", "123", "5000"])
+    assert result.exit_code == 0
+    assert calls[0] == ["scontrol", "update", "jobid=123", "priority=5000"]
+
+
+def test_jobs_setprio_alias(monkeypatch):
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "setprio", "123", "5000"])
     assert result.exit_code == 0
@@ -1175,6 +1182,17 @@ def test_gpu_avail_raw_partition(monkeypatch):
     assert _node_fields(result.output)["n1"][1] == "4"
 
 
+def test_gpu_avail_cpus_per_gpu_override(monkeypatch):
+    monkeypatch.setattr(slurm, "partition_nodes", lambda p: [("n1", "x")])
+    monkeypatch.setattr(slurm, "node_free_resources", lambda node: (8, 40, 1000000))
+    result = CliRunner().invoke(
+        main, ["gpu", "avail", "kempner_eng", "--cpus-per-gpu", "20", "--mem-per-gpu", "100000"]
+    )
+    assert result.exit_code == 0
+    assert "capped by 20 CPU" in result.output
+    assert _node_fields(result.output)["n1"][1] == "2"
+
+
 def test_jobs_violators(monkeypatch):
     jobs = [
         ("101", "alice", 200, 8, 100000),
@@ -1209,10 +1227,19 @@ def test_jobs_violators_unknown_partition(monkeypatch):
 def test_jobs_violators_override(monkeypatch):
     monkeypatch.setattr(slurm, "running_jobs_reqtres", lambda p: [("201", "eve", 100, 2, 10000)])
     result = CliRunner().invoke(
-        main, ["jobs", "violators", "custom", "--cpu-per-gpu", "40", "--mem-per-gpu", "100000"]
+        main, ["jobs", "violators", "custom", "--cpus-per-gpu", "40", "--mem-per-gpu", "100000"]
     )
     assert result.exit_code == 0
     assert "201" in result.output
+
+
+def test_jobs_violators_old_flag_rejected(monkeypatch):
+    monkeypatch.setattr(slurm, "running_jobs_reqtres", lambda p: [])
+    result = CliRunner().invoke(
+        main, ["jobs", "violators", "custom", "--cpu-per-gpu", "40", "--mem-per-gpu", "100000"]
+    )
+    assert result.exit_code != 0
+    assert "no such option" in result.output.lower()
 
 
 def test_account_members_all(monkeypatch):
