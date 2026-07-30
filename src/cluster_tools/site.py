@@ -7,6 +7,7 @@ then the system config, deep-merged over the packaged default.
 """
 
 import os
+import shutil
 from importlib import resources
 from pathlib import Path
 
@@ -148,3 +149,13 @@ def scratch_path() -> str:
 def scratch_purge_days() -> int:
     """Return the scratch auto-purge age in days."""
     return int(config()["storage"]["scratch_purge_days"])
+
+
+def tool(key: str) -> str:
+    """Return the configured binary name for a site tool."""
+    return str(config()["tools"][key])
+
+
+def tool_available(key: str) -> bool:
+    """Return True if the configured binary for a site tool is on PATH."""
+    return shutil.which(tool(key)) is not None

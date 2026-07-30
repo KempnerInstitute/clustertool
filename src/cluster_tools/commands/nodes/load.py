@@ -2,12 +2,12 @@
 
 import click
 
-from cluster_tools import process
-from cluster_tools.grouping import keywords
+from cluster_tools import process, site
+from cluster_tools.grouping import ToolCommand, keywords
 
 
 @keywords("busy", "free", "cpu", "memory")
-@click.command("load")
+@click.command("load", cls=ToolCommand, tool_key="node_load")
 @click.option(
     "-f", "--filter", "name_filter", default=None, help="Only show rows containing this text."
 )
@@ -24,11 +24,11 @@ def load(name_filter: str | None) -> None:
       -f, --filter  Only show rows containing this text (the header is kept).
     """
     if not name_filter:
-        code = process.stream(["lsload"])
+        code = process.stream([site.tool("node_load")])
         if code:
             raise SystemExit(code)
         return
-    lines = process.run(["lsload"]).splitlines()
+    lines = process.run([site.tool("node_load")]).splitlines()
     if lines:
         click.echo(lines[0])
         for line in lines[1:]:

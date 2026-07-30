@@ -6,6 +6,8 @@ from typing import ClassVar
 
 import click
 
+from cluster_tools import site
+
 
 def admin(command: click.Command) -> click.Command:
     """Mark a command as operator-only so help lists it under Admin Commands."""
@@ -21,6 +23,31 @@ def keywords(*terms: str) -> Callable[[click.Command], click.Command]:
         return command
 
     return decorator
+
+
+class ToolCommand(click.Command):
+    """A command backed by a site tool; hidden and erroring when it is absent."""
+
+    def __init__(self, *args, tool_key: str, **kwargs) -> None:
+        self._tool_key = tool_key
+        super().__init__(*args, **kwargs)
+
+    @property
+    def hidden(self) -> bool:
+        return not site.tool_available(self._tool_key)
+
+    @hidden.setter
+    def hidden(self, value: bool) -> None:
+        pass
+
+    def invoke(self, ctx: click.Context):
+        if not site.tool_available(self._tool_key):
+            raise click.ClickException(
+                f"this command needs '{site.tool(self._tool_key)}', which was not found on "
+                f"this host. Install it, or set [tools].{self._tool_key} in your site config "
+                "(see docs/configuration.md)."
+            )
+        return super().invoke(ctx)
 
 
 class SectionedGroup(click.Group):

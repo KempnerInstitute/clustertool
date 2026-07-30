@@ -2,12 +2,12 @@
 
 import click
 
-from cluster_tools import completion, process
-from cluster_tools.grouping import keywords
+from cluster_tools import completion, process, site
+from cluster_tools.grouping import ToolCommand, keywords
 
 
 @keywords("efficiency", "utilization", "performance")
-@click.command("stats")
+@click.command("stats", cls=ToolCommand, tool_key="job_stats")
 @click.argument(
     "jobids",
     nargs=-1,
@@ -27,6 +27,6 @@ def stats(jobids: tuple[str, ...]) -> None:
     Inputs:
       JOBID...  One or more Slurm job ids (e.g. 1234567).
     """
-    code = process.stream(["jobstats", *jobids])
+    code = process.stream([site.tool("job_stats"), *jobids])
     if code:
         raise SystemExit(code)

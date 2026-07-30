@@ -1,5 +1,7 @@
 """Storage quota command construction."""
 
+from cluster_tools import site
+
 
 def parse_du_top(output: str, root: str, top_n: int) -> list[tuple[int, str]]:
     """Return the top-N largest (size_bytes, path) subdirectories from du output."""
@@ -30,7 +32,7 @@ def quota_cmd(
     path: str, group: str | None = None, user: str | None = None, verbose: bool = False
 ) -> list[str]:
     """Return the FASRC quota command for a path, optionally by group or user."""
-    cmd = ["quota"]
+    cmd = [site.tool("quota")]
     if group:
         cmd += ["-g", group]
     if user:

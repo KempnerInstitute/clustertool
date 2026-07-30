@@ -2,12 +2,12 @@
 
 import click
 
-from cluster_tools import process
-from cluster_tools.grouping import keywords
+from cluster_tools import process, site
+from cluster_tools.grouping import ToolCommand, keywords
 
 
 @keywords("queues", "partition", "cores", "spart")
-@click.command("partitions")
+@click.command("partitions", cls=ToolCommand, tool_key="partitions")
 @click.option(
     "-f", "--filter", "name_filter", default=None, help="Only show rows containing this text."
 )
@@ -24,11 +24,11 @@ def partitions(name_filter: str | None) -> None:
       -f, --filter  Only show rows containing this text (the header is kept).
     """
     if not name_filter:
-        code = process.stream(["spart"])
+        code = process.stream([site.tool("partitions")])
         if code:
             raise SystemExit(code)
         return
-    lines = process.run(["spart"]).splitlines()
+    lines = process.run([site.tool("partitions")]).splitlines()
     if lines:
         click.echo(lines[0])
         for line in lines[1:]:

@@ -3,11 +3,11 @@
 import click
 
 from cluster_tools import process, site
-from cluster_tools.grouping import keywords
+from cluster_tools.grouping import ToolCommand, keywords
 
 
 @keywords("disk", "space", "du", "consumption")
-@click.command("vast-usage")
+@click.command("vast-usage", cls=ToolCommand, tool_key="quota")
 @click.argument("path")
 @click.option("-g", "--group", required=True, help="Unix group to break usage down by.")
 def vast_usage(path: str, group: str) -> None:
@@ -27,6 +27,6 @@ def vast_usage(path: str, group: str) -> None:
       -g, --group  Unix group to break usage down by.
     """
     target = path if path.startswith("/") else f"{site.path_prefix()}/{path}"
-    code = process.stream(["quota", "--group-user-usage", group, target])
+    code = process.stream([site.tool("quota"), "--group-user-usage", group, target])
     if code:
         raise SystemExit(code)
