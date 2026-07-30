@@ -1,4 +1,4 @@
-"""storage stripe command."""
+"""storage lfs-stripe command."""
 
 import click
 
@@ -7,12 +7,12 @@ from cluster_tools.grouping import keywords
 
 
 @keywords("lustre", "layout")
-@click.command("stripe")
+@click.command("lfs-stripe")
 @click.argument("path")
 @click.option(
     "-c", "--count", type=int, default=None, help="Set the stripe count for new files in PATH."
 )
-def stripe(path: str, count: int | None) -> None:
+def lfs_stripe(path: str, count: int | None) -> None:
     """Show or set Lustre striping for a path (via lfs).
 
     Without --count, print the current stripe layout (lfs getstripe). With

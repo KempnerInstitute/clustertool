@@ -111,7 +111,7 @@ fairshare` or `clustertools search gpu reservation`.
 | [`jobs`](docs/commands/jobs.md) | `list`, `queue`, `show`, `why`, `top`, `stats`, `scope`, `history`, `log`, `script`, `priorities`, `cancel`, `hold`, `release`, `requeue`, `set-priority`, `submit`, `new`, `debug` | Job queue, status, history, logs, and control |
 | [`account`](docs/commands/account.md) | `members`, `fairshare`, `usage`, `limits`, `top-users`, `qos`, `add-user`, `remove-user`, `set-fairshare` | Account membership, fairshare, usage, limits, QOS |
 | [`nodes`](docs/commands/nodes.md) | `list`, `partitions`, `down`, `load`, `reservations`, `resume` | Node, partition, and reservation status |
-| [`storage`](docs/commands/storage.md) | `quota`, `home`, `usage`, `scratch`, `stripe`, `inodes` | Filesystem quotas, usage, and striping |
+| [`storage`](docs/commands/storage.md) | `quota`, `home`, `usage`, `scratch`, `lfs-stripe`, `lfs-inodes` | Filesystem quotas, usage, and striping |
 | [`diag`](docs/commands/diag.md) | `ib`, `nccl`, `nvlink`, `scheduler` | Diagnostics and benchmarks |
 
 ## Project layout
@@ -129,7 +129,7 @@ src/cluster_tools/
     jobs/             # list, queue, show, why, top, stats, scope, history, log, script, priorities, violators, cancel, hold, release, requeue, set-priority, submit, new, debug
     account/          # members, fairshare, usage, limits, topusers, qos, adduser, removeuser, setfairshare
     nodes/            # list, partitions, down, load, reservations, resume
-    storage/          # quota, home, usage, scratch, stripe, inodes
+    storage/          # quota, home, usage, scratch, lfs-stripe, lfs-inodes
     diag/             # ib, nccl, nvlink, scheduler
 tests/                # unit tests
 docs/commands/        # extended per-group command reference (gpu.md, jobs.md, ...)

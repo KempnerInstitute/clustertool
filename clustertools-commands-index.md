@@ -88,8 +88,8 @@ out to.
 | `storage home` | user | df, du, ncdu | Home directory usage; largest subdirectories with `--scan`. |
 | `storage usage PATH -g GROUP` | user | quota | Per-user usage for a group on a VAST filesystem. |
 | `storage scratch [PATH]` | user | quota | Netscratch usage and the 90-day purge reminder. |
-| `storage stripe PATH [-c N]` | user | lfs | Show or set Lustre striping. |
-| `storage inodes PATH` | user | lfs | Inode capacity and usage for a Lustre filesystem. |
+| `storage lfs-stripe PATH [-c N]` | user | lfs | Show or set Lustre striping. |
+| `storage lfs-inodes PATH` | user | lfs | Inode capacity and usage for a Lustre filesystem. |
 
 ## diag
 

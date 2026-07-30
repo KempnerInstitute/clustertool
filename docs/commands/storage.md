@@ -69,7 +69,7 @@ to `$SCRATCH`, then `/n/netscratch`.
 **Inputs**
 - `PATH`: Scratch path (default: `$SCRATCH`, else `/n/netscratch`).
 
-## `storage stripe PATH [-c COUNT]`
+## `storage lfs-stripe PATH [-c COUNT]`
 
 Show or set Lustre striping for a path (via `lfs`). Without `--count`, print the
 current stripe layout (`lfs getstripe`). With `--count`, set the stripe count
@@ -84,7 +84,7 @@ restriped. Use 8 to 16 for large multi-GB or TB files.
 - `PATH`: A path on a Lustre filesystem (e.g. `/n/holylfs06/...`).
 - `-c, --count`: Stripe count to set for new files under PATH.
 
-## `storage inodes PATH`
+## `storage lfs-inodes PATH`
 
 Show inode capacity and usage for a Lustre filesystem (via `lfs df -i`). PATH
 must be on Lustre (for example `/n/holylfs06`); a bare name like `holylfs06`

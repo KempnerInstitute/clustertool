@@ -1,4 +1,4 @@
-"""storage inodes command."""
+"""storage lfs-inodes command."""
 
 import click
 
@@ -7,9 +7,9 @@ from cluster_tools.grouping import keywords
 
 
 @keywords("files", "count", "lustre")
-@click.command("inodes")
+@click.command("lfs-inodes")
 @click.argument("path")
-def inodes(path: str) -> None:
+def lfs_inodes(path: str) -> None:
     """Show inode capacity and usage for a Lustre filesystem (via lfs df -i).
 
     PATH must be on a Lustre filesystem (for example /n/holylfs06 or
