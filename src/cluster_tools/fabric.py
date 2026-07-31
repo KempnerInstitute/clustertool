@@ -164,6 +164,112 @@ def read_hcas(root: str = "/sys/class/infiniband") -> list[dict]:
     return hcas
 
 
+_TOPO_ROW_RE = re.compile(r"^(GPU|NIC|mlx)\S*", re.IGNORECASE)
+
+
+def _gpu_identity(snapshot: dict) -> list:
+    return [
+        (gpu.get("index"), gpu.get("name"), gpu.get("pci_bus_id"))
+        for gpu in (snapshot.get("gpus") or [])
+    ]
+
+
+def _hca_port_identity(snapshot: dict) -> dict:
+    out = {}
+    for hca in (snapshot.get("ib") or {}).get("hcas") or []:
+        for port in hca.get("ports") or []:
+            key = f"{hca.get('name')}/port{port.get('port')}"
+            out[key] = {f: port.get(f) for f in ("state", "phys_state", "rate", "link_layer")}
+    return out
+
+
+def _netdev_mapping(snapshot: dict) -> list:
+    return sorted(
+        (m.get("hca"), m.get("port"), m.get("netdev")) for m in (snapshot.get("ibdev2netdev") or [])
+    )
+
+
+def _topo_rows(snapshot: dict) -> list:
+    raw = (snapshot.get("topology") or {}).get("raw") or ""
+    return [
+        " ".join(line.split())
+        for line in raw.splitlines()
+        if line.strip() and _TOPO_ROW_RE.match(line.strip())
+    ]
+
+
+def _info_fields(snapshot: dict) -> dict:
+    system = snapshot.get("system") or {}
+    uname = (system.get("uname") or "").split()
+    return {
+        "driver": system.get("nvidia_driver"),
+        "kernel": uname[2] if len(uname) > 2 else None,
+        "cuda": system.get("cuda_runtime"),
+    }
+
+
+def compare_snapshots(golden: dict, current: dict) -> dict:
+    """Identity-field diff of two snapshots: {'hardware': [...], 'informational': [...]}.
+
+    Hardware drift covers GPU inventory, HCA port state/rate/link, the netdev
+    mapping, and the topology matrix. Driver, kernel, and CUDA changes are
+    informational.
+    """
+    hardware: list[str] = []
+    informational: list[str] = []
+
+    current_hcas = (current.get("ib") or {}).get("hcas")
+    if (golden.get("ib") or {}).get("hcas") and not current_hcas:
+        hardware.append("ib section unavailable in current snapshot")
+
+    gpu_g, gpu_c = _gpu_identity(golden), _gpu_identity(current)
+    if gpu_g != gpu_c:
+        hardware.append(f"gpu inventory: golden={gpu_g} current={gpu_c}")
+
+    g_ports, c_ports = _hca_port_identity(golden), _hca_port_identity(current)
+    for key in sorted(set(g_ports) | set(c_ports)):
+        if key not in c_ports:
+            if current_hcas:
+                hardware.append(f"{key}: missing in current snapshot")
+            continue
+        if key not in g_ports:
+            hardware.append(f"{key}: not present in golden snapshot")
+            continue
+        for field in ("state", "phys_state", "rate", "link_layer"):
+            if g_ports[key][field] != c_ports[key][field]:
+                gv, cv = g_ports[key][field], c_ports[key][field]
+                hardware.append(f"{key} {field}: golden={gv} current={cv}")
+
+    map_g, map_c = _netdev_mapping(golden), _netdev_mapping(current)
+    if map_g != map_c:
+        hardware.append(f"ibdev2netdev mapping: golden={map_g} current={map_c}")
+
+    if _topo_rows(golden) != _topo_rows(current):
+        hardware.append("topology matrix rows changed")
+
+    info_g, info_c = _info_fields(golden), _info_fields(current)
+    for field in sorted(info_g):
+        if info_g[field] != info_c[field]:
+            informational.append(f"{field}: golden={info_g[field]} current={info_c[field]}")
+
+    return {"hardware": hardware, "informational": informational}
+
+
+def render_drift(findings: dict, strict: bool) -> str:
+    """Render drift findings as text with a MATCH or DRIFT verdict."""
+    lines = []
+    if findings["hardware"]:
+        lines.append(f"Hardware drift ({len(findings['hardware'])}):")
+        lines.extend("  " + item for item in findings["hardware"])
+    if findings["informational"]:
+        suffix = "" if strict else " (not counted without --strict)"
+        lines.append(f"Informational drift ({len(findings['informational'])}){suffix}:")
+        lines.extend("  " + item for item in findings["informational"])
+    drift = findings["hardware"] or (strict and findings["informational"])
+    lines.append(f"verdict: {'DRIFT' if drift else 'MATCH'}")
+    return "\n".join(lines)
+
+
 # Counters whose non-zero growth signals a fabric problem. Benign traffic
 # counters (port_xmit_data, port_rcv_data) are expected to move and are skipped.
 _ERROR_COUNTERS = frozenset(
