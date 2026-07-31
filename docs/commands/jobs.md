@@ -209,7 +209,7 @@ from resource wait.
 ## `jobs failures [-u USER | -A ACCOUNT | -p PARTITION] [-d DAYS] [-n TOP]`
 
 Summarize finished-job failures over a window (via `sacct`). Classifies terminal
-jobs (completed, failed, oom, timeout, cancelled, node_fail, preempted), reports
+jobs (completed, failed, oom, timeout, canceled, node_fail, preempted), reports
 the failure rate, and ranks the top exit codes, failing job names, failing
 users, and incident nodes.
 

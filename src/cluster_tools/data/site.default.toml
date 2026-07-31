@@ -7,6 +7,8 @@
 
 [site]
 name = "Kempner AI Cluster"
+# Prefix of Slurm pseudo-groups that map to priority/fairshare tiers (not storage).
+slurm_group_prefix = "slurm_group_"
 
 [partitions]
 base = ["kempner", "kempner_h100", "kempner_h200", "kempner_rtx"]
