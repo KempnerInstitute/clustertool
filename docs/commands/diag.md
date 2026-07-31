@@ -38,6 +38,30 @@ skipped.
 - `PARTITION...`: One or more Slurm partition names (e.g. `kempner_h100`).
 - `--parallel`: Maximum parallel ssh checks (default 24).
 
+## `diag io-probe -d TARGET [--size MB] [--meta-files N] [--min-write MBS] [--min-read MBS] [--max-meta-ms MS] [--keep] [--json]`
+
+Probe a filesystem's write/read throughput and metadata latency (not a
+benchmark).
+
+Writes a bounded file (fsync included), re-reads it (page-cache assisted), and
+times create/stat/delete on a batch of small files, against a scratch
+subdirectory of the target. Run it on a compute node (wrap in `srun`) to probe
+from there. Set `--min-write`, `--min-read`, or `--max-meta-ms` to turn it into a
+pass/fail gate. The exit code is 0 report or pass, 1 a gate missed, 3 setup or IO
+error.
+
+**Use cases**
+- Spot-check whether a filesystem is responsive from a node.
+- Gate a job on minimum IO throughput in a health check.
+
+**Inputs**
+- `-d, --dir`: Directory to probe (a scratch subdir is created inside).
+- `--size`: Sequential file size in MB (default 256).
+- `--meta-files`: Metadata batch size (default 100).
+- `--min-write` / `--min-read` / `--max-meta-ms`: Gate thresholds.
+- `--keep`: Keep the scratch subdir.
+- `--json`: Emit the structured result as JSON.
+
 ## `diag nccl [--python PY] [--timeout S] [--dry-run]`
 
 Run a multi-node FSDP NCCL sanity check inside a Slurm allocation.
