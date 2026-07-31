@@ -136,7 +136,7 @@ def wait_times(
             return
         click.echo()
         click.echo(f"by {title}:")
-        click.echo(f"  {'Group':<24}{'N':>6}{'P50':>10}{'P90':>10}{'Max':>10}")
+        click.echo(f"  {'GROUP':<24}{'N':>6}{'P50':>10}{'P90':>10}{'MAX':>10}")
         for name in sorted(groups):
             values = sorted(groups[name])
             click.echo(

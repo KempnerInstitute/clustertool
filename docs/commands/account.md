@@ -34,7 +34,7 @@ priority).
 
 ## `account balance [ACCOUNT] [-n TOP]`
 
-Rank accounts by fair-share balance (via `sshare`): effective usage versus
+Rank accounts by fairshare balance (via `sshare`): effective usage versus
 normalized share. A ratio above 1 means an account is over-served (drawing more
 than its share); below 1 means under-served. Point-in-time only, since `sshare`
 keeps no history.

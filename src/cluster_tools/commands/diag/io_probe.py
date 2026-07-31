@@ -76,7 +76,7 @@ def io_probe(
     and times create/stat/delete on a batch of small files, against a scratch
     subdirectory of the target. Not a benchmark. Run it on a compute node (wrap
     in srun) to probe from there. Set --min-write, --min-read, or --max-meta-ms
-    to turn it into a pass/fail gate. The exit code is 0 report or pass, 1 a gate
+    to turn it into a pass/fail gate. The exit code is 0 report or pass, 2 a gate
     missed, 3 setup or IO error.
 
     \b
@@ -107,4 +107,4 @@ def io_probe(
         click.echo(ioprobe.render_json(metrics, gates, status, reasons))
     else:
         click.echo(ioprobe.render(metrics, status, reasons))
-    ctx.exit(1 if status == "FAIL" else 0)
+    ctx.exit(2 if status == "FAIL" else 0)

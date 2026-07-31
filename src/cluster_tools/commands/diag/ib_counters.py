@@ -20,8 +20,8 @@ def ib_counters(ctx: click.Context, before: str, after: str) -> None:
     Compares the per-port counters in a BEFORE and AFTER snapshot (from diag
     ib-snapshot, bracketing a run). Benign traffic counters are ignored; growth
     on an error-class counter (symbol errors, discards, link recoveries, ...)
-    means the fabric hiccupped. The exit code is 0 no error growth, 1 an
-    error-class counter advanced, 2 a file could not be read.
+    means the fabric hiccupped. The exit code is 0 no error growth, 2 an
+    error-class counter advanced, 3 a file could not be read.
 
     \b
     Use cases:
@@ -38,7 +38,7 @@ def ib_counters(ctx: click.Context, before: str, after: str) -> None:
         after_snap = json.loads(pathlib.Path(after).read_text())
     except (OSError, ValueError) as exc:
         click.echo(f"ib-counters: error: {exc}", err=True)
-        ctx.exit(2)
+        ctx.exit(3)
 
     rows, any_error = fabric.counter_deltas(before_snap, after_snap)
     click.echo(f"{'PORT':<20} {'COUNTER':<40} {'BEFORE':>12} {'AFTER':>12} {'DELTA':>12}")
@@ -48,6 +48,6 @@ def ib_counters(ctx: click.Context, before: str, after: str) -> None:
 
     if any_error:
         click.echo("\nFAIL: error-class counters advanced during the window")
-        ctx.exit(1)
+        ctx.exit(2)
     click.echo("\nOK: no error-class counter growth")
     ctx.exit(0)

@@ -133,10 +133,10 @@ def test_gpu_status_command(monkeypatch):
     )
     result = CliRunner().invoke(main, ["gpu", "status"])
     assert result.exit_code == 0
-    assert "GPU type" in result.output
+    assert "GPU TYPE" in result.output
     assert "A100" in result.output
     assert "28" in result.output
-    assert "Total" in result.output
+    assert "TOTAL" in result.output
 
 
 def test_nodes_list(monkeypatch):
@@ -2118,21 +2118,21 @@ def test_diag_ib_affinity_ok(monkeypatch):
 def test_diag_ib_affinity_warn(monkeypatch):
     monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, _ib_topo("SYS"), ""))
     result = CliRunner().invoke(main, ["diag", "ib-affinity"])
-    assert result.exit_code == 3
+    assert result.exit_code == 1
     assert "WARN" in result.output
 
 
 def test_diag_ib_affinity_fail(monkeypatch):
     monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, _ib_topo("X"), ""))
     result = CliRunner().invoke(main, ["diag", "ib-affinity"])
-    assert result.exit_code == 1
+    assert result.exit_code == 2
     assert "FAIL" in result.output
 
 
 def test_diag_ib_affinity_no_data(monkeypatch):
     monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (127, "", ""))
     result = CliRunner().invoke(main, ["diag", "ib-affinity"])
-    assert result.exit_code == 2
+    assert result.exit_code == 3
 
 
 def test_diag_ib_affinity_snapshot(tmp_path):
@@ -2184,7 +2184,7 @@ def test_diag_ib_counters_error(tmp_path):
     before = _counter_file(tmp_path, "b.json", 0)
     after = _counter_file(tmp_path, "a.json", 7)
     result = CliRunner().invoke(main, ["diag", "ib-counters", before, after])
-    assert result.exit_code == 1
+    assert result.exit_code == 2
     assert "ERROR" in result.output and "FAIL" in result.output
 
 
@@ -2194,7 +2194,7 @@ def test_diag_ib_counters_bad_json(tmp_path):
     after = tmp_path / "a.json"
     after.write_text("{}")
     result = CliRunner().invoke(main, ["diag", "ib-counters", str(before), str(after)])
-    assert result.exit_code == 2
+    assert result.exit_code == 3
 
 
 def _verify_file(tmp_path, name, snap):
@@ -2223,7 +2223,7 @@ def test_diag_ib_verify_drift(tmp_path):
     golden = _verify_file(tmp_path, "g.json", {**base, "gpus": [{"index": 0, "name": "A100"}]})
     current = _verify_file(tmp_path, "c.json", {**base, "gpus": [{"index": 0, "name": "H100"}]})
     result = CliRunner().invoke(main, ["diag", "ib-verify", golden, "--current", current])
-    assert result.exit_code == 1
+    assert result.exit_code == 2
     assert "DRIFT" in result.output
 
 

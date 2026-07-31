@@ -24,8 +24,8 @@ def ib_affinity(ctx: click.Context, snapshot: str | None) -> None:
 
     Each GPU's best link to an InfiniBand NIC should be NODE-level or closer; a
     SYS link (across the CPU interconnect) costs 30-50% of cross-node bandwidth.
-    Run it on a GPU node. The exit code is 0 all NODE or better, 3 a GPU crosses
-    NUMA, 1 a GPU reaches no NIC, 2 probe or parse error.
+    Run it on a GPU node. The exit code is 0 all NODE or better, 1 a GPU crosses
+    NUMA, 2 a GPU reaches no NIC, 3 probe or parse error.
 
     \b
     Use cases:
@@ -43,15 +43,15 @@ def ib_affinity(ctx: click.Context, snapshot: str | None) -> None:
             _code, raw, _err = process.probe(["nvidia-smi", "topo", "-m"])
     except (OSError, ValueError, KeyError) as exc:
         click.echo(f"ib-affinity: error: {exc}", err=True)
-        ctx.exit(2)
+        ctx.exit(3)
 
     if not raw.strip():
         click.echo("ib-affinity: error: no topology data available", err=True)
-        ctx.exit(2)
+        ctx.exit(3)
     matrix = fabric.parse_topo(raw)
     if not matrix:
         click.echo("ib-affinity: error: could not parse topology output", err=True)
-        ctx.exit(2)
+        ctx.exit(3)
 
     rows = fabric.affinity_rows(matrix)
     nic_count = len(next(iter(matrix.values())))
@@ -68,11 +68,11 @@ def ib_affinity(ctx: click.Context, snapshot: str | None) -> None:
 
     if fails:
         click.echo(f"\nFAIL: {fails} GPU(s) reach no NIC")
-        ctx.exit(1)
+        ctx.exit(2)
     if warns:
         click.echo(
             f"\nWARN: {warns} GPU(s) cross a NUMA boundary (expect 30-50% cross-node BW loss)"
         )
-        ctx.exit(3)
+        ctx.exit(1)
     click.echo("\nOK: every GPU is NODE-level or closer to an IB NIC")
     ctx.exit(0)

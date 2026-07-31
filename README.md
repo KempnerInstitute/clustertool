@@ -66,7 +66,7 @@ clustertools --help      # list command groups
 clustertools gpu --help  # list a group's commands
 clustertools search fairshare  # find a command by keyword (also: find, lookup)
 clustertools me                # your jobs, GPUs, and fairshare at a glance
-clustertools me --access       # also: accounts, partitions, and QOS you can submit under
+clustertools me --access       # also: accounts, partitions, and QoS you can submit under
 
 # GPU
 clustertools gpu usage                   # rank every lab by base-partition GPU usage
@@ -118,7 +118,7 @@ fairshare` or `clustertools search gpu reservation`.
 | --- | --- | --- |
 | [`gpu`](docs/commands/gpu.md) | `usage`, `util`, `status`, `avail`, `session`, `monitor-partition`, `monitor-job`, `nvtop`, `pulse` | GPU usage, availability, and sessions |
 | [`jobs`](docs/commands/jobs.md) | `list`, `queue`, `show`, `why`, `top`, `stats`, `scope`, `history`, `log`, `script`, `priorities`, `violators`, `wait-times`, `failures`, `cancel`, `hold`, `release`, `requeue`, `set-priority`, `submit`, `new`, `debug` | Job queue, status, history, logs, and control |
-| [`account`](docs/commands/account.md) | `members`, `fairshare`, `balance`, `usage`, `limits`, `top-users`, `qos`, `add-user`, `remove-user`, `set-fairshare` | Account membership, fairshare, usage, limits, QOS |
+| [`account`](docs/commands/account.md) | `members`, `fairshare`, `balance`, `usage`, `limits`, `top-users`, `qos`, `add-user`, `remove-user`, `set-fairshare` | Account membership, fairshare, usage, limits, QoS |
 | [`nodes`](docs/commands/nodes.md) | `list`, `partitions`, `down`, `load`, `frag`, `reservations`, `resume` | Node, partition, and reservation status |
 | [`storage`](docs/commands/storage.md) | `quota`, `home`, `vast-usage`, `scratch`, `lfs-stripe`, `lfs-inodes` | Filesystem quotas, usage, and striping |
 | [`diag`](docs/commands/diag.md) | `gpu-health`, `ib`, `ib-affinity`, `ib-counters`, `ib-snapshot`, `ib-verify`, `io-probe`, `nccl`, `nvlink`, `scheduler` | Diagnostics and benchmarks |

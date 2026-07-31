@@ -44,8 +44,8 @@ Check GPU-to-IB-NIC NUMA affinity (via `nvidia-smi topo -m`).
 
 Each GPU's best link to an InfiniBand NIC should be `NODE`-level or closer; a
 `SYS` link (across the CPU interconnect) costs 30-50% of cross-node bandwidth.
-Run it on a GPU node. The exit code is 0 all NODE or better, 3 a GPU crosses
-NUMA (WARN), 1 a GPU reaches no NIC (FAIL), 2 probe or parse error.
+Run it on a GPU node. The exit code is 0 all NODE or better, 1 a GPU crosses
+NUMA (WARN), 2 a GPU reaches no NIC (FAIL), 3 probe or parse error.
 
 **Use cases**
 - Confirm every GPU has a same-NUMA path to an IB NIC before a distributed run.
@@ -61,8 +61,8 @@ Diff two `ib-snapshot` files for InfiniBand error-counter growth.
 Compares the per-port counters in a BEFORE and AFTER snapshot (bracket a run with
 two `diag ib-snapshot` captures). Benign traffic counters are shown but ignored;
 growth on an error-class counter (symbol errors, discards, link recoveries, ...)
-means the fabric hiccupped under load. The exit code is 0 no error growth, 1 an
-error-class counter advanced, 2 a file could not be read.
+means the fabric hiccupped under load. The exit code is 0 no error growth, 2 an
+error-class counter advanced, 3 a file could not be read.
 
 **Use cases**
 - Confirm a benchmark did not degrade the fabric.
@@ -99,7 +99,7 @@ Diffs the current snapshot (a fresh probe, or `--current FILE`) against the
 GOLDEN snapshot. Identity fields are compared (GPU inventory, HCA port state and
 rate, netdev mapping, topology); volatile fields (counters, temps) are ignored.
 Driver, kernel, and CUDA changes are informational and count as drift only with
-`--strict`. Bless a baseline with `--save-golden`. The exit code is 0 match, 1
+`--strict`. Bless a baseline with `--save-golden`. The exit code is 0 match, 2
 drift, 3 setup error.
 
 **Use cases**
@@ -122,7 +122,7 @@ Writes a bounded file (fsync included), re-reads it (page-cache assisted), and
 times create/stat/delete on a batch of small files, against a scratch
 subdirectory of the target. Run it on a compute node (wrap in `srun`) to probe
 from there. Set `--min-write`, `--min-read`, or `--max-meta-ms` to turn it into a
-pass/fail gate. The exit code is 0 report or pass, 1 a gate missed, 3 setup or IO
+pass/fail gate. The exit code is 0 report or pass, 2 a gate missed, 3 setup or IO
 error.
 
 **Use cases**

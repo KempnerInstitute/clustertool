@@ -71,9 +71,9 @@ def test_ioprobe_size_rounds_to_one_chunk(tmp_path):
     assert payload["size_mb"] == 4.0
 
 
-def test_ioprobe_impossible_gate_exit_1(tmp_path):
+def test_ioprobe_impossible_gate_exit_2(tmp_path):
     result = _probe(tmp_path, "--min-write", "1e12")
-    assert result.exit_code == 1
+    assert result.exit_code == 2
     assert "FAIL" in result.output
 
 

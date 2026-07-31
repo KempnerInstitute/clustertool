@@ -11,7 +11,7 @@ from cluster_tools.grouping import keywords
 @click.argument("account", required=False, shell_complete=completion.complete_accounts)
 @click.option("-n", "--top", type=int, default=10, show_default=True, help="Rows per ranking.")
 def balance(account: str | None, top: int) -> None:
-    """Rank accounts by fair-share balance: effective usage vs normalized share.
+    """Rank accounts by fairshare balance: effective usage vs normalized share.
 
     A ratio of effective usage to normalized share above 1 means an account is
     over-served (drawing more than its share); below 1 means under-served. Shows
