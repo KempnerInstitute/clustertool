@@ -54,6 +54,24 @@ NUMA (WARN), 1 a GPU reaches no NIC (FAIL), 2 probe or parse error.
 **Inputs**
 - `--snapshot`: Analyze a saved `ib-snapshot` JSON instead of probing the node.
 
+## `diag ib-snapshot [OUTPUT]`
+
+Capture a node's IB and GPU topology and counters as a JSON snapshot (via
+`nvidia-smi`, `ibdev2netdev`, and sysfs).
+
+Probes GPUs, the NVLink status, the GPU-to-NIC topology matrix, and each
+InfiniBand HCA's port state, rate, and error counters into one JSON file, for
+forensic comparison and for diffing across a run. Read-only. Run it on the node.
+Write to OUTPUT, or print to stdout. Feed two snapshots to a counter diff, or one
+to `diag ib-affinity --snapshot`.
+
+**Use cases**
+- Capture a node's fabric state when it goes slow, for later comparison.
+- Bracket a benchmark with two snapshots to check for error-counter growth.
+
+**Inputs**
+- `OUTPUT`: File to write the JSON snapshot to (default: stdout).
+
 ## `diag io-probe -d TARGET [--size MB] [--meta-files N] [--min-write MBS] [--min-read MBS] [--max-meta-ms MS] [--keep] [--json]`
 
 Probe a filesystem's write/read throughput and metadata latency (not a

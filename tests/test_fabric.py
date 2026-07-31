@@ -50,3 +50,42 @@ def test_affinity_rows_verdicts():
     }
     verdicts = {row[0]: row[3] for row in fabric.affinity_rows(matrix)}
     assert verdicts == {"GPU0": "OK", "GPU1": "WARN", "GPU2": "FAIL"}
+
+
+def test_parse_ibdev2netdev():
+    out = "mlx5_0 port 1 ==> ib0 (Up)\nmlx5_1 port 1 ==> em1 (Down)\n"
+    assert fabric.parse_ibdev2netdev(out) == [
+        {"hca": "mlx5_0", "port": 1, "netdev": "ib0", "state": "Up"},
+        {"hca": "mlx5_1", "port": 1, "netdev": "em1", "state": "Down"},
+    ]
+
+
+def test_parse_gpu_csv():
+    out = "0, NVIDIA A100-SXM4-80GB, 00000000:19:00.0, 41, 71.5, 400, 81920, 1024, 1410, 1593\n"
+    gpus = fabric.parse_gpu_csv(out)
+    assert gpus[0]["index"] == 0
+    assert gpus[0]["name"] == "NVIDIA A100-SXM4-80GB"
+    assert gpus[0]["temp_c"] == 41.0
+    assert gpus[0]["memory_total_mib"] == 81920
+    assert fabric.parse_gpu_csv("short, row\n") == []
+
+
+def test_read_hcas(tmp_path):
+    port_dir = tmp_path / "mlx5_0" / "ports" / "1"
+    (port_dir / "counters").mkdir(parents=True)
+    (port_dir / "state").write_text("4: ACTIVE\n")
+    (port_dir / "rate").write_text("400 Gb/sec (4X NDR)\n")
+    (port_dir / "link_layer").write_text("InfiniBand\n")
+    (port_dir / "counters" / "symbol_error").write_text("0\n")
+    (port_dir / "counters" / "port_rcv_errors").write_text("3\n")
+    hcas = fabric.read_hcas(str(tmp_path))
+    assert len(hcas) == 1 and hcas[0]["name"] == "mlx5_0"
+    port = hcas[0]["ports"][0]
+    assert port["port"] == 1
+    assert port["state"] == "4: ACTIVE"
+    assert port["rate"] == "400 Gb/sec (4X NDR)"
+    assert port["counters"] == {"port_rcv_errors": 3, "symbol_error": 0}
+
+
+def test_read_hcas_missing_root():
+    assert fabric.read_hcas("/nonexistent-ib-root-xyz") == []
