@@ -2157,3 +2157,41 @@ def test_diag_ib_snapshot_file(monkeypatch, tmp_path):
     assert result.exit_code == 0
     assert json.loads(out.read_text())["hostname"] == "n1"
     assert "wrote" in result.output
+
+
+def _counter_file(tmp_path, name, value):
+    snap = {
+        "ib": {
+            "hcas": [
+                {"name": "mlx5_0", "ports": [{"port": 1, "counters": {"symbol_error": value}}]}
+            ]
+        }
+    }
+    path = tmp_path / name
+    path.write_text(json.dumps(snap))
+    return str(path)
+
+
+def test_diag_ib_counters_ok(tmp_path):
+    before = _counter_file(tmp_path, "b.json", 0)
+    after = _counter_file(tmp_path, "a.json", 0)
+    result = CliRunner().invoke(main, ["diag", "ib-counters", before, after])
+    assert result.exit_code == 0
+    assert "OK" in result.output
+
+
+def test_diag_ib_counters_error(tmp_path):
+    before = _counter_file(tmp_path, "b.json", 0)
+    after = _counter_file(tmp_path, "a.json", 7)
+    result = CliRunner().invoke(main, ["diag", "ib-counters", before, after])
+    assert result.exit_code == 1
+    assert "ERROR" in result.output and "FAIL" in result.output
+
+
+def test_diag_ib_counters_bad_json(tmp_path):
+    before = tmp_path / "b.json"
+    before.write_text("not json")
+    after = tmp_path / "a.json"
+    after.write_text("{}")
+    result = CliRunner().invoke(main, ["diag", "ib-counters", str(before), str(after)])
+    assert result.exit_code == 2

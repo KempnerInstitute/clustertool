@@ -118,7 +118,7 @@ fairshare` or `clustertools search gpu reservation`.
 | [`account`](docs/commands/account.md) | `members`, `fairshare`, `balance`, `usage`, `limits`, `top-users`, `qos`, `add-user`, `remove-user`, `set-fairshare` | Account membership, fairshare, usage, limits, QOS |
 | [`nodes`](docs/commands/nodes.md) | `list`, `partitions`, `down`, `load`, `frag`, `reservations`, `resume` | Node, partition, and reservation status |
 | [`storage`](docs/commands/storage.md) | `quota`, `home`, `vast-usage`, `scratch`, `lfs-stripe`, `lfs-inodes` | Filesystem quotas, usage, and striping |
-| [`diag`](docs/commands/diag.md) | `gpu-health`, `ib`, `ib-affinity`, `ib-snapshot`, `io-probe`, `nccl`, `nvlink`, `scheduler` | Diagnostics and benchmarks |
+| [`diag`](docs/commands/diag.md) | `gpu-health`, `ib`, `ib-affinity`, `ib-counters`, `ib-snapshot`, `io-probe`, `nccl`, `nvlink`, `scheduler` | Diagnostics and benchmarks |
 | [`qos`](docs/commands/qos.md) | `holders`, `create`, `modify`, `delete`, `grant`, `revoke`, `retire`, `sync` | QoS holders and (admin) provisioning and assignment |
 
 ## Configuration
@@ -149,7 +149,7 @@ src/cluster_tools/
     account/          # members, fairshare, balance, usage, limits, topusers, qos, adduser, removeuser, setfairshare
     nodes/            # list, partitions, down, load, frag, reservations, resume
     storage/          # quota, home, vast-usage, scratch, lfs-stripe, lfs-inodes
-    diag/             # gpu_health, ib, ib_affinity, ib_snapshot, io_probe, nccl, nvlink, scheduler
+    diag/             # gpu_health, ib, ib_affinity, ib_counters, ib_snapshot, io_probe, nccl, nvlink, scheduler
     qos/              # holders, create, modify, delete, grant, revoke, retire, sync
 tests/                # unit tests
 docs/commands/        # extended per-group command reference (gpu.md, jobs.md, ...)
