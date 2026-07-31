@@ -4,7 +4,7 @@ import os
 
 import click
 
-from cluster_tools import slurm, storage
+from cluster_tools import site, slurm, storage
 from cluster_tools.grouping import keywords
 
 
@@ -27,7 +27,8 @@ def _show_access(user: str) -> None:
         click.echo(f"  {'ACCOUNT':<{acct_w}}  {'PARTITION':<{part_w}}  QOS")
         for account, partition, qos in sorted(associations):
             click.echo(f"  {account:<{acct_w}}  {(partition or '(any)'):<{part_w}}  {qos or '-'}")
-    tiers = sorted(g for g in storage.user_groups(user) if g.startswith("slurm_group_"))
+    prefix = site.slurm_group_prefix()
+    tiers = sorted(group for group in storage.user_groups(user) if group.startswith(prefix))
     if tiers:
         click.echo("")
         click.echo("Slurm priority tiers")

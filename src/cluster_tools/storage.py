@@ -110,12 +110,13 @@ def lab_targets(
 ) -> list[tuple[str, str]]:
     """Return (path, group) for each of the user's lab dirs found under the roots.
 
-    slurm_group_* pseudo-groups are skipped, and each path appears once.
+    Slurm priority-tier pseudo-groups are skipped, and each path appears once.
     """
+    prefix = site.slurm_group_prefix()
     targets = []
     seen = set()
     for group in groups:
-        if group.startswith("slurm_group_"):
+        if group.startswith(prefix):
             continue
         for root in roots:
             path = f"{root}/{group}"

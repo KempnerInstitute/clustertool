@@ -11,13 +11,13 @@ from cluster_tools.grouping import keywords
 
 _FIELDS = "JobIDRaw,User,Account,Partition,State,ExitCode,Elapsed,NodeList,JobName"
 _TIME_FMT = "%Y-%m-%dT%H:%M:%S"
-_FAILURE = ("failed", "oom", "timeout", "node_fail", "cancelled", "preempted")
+_FAILURE = ("failed", "oom", "timeout", "node_fail", "canceled", "preempted")
 _CLASSES = (
     ("OUT_OF_MEMORY", "oom"),
     ("TIMEOUT", "timeout"),
     ("NODE_FAIL", "node_fail"),
     ("PREEMPTED", "preempted"),
-    ("CANCELLED", "cancelled"),
+    ("CANCELLED", "canceled"),
     ("FAILED", "failed"),
     ("COMPLETED", "completed"),
 )
@@ -66,7 +66,7 @@ def failures(
 ) -> None:
     """Summarize finished-job failures over a window (via sacct).
 
-    Classifies terminal jobs (completed / failed / oom / timeout / cancelled /
+    Classifies terminal jobs (completed / failed / oom / timeout / canceled /
     node_fail / preempted), reports the failure rate, and ranks the top exit
     codes, failing job names, failing users, and incident nodes.
 
