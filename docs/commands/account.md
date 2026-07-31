@@ -86,16 +86,19 @@ Rank an account's members by RawUsage (via `sshare`), highest first.
 **Inputs**
 - `ACCOUNT`: Slurm account (e.g. `kempner_dev`).
 
-## `account qos [-f TEXT]`
+## `account qos [-f TEXT] [-l]`
 
 List QOS definitions and their limits (via `sacctmgr`): priority, max wall time,
-and TRES limits including the per-user and total GPU caps.
+and TRES limits including the per-user and total GPU caps. With `--long`, add the
+per-user job-count, submit, Flags, Preempt, and UsageFactor columns.
 
 **Use cases**
 - See the GPU cap and priority of a partition's QOS.
+- Inspect preemption and flags with `--long`.
 
 **Inputs**
 - `-f, --filter`: Only show rows containing this text (the header is kept).
+- `-l, --long`: Show the full field set instead of the compact one.
 
 ## `account add-user USER ACCOUNT`
 

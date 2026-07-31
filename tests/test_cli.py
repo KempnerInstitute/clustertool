@@ -981,6 +981,14 @@ def test_account_qos_filter(monkeypatch):
     assert "normal" not in result.output
 
 
+def test_account_qos_long(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["account", "qos", "--long"])
+    assert result.exit_code == 0
+    fmt = calls[0][-1]
+    assert "Flags" in fmt and "Preempt" in fmt and "UsageFactor" in fmt and "MaxSubmitPU" in fmt
+
+
 def test_account_add_user(monkeypatch):
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["account", "add-user", "alice", "kempner_dev", "-y"])
