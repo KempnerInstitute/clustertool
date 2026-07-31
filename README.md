@@ -110,9 +110,9 @@ fairshare` or `clustertools search gpu reservation`.
 | Group | Commands | Scope |
 | --- | --- | --- |
 | [`gpu`](docs/commands/gpu.md) | `usage`, `util`, `status`, `avail`, `session`, `monitor-partition`, `monitor-job`, `nvtop`, `pulse` | GPU usage, availability, and sessions |
-| [`jobs`](docs/commands/jobs.md) | `list`, `queue`, `show`, `why`, `top`, `stats`, `scope`, `history`, `log`, `script`, `priorities`, `violators`, `cancel`, `hold`, `release`, `requeue`, `set-priority`, `submit`, `new`, `debug` | Job queue, status, history, logs, and control |
+| [`jobs`](docs/commands/jobs.md) | `list`, `queue`, `show`, `why`, `top`, `stats`, `scope`, `history`, `log`, `script`, `priorities`, `violators`, `wait-times`, `failures`, `cancel`, `hold`, `release`, `requeue`, `set-priority`, `submit`, `new`, `debug` | Job queue, status, history, logs, and control |
 | [`account`](docs/commands/account.md) | `members`, `fairshare`, `usage`, `limits`, `top-users`, `qos`, `add-user`, `remove-user`, `set-fairshare` | Account membership, fairshare, usage, limits, QOS |
-| [`nodes`](docs/commands/nodes.md) | `list`, `partitions`, `down`, `load`, `reservations`, `resume` | Node, partition, and reservation status |
+| [`nodes`](docs/commands/nodes.md) | `list`, `partitions`, `down`, `load`, `frag`, `reservations`, `resume` | Node, partition, and reservation status |
 | [`storage`](docs/commands/storage.md) | `quota`, `home`, `vast-usage`, `scratch`, `lfs-stripe`, `lfs-inodes` | Filesystem quotas, usage, and striping |
 | [`diag`](docs/commands/diag.md) | `ib`, `nccl`, `nvlink`, `scheduler` | Diagnostics and benchmarks |
 
@@ -136,9 +136,9 @@ src/cluster_tools/
   data/               # bundled payloads (monitor sample, nccl test, nvlink .cu)
   commands/           # one package per group; one file per command
     gpu/              # usage, util, status, avail, session, monitor_partition, monitor_job, nvtop, pulse
-    jobs/             # list, queue, show, why, top, stats, scope, history, log, script, priorities, violators, cancel, hold, release, requeue, set-priority, submit, new, debug
+    jobs/             # list, queue, show, why, top, stats, scope, history, log, script, priorities, violators, wait-times, failures, cancel, hold, release, requeue, set-priority, submit, new, debug
     account/          # members, fairshare, usage, limits, topusers, qos, adduser, removeuser, setfairshare
-    nodes/            # list, partitions, down, load, reservations, resume
+    nodes/            # list, partitions, down, load, frag, reservations, resume
     storage/          # quota, home, vast-usage, scratch, lfs-stripe, lfs-inodes
     diag/             # ib, nccl, nvlink, scheduler
 tests/                # unit tests

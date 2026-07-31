@@ -436,3 +436,80 @@ def job_output_tail(jobid: str, lines: int = 200) -> str:
         return _run(["tail", "-n", str(lines), match.group(1)])
     except CommandError:
         return ""
+
+
+_BAD_NODE_STATES = ("DOWN", "DRAIN", "MAINT", "NOT_RESPONDING")
+
+
+def _node_kv(line: str) -> dict[str, str]:
+    """Return the key=value tokens on one scontrol -o line."""
+    return dict(token.split("=", 1) for token in line.split() if "=" in token)
+
+
+def _int_field(value: str | None) -> int:
+    """Return an integer field value, or 0 when absent or non-numeric."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def node_capacity() -> list[dict]:
+    """Return free CPU/GPU/memory and partitions per node from one scontrol pass.
+
+    Each row has name, partitions, state, available (False for down/drain/maint
+    nodes), cpu_free, mem_free_mb, gpu_tot, and gpu_free.
+    """
+    out = _run(["scontrol", "show", "node", "-o"])
+    rows: list[dict] = []
+    for line in out.splitlines():
+        if not line.strip():
+            continue
+        kv = _node_kv(line)
+        name = kv.get("NodeName")
+        if not name:
+            continue
+        state = kv.get("State", "")
+        gpu_tot = parse_gpu_count(kv.get("CfgTRES", ""))
+        gpu_alloc = parse_gpu_count(kv.get("AllocTRES", ""))
+        rows.append(
+            {
+                "name": name,
+                "partitions": [p for p in kv.get("Partitions", "").split(",") if p],
+                "state": state,
+                "available": not any(bad in state.upper() for bad in _BAD_NODE_STATES),
+                "cpu_free": _int_field(kv.get("CPUTot")) - _int_field(kv.get("CPUAlloc")),
+                "mem_free_mb": _int_field(kv.get("RealMemory")) - _int_field(kv.get("AllocMem")),
+                "gpu_tot": gpu_tot,
+                "gpu_free": max(0, gpu_tot - gpu_alloc),
+            }
+        )
+    return rows
+
+
+def sacct_window_rows(
+    fields: str,
+    start: str,
+    end: str,
+    user: str | None = None,
+    account: str | None = None,
+    partition: str | None = None,
+) -> list[list[str]]:
+    """Return split sacct rows for a window, scoped by user, account, or partition."""
+    cmd = ["sacct", "-X", "-n", "-P", "-o", fields, "-S", start, "-E", end]
+    if account:
+        cmd += ["-A", account, "-a"]
+    elif partition:
+        cmd += ["-r", partition, "-a"]
+    elif user:
+        cmd += ["-u", user]
+    out = _run(cmd)
+    return [line.split("|") for line in out.splitlines() if line.strip()]
+
+
+def percentile(sorted_values: list[int], pct: int) -> int | None:
+    """Return the nearest-rank percentile of a pre-sorted list, or None if empty."""
+    if not sorted_values:
+        return None
+    rank = max(1, (pct * len(sorted_values) + 99) // 100)
+    return sorted_values[rank - 1]
