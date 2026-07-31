@@ -105,6 +105,15 @@ out to.
 | `diag nvlink` | user | nvcc, NCCL | Saturate a node's NVLink fabric with NCCL all-reduce. |
 | `diag scheduler` | user | sdiag | Slurm scheduler diagnostics (cycle, backfill, queue depth). |
 
+## qos
+
+| Command | Scope | Wraps | Description |
+| --- | --- | --- | --- |
+| `qos holders QOS_NAME` | user | sacctmgr | Users and partitions that hold a QoS (`--by` user/partition). |
+| `qos create QOS_NAME` | admin | sacctmgr | Create or update a QoS's TRES limits (dry run unless `--execute`). |
+| `qos modify QOS_NAME` | admin | sacctmgr | Change an existing QoS's TRES limits (dry run unless `--execute`). |
+| `qos delete QOS_NAME` | admin | sacctmgr | Delete a QoS definition, refusing while it is held (dry run default). |
+
 ---
 
 Keep this index in sync when adding or changing a command (see
