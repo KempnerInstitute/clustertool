@@ -3,7 +3,7 @@
 Storage quotas, usage, and Lustre striping. Run `clustertools storage --help` to list
 these commands.
 
-## `storage quota PATH [-g GROUP | -u USER] [-v]`
+## `storage quota [PATH] [-g GROUP | -u USER] [-a] [--fleet LAB] [-v]`
 
 Show a storage quota on any filesystem (via the FASRC `quota` tool).
 
@@ -13,15 +13,22 @@ on. Use `--group` for a lab's quota or `--user` for a user's; with neither, the
 quota tool infers from the path. A bare name like `holylfs06` becomes
 `/n/holylfs06`.
 
+With `--all`, PATH is optional and the command reports every lab directory you
+belong to (auto-detected from your Unix groups across the site's lab roots) as a
+`USED / QUOTA / DISK% / FILES%` table. With `--fleet LAB` and a filesystem PATH,
+it reports every `LAB*` directory on that filesystem, sorted by usage.
+
 **Use cases**
 - Lab quota on scratch: `storage quota netscratch -g kempner_dev`
-- Lab quota on Lustre: `storage quota holylfs06 -g kempner_dev`
-- Your own usage: `storage quota holystore01 -u $USER`
+- Your lab dirs at a glance: `storage quota --all`
+- Fleet view of one filesystem: `storage quota holylfs06 --fleet kempner`
 
 **Inputs**
-- `PATH`: Filesystem path, or a bare name that becomes `/n/<name>`.
+- `PATH`: Filesystem path, or a bare name that becomes `/n/<name>`. Optional with `--all`.
 - `-g, --group`: Group/lab name for the lookup.
-- `-u, --user`: User name for the lookup.
+- `-u, --user`: User for the lookup (also whose labs `--all` reports).
+- `-a, --all`: Report every lab directory you belong to as a table.
+- `--fleet LAB`: With a filesystem PATH, report every `LAB*` directory on it, by usage.
 - `-v, --verbose`: Show the underlying quota command.
 
 ## `storage home [--scan] [--top N] [--ncdu]`
