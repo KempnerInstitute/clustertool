@@ -29,7 +29,7 @@ def util(partitions: tuple[str, ...]) -> None:
       PARTITION...  One or more partitions (default: the Kempner base partitions).
     """
     targets = list(partitions) or list(slurm.BASE_PARTITIONS)
-    click.echo(f"{'Partition':<16}{'Total':>7}{'Down':>7}{'Avail':>7}{'Used':>7}{'Util':>8}")
+    click.echo(f"{'PARTITION':<16}{'TOTAL':>7}{'DOWN':>7}{'AVAIL':>7}{'USED':>7}{'UTIL':>8}")
     for partition in targets:
         total, down, avail, used, pct = slurm.partition_gpu_util(partition)
         click.echo(f"{partition:<16}{total:>7}{down:>7}{avail:>7}{used:>7}{pct:>7.1f}%")

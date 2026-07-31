@@ -64,6 +64,6 @@ def violators(partition: str, cpus_per_gpu: int | None, mem_per_gpu: int | None)
     if not rows:
         click.echo("  (no jobs over the norm)")
         return
-    click.echo(f"  {'JobID':<14} {'#CPU':>5} {'#GPU':>5} {'Memory(MB)':>12} {'User':<16}")
+    click.echo(f"  {'JOBID':<14} {'#CPU':>5} {'#GPU':>5} {'MEMORY(MB)':>12} {'USER':<16}")
     for jobid, cpu, gpu, mem_mb, user in rows:
         click.echo(f"  {jobid:<14} {cpu:>5} {gpu:>5} {mem_mb:>12} {user:<16}")

@@ -38,7 +38,7 @@ def _all_labs() -> None:
     totals = slurm.gpu_by_account(slurm.BASE_PARTITIONS)
 
     click.echo(
-        f"Base-partition GPU usage by account (counts toward the {cap}-GPU cap) -- highest first"
+        f"Base-partition GPU usage by account (counts toward the {cap}-GPU cap) - highest first"
     )
     click.echo()
     if not totals:
@@ -58,24 +58,24 @@ def _one_lab(account: str) -> None:
         raise click.ClickException(f"account '{account}' not found")
 
     cap = slurm.account_cap()
-    click.echo(f"Lab GPU usage (running jobs) -- account: {account}")
+    click.echo(f"Lab GPU usage (running jobs) - account: {account}")
     click.echo()
     _section(
-        f"Base partitions -- COUNT toward the {cap}-GPU account cap",
+        f"Base partitions - COUNT toward the {cap}-GPU account cap",
         account,
         slurm.BASE_PARTITIONS,
         in_cap=True,
         cap=cap,
     )
     _section(
-        "Priority partitions -- additive (outside the cap)",
+        "Priority partitions - additive (outside the cap)",
         account,
         slurm.priority_partitions(),
         in_cap=False,
         cap=cap,
     )
     _section(
-        "kempner_requeue -- additive (outside the cap)",
+        "kempner_requeue - additive (outside the cap)",
         account,
         [slurm.REQUEUE_PARTITION],
         in_cap=False,
@@ -116,5 +116,5 @@ def _section(title: str, account: str, partitions, in_cap: bool, cap: int) -> No
                 "(MaxGRESPerAccount)"
             )
     else:
-        click.echo(f"  ACCOUNT TOTAL: {total} GPU  (additive -- NOT counted toward the {cap} cap)")
+        click.echo(f"  ACCOUNT TOTAL: {total} GPU  (additive - NOT counted toward the {cap} cap)")
     click.echo()

@@ -13,7 +13,7 @@ def why(jobid: str) -> None:
     """Explain a job's priority and, if pending, why it is waiting.
 
     Prints the job state and pending reason (from squeue), then the priority
-    factor breakdown (from sprio): fairshare, age, partition, QOS, and so on.
+    factor breakdown (from sprio): fairshare, age, partition, QoS, and so on.
 
     \b
     Use cases:

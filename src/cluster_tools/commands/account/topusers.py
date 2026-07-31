@@ -31,6 +31,6 @@ def top_users(account: str) -> None:
     if not usage:
         click.echo(f"No usage rows for account '{account}'.")
         return
-    click.echo(f"{'User':<18}{'RawUsage':>16}")
+    click.echo(f"{'USER':<18}{'RAWUSAGE':>16}")
     for user, raw in sorted(usage.items(), key=lambda kv: kv[1], reverse=True):
         click.echo(f"{user:<18}{raw:>16}")

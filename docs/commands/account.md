@@ -34,7 +34,7 @@ priority).
 
 ## `account balance [ACCOUNT] [-n TOP]`
 
-Rank accounts by fair-share balance (via `sshare`): effective usage versus
+Rank accounts by fairshare balance (via `sshare`): effective usage versus
 normalized share. A ratio above 1 means an account is over-served (drawing more
 than its share); below 1 means under-served. Point-in-time only, since `sshare`
 keeps no history.
@@ -65,11 +65,11 @@ summary instead. Querying accounts you do not belong to needs operator rights.
 
 ## `account limits [ACCOUNT] [-u USER]`
 
-Show account associations: QOS, partitions, priority, and TRES limits (via
+Show account associations: QoS, partitions, priority, and TRES limits (via
 `sacctmgr`). With an ACCOUNT, show that account's associations; otherwise yours.
 
 **Use cases**
-- See which QOS and partitions an account may use.
+- See which QoS and partitions an account may use.
 - Check configured TRES limits for a lab.
 
 **Inputs**
@@ -88,12 +88,12 @@ Rank an account's members by RawUsage (via `sshare`), highest first.
 
 ## `account qos [-f TEXT] [-l]`
 
-List QOS definitions and their limits (via `sacctmgr`): priority, max wall time,
+List QoS definitions and their limits (via `sacctmgr`): priority, max wall time,
 and TRES limits including the per-user and total GPU caps. With `--long`, add the
 per-user job-count, submit, Flags, Preempt, and UsageFactor columns.
 
 **Use cases**
-- See the GPU cap and priority of a partition's QOS.
+- See the GPU cap and priority of a partition's QoS.
 - Inspect preemption and flags with `--long`.
 
 **Inputs**

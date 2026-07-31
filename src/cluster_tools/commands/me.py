@@ -21,7 +21,7 @@ def _show_access(user: str) -> None:
             click.echo(f"  {account}{tag}")
     if associations:
         click.echo("")
-        click.echo("Where you can submit (account -> partition -> QOS)")
+        click.echo("Where you can submit (account -> partition -> QoS)")
         acct_w = max(len("ACCOUNT"), max(len(a) for a, _, _ in associations))
         part_w = max(len("PARTITION"), max(len(p or "(any)") for _, p, _ in associations))
         click.echo(f"  {'ACCOUNT':<{acct_w}}  {'PARTITION':<{part_w}}  QOS")
@@ -40,14 +40,14 @@ def _show_access(user: str) -> None:
 @click.command("me")
 @click.option("-u", "--user", default=None, help="Show another user instead of yourself.")
 @click.option(
-    "-a", "--access", is_flag=True, help="Also show what you can access: accounts, partitions, QOS."
+    "-a", "--access", is_flag=True, help="Also show what you can access: accounts, partitions, QoS."
 )
 def me(user: str | None, access: bool) -> None:
     """Show a personal overview: your jobs, GPUs in use, and fairshare standing.
 
     A one-screen summary of your cluster life, so you do not have to run squeue
     and sshare separately. With --access, also show the accounts, partitions, and
-    QOS you may submit under, and your Slurm priority tiers.
+    QoS you may submit under, and your Slurm priority tiers.
 
     \b
     Use cases:

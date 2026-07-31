@@ -68,7 +68,7 @@ def wait_times(
 ) -> None:
     """Show submit-to-start wait time distributions (via sacct).
 
-    Reports the count and p50/p90/max wait, grouped by partition, QOS, and GPU
+    Reports the count and p50/p90/max wait, grouped by partition, QoS, and GPU
     count, over the window. sacct keeps no pending-reason history, so this does
     not separate priority wait from resource wait.
 
@@ -136,7 +136,7 @@ def wait_times(
             return
         click.echo()
         click.echo(f"by {title}:")
-        click.echo(f"  {'Group':<24}{'N':>6}{'P50':>10}{'P90':>10}{'Max':>10}")
+        click.echo(f"  {'GROUP':<24}{'N':>6}{'P50':>10}{'P90':>10}{'MAX':>10}")
         for name in sorted(groups):
             values = sorted(groups[name])
             click.echo(
@@ -147,5 +147,5 @@ def wait_times(
             )
 
     show("partition", "partition")
-    show("QOS", "qos")
+    show("QoS", "qos")
     show("GPU count", "bucket")
