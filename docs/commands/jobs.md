@@ -188,6 +188,43 @@ elapsed, peak memory, and nodes.
 - `-d, --days`: How many days back to include (default 7).
 - `-u, --user`: User whose history to show (default: current user).
 
+## `jobs wait-times [-u USER | -A ACCOUNT | -p PARTITION] [-d DAYS]`
+
+Show submit-to-start wait time distributions (via `sacct`). Reports the count
+and p50/p90/max wait grouped by partition, QOS, and GPU count over the window.
+`sacct` keeps no pending-reason history, so this does not separate priority wait
+from resource wait.
+
+**Use cases**
+- See how long jobs really wait before starting, and where.
+- Compare wait by GPU count to gauge contention for large jobs.
+
+**Inputs**
+- `-u, --user`: User to report (default: current user).
+- `-A, --account`: Report an account (others' need operator rights).
+- `-p, --partition`: Report a partition.
+- `-d, --days`: Window length in days (default 7).
+- `--since` / `--until`: Explicit window, `YYYY-mm-ddTHH:MM:SS`.
+
+## `jobs failures [-u USER | -A ACCOUNT | -p PARTITION] [-d DAYS] [-n TOP]`
+
+Summarize finished-job failures over a window (via `sacct`). Classifies terminal
+jobs (completed, failed, oom, timeout, cancelled, node_fail, preempted), reports
+the failure rate, and ranks the top exit codes, failing job names, failing
+users, and incident nodes.
+
+**Use cases**
+- Spot a run of failures and where they cluster.
+- Find nodes causing out-of-memory or node-failure incidents.
+
+**Inputs**
+- `-u, --user`: User to report (default: current user).
+- `-A, --account`: Report an account (others' need operator rights).
+- `-p, --partition`: Report a partition.
+- `-d, --days`: Window length in days (default 7).
+- `--since` / `--until`: Explicit window, `YYYY-mm-ddTHH:MM:SS`.
+- `-n, --top`: Rows to show per ranking (default 10).
+
 ## `jobs cancel [JOBID...] [--all] [--pending]`
 
 Cancel jobs (via `scancel`). Pass explicit ids, or use `--all` / `--pending` to

@@ -47,6 +47,8 @@ out to.
 | `jobs script JOBID` | user | sacct | The batch script a job was submitted with. |
 | `jobs priorities PARTITION` | user | sprio | Priority factors for all pending jobs in a partition. |
 | `jobs violators PARTITION` | user | squeue, scontrol | Running jobs over the per-GPU CPU/memory norm. |
+| `jobs wait-times` | user | sacct | Submit-to-start wait distributions by partition, QOS, GPU count. |
+| `jobs failures` | user | sacct | Window failure post-mortem: rate and top exit codes, users, nodes. |
 | `jobs cancel [JOBID...]` | user | scancel | Cancel jobs (`--all`, `--pending`). |
 | `jobs hold JOBID...` | user | scontrol | Prevent pending jobs from starting. |
 | `jobs release JOBID...` | user | scontrol | Release held jobs. |
@@ -77,6 +79,7 @@ out to.
 | `nodes partitions [-f TEXT]` | user | spart | Partitions with cores, GPUs, memory, and time limits. |
 | `nodes down [-p PARTITION]` | user | sinfo | Down and drained nodes with the scheduler's reason. |
 | `nodes load [-f TEXT]` | user | lsload | Per-node load and free CPU/GPU/memory. |
+| `nodes frag` | user | scontrol | Free GPU shards per partition and how many N-GPU jobs fit now. |
 | `nodes reservations` | user | scontrol | Active reservations on the cluster. |
 | `nodes resume [NODE...] [-p]` | admin | scontrol update | Return drained or down nodes to service. |
 
