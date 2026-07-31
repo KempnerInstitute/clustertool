@@ -63,6 +63,8 @@ lab_prefix = "kempner_"
 path_prefix = "/n"
 scratch = "/n/netscratch"
 scratch_purge_days = 90
+# Roots that `storage quota --all` probes for directories named after your labs.
+lab_roots = ["/n/netscratch", "/n/holylabs/LABS", "/n/holylfs06/LABS", "/n/boslfs02/LABS"]
 
 # Site tools each command shells out to. A command whose tool is not on PATH is
 # hidden from help and search. Point a key at your cluster's equivalent binary,

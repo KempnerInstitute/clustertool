@@ -8,7 +8,7 @@ import sys
 from click.testing import CliRunner
 from test_gpuhealth import ECC_DISABLED, HEALTHY, _gpu, _nvlink, _smi_xml
 
-from cluster_tools import completion, gpuhealth, process, qos, search, slurm
+from cluster_tools import completion, gpuhealth, process, qos, search, slurm, storage
 from cluster_tools.cli import main
 
 
@@ -1948,3 +1948,73 @@ def test_qos_grant_execute(monkeypatch):
     )
     assert result.exit_code == 0
     assert ran == [["sacctmgr", "-i", "add", "user", "x"]]
+
+
+_QUOTA_NFS = "/x 1.5T 10T 1200000 5000000\n"
+
+
+def test_storage_quota_all(monkeypatch):
+    monkeypatch.setattr(storage, "user_groups", lambda u: ["kempner_dev"])
+    monkeypatch.setattr(
+        storage, "lab_targets", lambda g, r, **k: [("/n/netscratch/kempner_dev", "kempner_dev")]
+    )
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, _QUOTA_NFS, ""))
+    result = CliRunner().invoke(main, ["storage", "quota", "--all"])
+    assert result.exit_code == 0
+    assert result.output.splitlines()[0].split() == ["STORAGE", "USED", "QUOTA", "DISK%", "FILES%"]
+    assert "/n/netscratch/kempner_dev" in result.output
+    assert "15%" in result.output and "24%" in result.output
+
+
+def test_storage_quota_all_no_labs(monkeypatch):
+    monkeypatch.setattr(storage, "user_groups", lambda u: [])
+    monkeypatch.setattr(storage, "lab_targets", lambda g, r, **k: [])
+    result = CliRunner().invoke(main, ["storage", "quota", "--all"])
+    assert result.exit_code != 0
+    assert "no lab storage" in result.output
+
+
+def test_storage_quota_fleet_sorts_by_usage(monkeypatch):
+    monkeypatch.setattr(
+        storage,
+        "fleet_targets",
+        lambda root, kw: [
+            ("/n/holylfs06/LABS/kempner_dev", "kempner_dev"),
+            ("/n/holylfs06/LABS/kempner_eng", "kempner_eng"),
+        ],
+    )
+
+    def fake_probe(cmd, timeout=None):
+        full = "9T" if "kempner_dev" in " ".join(cmd) else "1T"
+        return (0, f"/x {full} 10T 100 1000\n", "")
+
+    monkeypatch.setattr(process, "probe", fake_probe)
+    result = CliRunner().invoke(main, ["storage", "quota", "holylfs06", "--fleet", "kempner"])
+    assert result.exit_code == 0
+    lines = result.output.splitlines()
+    dev = next(i for i, line in enumerate(lines) if "kempner_dev" in line)
+    eng = next(i for i, line in enumerate(lines) if "kempner_eng" in line)
+    assert dev < eng
+
+
+def test_storage_quota_fleet_needs_path():
+    result = CliRunner().invoke(main, ["storage", "quota", "--fleet", "kempner"])
+    assert result.exit_code == 2
+    assert "filesystem PATH" in result.output
+
+
+def test_storage_quota_no_args_errors():
+    result = CliRunner().invoke(main, ["storage", "quota"])
+    assert result.exit_code == 2
+    assert "PATH" in result.output
+
+
+def test_storage_quota_all_timeout_row(monkeypatch):
+    monkeypatch.setattr(storage, "user_groups", lambda u: ["kempner_dev"])
+    monkeypatch.setattr(
+        storage, "lab_targets", lambda g, r, **k: [("/n/x/kempner_dev", "kempner_dev")]
+    )
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (124, "", ""))
+    result = CliRunner().invoke(main, ["storage", "quota", "--all"])
+    assert result.exit_code == 0
+    assert "timeout" in result.output

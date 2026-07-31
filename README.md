@@ -87,6 +87,7 @@ clustertools nodes list kempner_h100      # nodes and states in a partition
 
 # Storage
 clustertools storage quota netscratch  # your quota on a filesystem (-g LAB for a lab)
+clustertools storage quota --all       # every lab dir you belong to, as a usage table
 clustertools storage scratch           # netscratch usage and the 90-day purge reminder
 clustertools storage home              # home directory usage and quota
 ```
