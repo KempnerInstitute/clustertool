@@ -67,7 +67,7 @@ out to.
 | `account usage [ACCOUNT]` | user | stotal, seff-account | Cumulative CPU/GPU/TRES-hours, or efficiency (`--efficiency`). |
 | `account limits [ACCOUNT]` | user | sacctmgr | Account associations: QOS, partitions, and limits. |
 | `account top-users ACCOUNT` | user | sshare | Rank an account's members by RawUsage. |
-| `account qos [-f TEXT]` | user | sacctmgr | QOS definitions and their TRES limits. |
+| `account qos [-f TEXT] [-l]` | user | sacctmgr | QOS definitions and their TRES limits (`--long` adds Flags, Preempt, UsageFactor). |
 | `account add-user USER ACCOUNT` | admin | sacctmgr | Add a user to a fairshare account. |
 | `account remove-user USER ACCOUNT` | admin | sacctmgr | Remove a user's association with an account. |
 | `account set-fairshare USER ACCOUNT SHARE` | admin | sacctmgr | Set a user's fairshare in an account. |
