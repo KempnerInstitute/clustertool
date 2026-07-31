@@ -9,7 +9,7 @@ _STATE_RULES = [
     ("OUT_OF_MEMORY", "Ran out of memory", "Request more memory (--mem) or reduce memory usage."),
     ("TIMEOUT", "Hit the time limit", "Increase --time, or checkpoint and resume."),
     ("NODE_FAIL", "A node failed", "Resubmit; add a requeue-on-failure directive for resilience."),
-    ("CANCELLED", "Canceled", "Canceled by you or an admin (scancel, or a QOS or time limit)."),
+    ("CANCELLED", "Canceled", "Canceled by you or an admin (scancel, or a QoS or time limit)."),
 ]
 
 _LOG_RULES = [

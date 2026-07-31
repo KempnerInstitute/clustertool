@@ -15,13 +15,13 @@ _FORMAT = "Account,User,Partition,QOS,Priority,GrpTRES,MaxTRES"
 @click.argument("account", required=False, shell_complete=completion.complete_accounts)
 @click.option("-u", "--user", default=None, help="User to look up (default: you).")
 def limits(account: str | None, user: str | None) -> None:
-    """Show account associations: QOS, partitions, and limits (via sacctmgr).
+    """Show account associations: QoS, partitions, and limits (via sacctmgr).
 
     With an ACCOUNT, show that account's associations; otherwise show yours.
 
     \b
     Use cases:
-      - See which QOS and partitions an account may use.
+      - See which QoS and partitions an account may use.
       - Check configured TRES limits for a lab.
 
     \b

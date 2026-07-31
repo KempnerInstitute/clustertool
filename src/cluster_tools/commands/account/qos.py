@@ -25,15 +25,15 @@ _LONG_FORMAT = (
     help="Show the full field set (GrpJobs, Flags, Preempt, UsageFactor, ...).",
 )
 def qos(name_filter: str | None, long_format: bool) -> None:
-    """List QOS definitions and their limits (via sacctmgr).
+    """List QoS definitions and their limits (via sacctmgr).
 
-    Shows each QOS with its priority, max wall time, and TRES limits (including
+    Shows each QoS with its priority, max wall time, and TRES limits (including
     the per-user and total GPU caps). With --long, add the job-count, submit,
     Flags, Preempt, and UsageFactor columns.
 
     \b
     Use cases:
-      - See the GPU cap and priority of a partition's QOS.
+      - See the GPU cap and priority of a partition's QoS.
       - Inspect preemption and flags with --long.
 
     \b

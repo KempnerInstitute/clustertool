@@ -34,7 +34,7 @@ Show live detail for one or more jobs, including the pending reason (via
 
 Explain a job's priority and, if pending, why it is waiting. Prints the state
 and reason (from `squeue`), then the priority factor breakdown (from `sprio`):
-fairshare, age, partition, QOS, and so on.
+fairshare, age, partition, QoS, and so on.
 
 **Use cases**
 - Understand what is holding a pending job back.
@@ -191,7 +191,7 @@ elapsed, peak memory, and nodes.
 ## `jobs wait-times [-u USER | -A ACCOUNT | -p PARTITION] [-d DAYS]`
 
 Show submit-to-start wait time distributions (via `sacct`). Reports the count
-and p50/p90/max wait grouped by partition, QOS, and GPU count over the window.
+and p50/p90/max wait grouped by partition, QoS, and GPU count over the window.
 `sacct` keeps no pending-reason history, so this does not separate priority wait
 from resource wait.
 
