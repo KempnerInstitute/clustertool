@@ -3,6 +3,25 @@
 Cluster diagnostics and benchmarks. Run `clustertools diag --help` to list these commands,
 or `clustertools diag <command> --help` for one.
 
+## `diag gpu-health [--json [FILE]] [--from-xml FILE]`
+
+Probe the local node's GPUs for hardware health (via `nvidia-smi`).
+
+Reports a tiered OK/WARN/FAIL verdict per GPU and for the node, from ECC and
+row-remap state, clock throttling, and PCIe/NVLink error counters. Read-only and
+hardware-only; for utilization and profiling use `jobs scope`. Run it on a GPU
+node, for example inside an salloc or srun. The exit code is 0 OK, 1 WARN, 2
+FAIL, 3 probe error, so it slots into a health cron or CI check.
+
+**Use cases**
+- Confirm a node's GPUs are healthy before or after a large run.
+- Capture a snapshot with `--json` for triage, or replay one with `--from-xml`.
+
+**Inputs**
+- `--json`: Emit a JSON snapshot (to FILE, or stdout) instead of the report.
+- `--from-xml`: Analyze a saved `nvidia-smi -q -x` capture instead of probing
+  the node (reads `FILE.nvlink` for NVLink counters when present).
+
 ## `diag ib PARTITION... [--parallel N]`
 
 Report nodes with InfiniBand ports DOWN in one or more partitions.

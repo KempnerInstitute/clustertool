@@ -99,6 +99,7 @@ out to.
 
 | Command | Scope | Wraps | Description |
 | --- | --- | --- | --- |
+| `diag gpu-health` | user | nvidia-smi | Node-local GPU health verdict: ECC, throttle, PCIe/NVLink (exit 0/1/2/3). |
 | `diag ib PARTITION...` | user | ssh, ip | Nodes with InfiniBand ports DOWN. |
 | `diag nccl` | user | srun, torch | Multi-node FSDP NCCL sanity check inside a Slurm job. |
 | `diag nvlink` | user | nvcc, NCCL | Saturate a node's NVLink fabric with NCCL all-reduce. |
