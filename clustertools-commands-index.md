@@ -63,6 +63,7 @@ out to.
 | --- | --- | --- | --- |
 | `account members [ACCOUNT]` | user | sacctmgr, getent | Users in an account, or all lab accounts as CSV (`--all`). |
 | `account fairshare [ACCOUNT]` | user | sshare | Fairshare standing and priority (yours, or an account's members). |
+| `account balance [ACCOUNT]` | user | sshare | Rank accounts by over/under-served fair-share ratio. |
 | `account usage [ACCOUNT]` | user | stotal, seff-account | Cumulative CPU/GPU/TRES-hours, or efficiency (`--efficiency`). |
 | `account limits [ACCOUNT]` | user | sacctmgr | Account associations: QOS, partitions, and limits. |
 | `account top-users ACCOUNT` | user | sshare | Rank an account's members by RawUsage. |

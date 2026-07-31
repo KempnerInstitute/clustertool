@@ -32,6 +32,21 @@ priority).
 - `ACCOUNT`: Slurm account (e.g. `kempner_dev`). Omit for your own standing.
 - `-u, --user`: User to look up (default: current user).
 
+## `account balance [ACCOUNT] [-n TOP]`
+
+Rank accounts by fair-share balance (via `sshare`): effective usage versus
+normalized share. A ratio above 1 means an account is over-served (drawing more
+than its share); below 1 means under-served. Point-in-time only, since `sshare`
+keeps no history.
+
+**Use cases**
+- See which labs are drawing more than their fair share right now.
+- Find under-served accounts that are due more scheduling priority.
+
+**Inputs**
+- `ACCOUNT`: Narrow to one account subtree (optional).
+- `-n, --top`: Rows to show per ranking (default 10).
+
 ## `account usage [ACCOUNT] [-d DAYS] [--efficiency]`
 
 Report cumulative CPU/GPU/TRES-hours for an account or user over the last
