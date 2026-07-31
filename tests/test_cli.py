@@ -2102,3 +2102,42 @@ def test_storage_quota_all_timeout_row(monkeypatch):
     result = CliRunner().invoke(main, ["storage", "quota", "--all"])
     assert result.exit_code == 0
     assert "timeout" in result.output
+
+
+def _ib_topo(quality):
+    return f"\tGPU0\tNIC0\tCPU Affinity\nGPU0\t X \t{quality}\t0-47\n"
+
+
+def test_diag_ib_affinity_ok(monkeypatch):
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, _ib_topo("NODE"), ""))
+    result = CliRunner().invoke(main, ["diag", "ib-affinity"])
+    assert result.exit_code == 0
+    assert "OK" in result.output
+
+
+def test_diag_ib_affinity_warn(monkeypatch):
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, _ib_topo("SYS"), ""))
+    result = CliRunner().invoke(main, ["diag", "ib-affinity"])
+    assert result.exit_code == 3
+    assert "WARN" in result.output
+
+
+def test_diag_ib_affinity_fail(monkeypatch):
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, _ib_topo("X"), ""))
+    result = CliRunner().invoke(main, ["diag", "ib-affinity"])
+    assert result.exit_code == 1
+    assert "FAIL" in result.output
+
+
+def test_diag_ib_affinity_no_data(monkeypatch):
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (127, "", ""))
+    result = CliRunner().invoke(main, ["diag", "ib-affinity"])
+    assert result.exit_code == 2
+
+
+def test_diag_ib_affinity_snapshot(tmp_path):
+    snap = tmp_path / "s.json"
+    snap.write_text(json.dumps({"topology": {"raw": _ib_topo("NODE")}}))
+    result = CliRunner().invoke(main, ["diag", "ib-affinity", "--snapshot", str(snap)])
+    assert result.exit_code == 0
+    assert "OK" in result.output
