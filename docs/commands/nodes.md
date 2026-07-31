@@ -47,6 +47,22 @@ Show per-node load and free CPU, GPU, and memory (via `lsload`).
 **Inputs**
 - `-f, --filter`: Only show rows containing this text (the header is kept).
 
+## `nodes frag [-p PARTITION] [--cpus-per-gpu N] [--mem-per-gpu MB]`
+
+Show free GPU shards per partition and how many N-GPU jobs could start now (via
+`scontrol`). Reads one pass; nodes in down, drain, or maint states are excluded.
+Prints the free-GPU distribution (0/1/2/3/4+ per node) and how many 1-, 2-, and
+4-GPU jobs of the given shape could start right now.
+
+**Use cases**
+- See where a multi-GPU job can actually land.
+- Spot fragmentation: many free GPUs but few whole-node slots.
+
+**Inputs**
+- `-p, --partition`: Limit to one partition.
+- `--cpus-per-gpu`: CPUs per GPU in the job shape (default 8).
+- `--mem-per-gpu`: Memory per GPU in MB in the job shape (default 65536).
+
 ## `nodes reservations`
 
 List active reservations on the cluster (via `scontrol show reservation`).
