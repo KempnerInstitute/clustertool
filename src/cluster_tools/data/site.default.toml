@@ -32,6 +32,8 @@ mem_per_gpu_mb = 180000
 [qos]
 base = "kempner_base"
 default_cap = 96
+# Slurm cluster name that the admin qos commands operate on.
+cluster = "odyssey"
 
 [gpu_types]
 a100 = "kempner"

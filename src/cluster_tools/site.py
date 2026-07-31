@@ -110,6 +110,11 @@ def default_cap() -> int:
     return int(config()["qos"]["default_cap"])
 
 
+def qos_cluster() -> str:
+    """Return the Slurm cluster name the admin qos commands operate on."""
+    return str(config()["qos"]["cluster"])
+
+
 def partition_limits() -> dict[str, tuple[int, int]]:
     """Return {partition: (cpus_per_gpu, mem_per_gpu_mb)} enforced limits."""
     limits = config()["partitions"]["limits"]
