@@ -4,27 +4,59 @@ import os
 
 import click
 
-from cluster_tools import slurm
+from cluster_tools import slurm, storage
 from cluster_tools.grouping import keywords
 
 
-@keywords("dashboard", "home", "overview", "status", "mine", "summary")
+def _show_access(user: str) -> None:
+    """Print what a user can access: accounts, submission map, and priority tiers."""
+    associations = slurm.user_associations(user)
+    default = slurm.default_account(user)
+    accounts = sorted({account for account, _, _ in associations})
+    if accounts:
+        click.echo("")
+        click.echo("Accounts (submit with -A <account>)")
+        for account in accounts:
+            tag = "  (default)" if account == default else ""
+            click.echo(f"  {account}{tag}")
+    if associations:
+        click.echo("")
+        click.echo("Where you can submit (account -> partition -> QOS)")
+        acct_w = max(len("ACCOUNT"), max(len(a) for a, _, _ in associations))
+        part_w = max(len("PARTITION"), max(len(p or "(any)") for _, p, _ in associations))
+        click.echo(f"  {'ACCOUNT':<{acct_w}}  {'PARTITION':<{part_w}}  QOS")
+        for account, partition, qos in sorted(associations):
+            click.echo(f"  {account:<{acct_w}}  {(partition or '(any)'):<{part_w}}  {qos or '-'}")
+    tiers = sorted(g for g in storage.user_groups(user) if g.startswith("slurm_group_"))
+    if tiers:
+        click.echo("")
+        click.echo("Slurm priority tiers")
+        for tier in tiers:
+            click.echo(f"  {tier}")
+
+
+@keywords("dashboard", "home", "overview", "status", "mine", "access")
 @click.command("me")
 @click.option("-u", "--user", default=None, help="Show another user instead of yourself.")
-def me(user: str | None) -> None:
+@click.option(
+    "-a", "--access", is_flag=True, help="Also show what you can access: accounts, partitions, QOS."
+)
+def me(user: str | None, access: bool) -> None:
     """Show a personal overview: your jobs, GPUs in use, and fairshare standing.
 
     A one-screen summary of your cluster life, so you do not have to run squeue
-    and sshare separately.
+    and sshare separately. With --access, also show the accounts, partitions, and
+    QOS you may submit under, and your Slurm priority tiers.
 
     \b
     Use cases:
       - Start the day with one command that shows where you stand.
-      - Check your running and pending jobs and fairshare at a glance.
+      - See what you can access with --access before submitting a job.
 
     \b
     Inputs:
-      -u, --user  Show this user instead of the current one.
+      -u, --user    Show this user instead of the current one.
+      -a, --access  Also show your accounts, submission map, and priority tiers.
     """
     user = user or os.environ.get("USER", "")
     if not user:
@@ -51,5 +83,8 @@ def me(user: str | None) -> None:
         for account, score in shares:
             click.echo(f"  {account:<{width}}  {score}")
 
+    if access:
+        _show_access(user)
+
     click.echo("")
-    click.echo("Storage: clustertools storage quota <filesystem>  (e.g. netscratch, home)")
+    click.echo("Storage: clustertools storage quota --all  (or <filesystem>, e.g. netscratch)")

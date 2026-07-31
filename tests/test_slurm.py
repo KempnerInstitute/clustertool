@@ -233,3 +233,24 @@ def test_account_shares(monkeypatch):
     assert rows[0]["fairshare"] == 0.3
     assert rows[2]["effectv_usage"] is None
     assert rows[2]["fairshare"] is None
+
+
+def test_user_associations(monkeypatch):
+    sample = (
+        "kempner_dev|kempner_h100|kemp_gpu4\n"
+        "kempner_dev||normal\n"
+        "kempner_dev|kempner_h100|kemp_gpu4\n"
+        "|bad|row\n"
+    )
+    monkeypatch.setattr(slurm, "_run", lambda cmd: sample)
+    assert slurm.user_associations("alice") == [
+        ("kempner_dev", "kempner_h100", "kemp_gpu4"),
+        ("kempner_dev", "", "normal"),
+    ]
+
+
+def test_default_account(monkeypatch):
+    monkeypatch.setattr(slurm, "_run", lambda cmd: "kempner_dev\n")
+    assert slurm.default_account("alice") == "kempner_dev"
+    monkeypatch.setattr(slurm, "_run", lambda cmd: "\n")
+    assert slurm.default_account("alice") == ""
