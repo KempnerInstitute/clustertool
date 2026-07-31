@@ -1559,3 +1559,22 @@ def test_nodes_frag_partition_filter(monkeypatch):
     assert result.exit_code == 0
     assert "p1" in result.output
     assert "p2" not in result.output
+
+
+def test_account_balance(monkeypatch):
+    accounts = [
+        {"account": "acctA", "norm_shares": 0.1, "effectv_usage": 0.2, "fairshare": 0.3},
+        {"account": "acctB", "norm_shares": 0.8, "effectv_usage": 0.2, "fairshare": None},
+        {"account": "acctC", "norm_shares": 0.0, "effectv_usage": 0.5, "fairshare": 0.0},
+    ]
+    monkeypatch.setattr(slurm, "account_shares", lambda a=None: accounts)
+    result = CliRunner().invoke(main, ["account", "balance"])
+    assert result.exit_code == 0
+    assert "2 account(s) with shares, 2 with usage" in result.output
+    over = result.output.split("over-served")[1].split("under-served")[0]
+    under = result.output.split("under-served")[1]
+    assert over.index("acctA") < over.index("acctB")
+    assert under.index("acctB") < under.index("acctA")
+    assert "2.00" in over
+    acctb_row = next(line for line in result.output.splitlines() if "acctB" in line)
+    assert acctb_row.rstrip().endswith("-")

@@ -513,3 +513,40 @@ def percentile(sorted_values: list[int], pct: int) -> int | None:
         return None
     rank = max(1, (pct * len(sorted_values) + 99) // 100)
     return sorted_values[rank - 1]
+
+
+def _float_field(value: str | None) -> float | None:
+    """Return a float field value, or None when absent or non-numeric."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def account_shares(account: str | None = None) -> list[dict]:
+    """Return per-account normalized share and effective usage from sshare.
+
+    Skips the root row, the header, and per-user rows, keeping one row per
+    top-level account with norm_shares, effectv_usage, and fairshare.
+    """
+    fields = "Account,User,RawShares,NormShares,RawUsage,EffectvUsage,FairShare"
+    cmd = ["sshare", "-a", "-P", "-o", fields]
+    if account:
+        cmd += ["-A", account]
+    rows: list[dict] = []
+    for line in _run(cmd).splitlines():
+        parts = line.split("|")
+        if len(parts) < 7:
+            continue
+        name, user = parts[0].strip(), parts[1].strip()
+        if name in ("Account", "root") or user:
+            continue
+        rows.append(
+            {
+                "account": name,
+                "norm_shares": _float_field(parts[3]),
+                "effectv_usage": _float_field(parts[5]),
+                "fairshare": _float_field(parts[6]),
+            }
+        )
+    return rows
