@@ -21,8 +21,9 @@ inputs.
   `sdiag`, `scontrol`, `salloc`, `sbatch`, `scancel`, `srun`), the FASRC wrappers
   (`spart`, `stotal`, `seff-account`, `showq`, `lsload`) and `quota` tool, `lfs`,
   `jobstats`, and `getent`. A command only needs the tools it uses.
-- Some commands need more: the live monitors and `diag ib` need passwordless
-  `ssh` to nodes running `nvidia-smi`; `gpu nvtop` needs `tmux` and `nvtop`;
+- Some commands need more: the live monitors, `diag ib`, and `gpu pulse --node`
+  need passwordless `ssh` to nodes running `nvidia-smi`; `gpu nvtop` needs `tmux`
+  and `nvtop`;
   `diag nvlink` needs `nvcc` and NCCL; `diag nccl` needs `torch`;
   `storage home --ncdu` needs `ncdu`. `jobs scope` uses the bundled `jobscope`
   tool (installed automatically); its GPU views also read a Prometheus endpoint,
@@ -71,6 +72,7 @@ clustertools gpu avail kempner_h100      # nodes with allocatable GPUs (ratio-ca
 clustertools gpu session a100 -A LAB     # interactive single-GPU shell (a100/h100/h200/rtx)
 clustertools gpu monitor-job 1234567     # live per-node GPU/CPU/memory/network table
 clustertools gpu pulse                   # live per-GPU dashboard (on a GPU node)
+clustertools gpu pulse --node holygpu123 # ...or launch it on a remote GPU node
 
 # Jobs
 clustertools jobs list           # your queued and running jobs

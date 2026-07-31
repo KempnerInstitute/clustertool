@@ -8,7 +8,7 @@ import sys
 from click.testing import CliRunner
 from test_gpuhealth import ECC_DISABLED, HEALTHY, _gpu, _nvlink, _smi_xml
 
-from cluster_tools import completion, gpuhealth, process, qos, search, slurm, storage
+from cluster_tools import completion, gpuhealth, process, qos, search, site, slurm, storage
 from cluster_tools.cli import main
 
 
@@ -1070,6 +1070,54 @@ def test_gpu_pulse_exit_code(monkeypatch):
     monkeypatch.setattr(process, "stream", lambda cmd, extra_env=None: 3)
     result = CliRunner().invoke(main, ["gpu", "pulse", "--backend", "bogus"])
     assert result.exit_code == 3
+
+
+def test_pulse_split_args():
+    from cluster_tools.commands.gpu.pulse import _split_args
+
+    node, job, forward, dry = _split_args(("--node", "n1", "--once", "--gpus", "0,1"))
+    assert node == "n1" and job is None and forward == ["--once", "--gpus", "0,1"] and dry is False
+    node, job, forward, dry = _split_args(("--job=555", "--dry-run", "--poll", "5"))
+    assert job == "555" and node is None and dry is True and forward == ["--poll", "5"]
+
+
+def test_pulse_remote_command():
+    from cluster_tools.commands.gpu.pulse import _remote_command
+
+    cmd = _remote_command("/venv", ["--once"])
+    assert "source /venv/bin/activate" in cmd
+    assert cmd.endswith("exec kempnerpulse --once")
+    assert "nvidia-smi" in cmd
+
+
+def test_gpu_pulse_node_dry_run():
+    result = CliRunner().invoke(
+        main, ["gpu", "pulse", "--node", "holygpu123", "--once", "--dry-run"]
+    )
+    assert result.exit_code == 0
+    assert "ssh" in result.output and "holygpu123" in result.output
+    assert "exec kempnerpulse --once" in result.output
+
+
+def test_gpu_pulse_job_resolves_node(monkeypatch):
+    monkeypatch.setattr(slurm, "job_nodes", lambda j: ["nodeA", "nodeB"])
+    result = CliRunner().invoke(main, ["gpu", "pulse", "--job", "1234567", "--dry-run"])
+    assert result.exit_code == 0
+    assert "nodeA" in result.output
+
+
+def test_gpu_pulse_job_no_nodes(monkeypatch):
+    monkeypatch.setattr(slurm, "job_nodes", lambda j: [])
+    result = CliRunner().invoke(main, ["gpu", "pulse", "--job", "999"])
+    assert result.exit_code != 0
+    assert "no running nodes" in result.output
+
+
+def test_gpu_pulse_node_not_configured(monkeypatch):
+    monkeypatch.setattr(site, "pulse_remote_venv", lambda: "")
+    result = CliRunner().invoke(main, ["gpu", "pulse", "--node", "x"])
+    assert result.exit_code != 0
+    assert "not configured" in result.output
 
 
 def test_jobs_scope_passthrough(monkeypatch):
