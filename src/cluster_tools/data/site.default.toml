@@ -40,6 +40,11 @@ grant_fairshare = "parent"
 # partition-named QoS is also stripped, dynamically).
 grant_strip = ["normal"]
 
+[pulse]
+# Venv on remote GPU nodes that `gpu pulse --node` activates to run kempnerpulse.
+# Leave empty to disable remote launch at a site without a shared install.
+remote_venv = "/n/holylfs06/LABS/kempner_shared/Everyone/common_envs/kempnerpulse/.venv"
+
 [gpu_types]
 a100 = "kempner"
 h100 = "kempner_h100"

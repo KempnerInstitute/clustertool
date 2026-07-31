@@ -156,8 +156,16 @@ dcgm-exporter Prometheus endpoint with `--backend prometheus`. For completed-job
 efficiency use `jobs scope`; for a multi-node overview use `gpu
 monitor-partition` or `gpu monitor-job`.
 
+To launch it on a remote node from a login node, pass `--node NODE` (or `--job
+JOBID` to target a running job's first node): this ssh's in and runs kempnerpulse
+from the site's shared install (`[pulse].remote_venv`). `--dry-run` prints the
+ssh command instead of running it. Remote launch needs passwordless ssh to the
+node.
+
 **Most useful**
 - `gpu pulse`: live fleet dashboard (dcgm backend, about 100 ms refresh).
+- `gpu pulse --node holygpu123`: run the dashboard on a remote GPU node.
+- `gpu pulse --job 1234567`: run it on a running job's node.
 - `gpu pulse --once`: render one snapshot and exit.
 - `gpu pulse --focus-gpu 0`: start focused on a single GPU.
 - `gpu pulse --gpus 0,1`: limit to specific GPUs (otherwise uses CUDA_VISIBLE_DEVICES or the SLURM GPU env).
@@ -167,4 +175,7 @@ monitor-partition` or `gpu monitor-job`.
 In the live view, type `:focus <id>`, `:plot`, or `:job` to switch views, and `:exit` (or Ctrl-C) to quit.
 
 **Inputs**
+- `--node NODE`: ssh to NODE and run the dashboard there.
+- `--job JOBID`: run it on the first node of a running job.
+- `--dry-run`: with `--node`/`--job`, print the ssh command instead of running it.
 - `[ARG]...`: any kempnerpulse arguments (`--backend`, `--source`, `--poll`, `--focus-gpu`, `--gpus`, `--once`, `--export`, the weight presets, ...), forwarded verbatim.

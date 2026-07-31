@@ -161,6 +161,11 @@ def storage_lab_roots() -> list[str]:
     return [str(root) for root in config()["storage"]["lab_roots"]]
 
 
+def pulse_remote_venv() -> str:
+    """Return the remote venv that gpu pulse --node activates, or '' if unset."""
+    return str(config().get("pulse", {}).get("remote_venv", ""))
+
+
 def scratch_path() -> str:
     """Return the default networked scratch path."""
     return str(config()["storage"]["scratch"])
