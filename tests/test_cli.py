@@ -1832,3 +1832,119 @@ def test_qos_execute_reports_failure(monkeypatch):
     result = CliRunner().invoke(main, ["qos", "delete", "kemp", "--execute", "--yes"])
     assert result.exit_code == 1
     assert "command failed" in result.output
+
+
+def test_qos_grant_dry_run(monkeypatch):
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "get_accounts", lambda user, **k: ["kempner_dev"])
+    monkeypatch.setattr(
+        qos,
+        "grant_plan",
+        lambda *a, **k: [["sacctmgr", "-i", "modify", "user", "set", "QOS+=kemp"]],
+    )
+    ran = []
+    monkeypatch.setattr(process, "probe", lambda cmd: ran.append(cmd) or (0, "", ""))
+    result = CliRunner().invoke(main, ["qos", "grant", "kemp", "-u", "alice", "-p", "kempner_h100"])
+    assert result.exit_code == 0
+    assert "[DRY ] sacctmgr -i modify user set QOS+=kemp" in result.output
+    assert ran == []
+
+
+def test_qos_grant_missing_qos(monkeypatch):
+    monkeypatch.setattr(qos, "qos_exists", lambda name: False)
+    result = CliRunner().invoke(main, ["qos", "grant", "ghost", "-u", "alice", "-p", "p"])
+    assert result.exit_code != 0
+    assert "not defined" in result.output
+
+
+def test_qos_grant_missing_default_qos(monkeypatch):
+    monkeypatch.setattr(qos, "qos_exists", lambda name: name == "kemp")
+    result = CliRunner().invoke(
+        main, ["qos", "grant", "kemp", "-u", "alice", "-p", "p", "-d", "ghost"]
+    )
+    assert result.exit_code != 0
+    assert "default QoS ghost is not defined" in result.output
+
+
+def test_qos_grant_skips_user_without_accounts(monkeypatch):
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "get_accounts", lambda user, **k: [])
+    result = CliRunner().invoke(main, ["qos", "grant", "kemp", "-u", "ghost", "-p", "p"])
+    assert result.exit_code == 0
+    assert "no matching accounts" in result.output
+    assert "Nothing to change" in result.output
+
+
+def test_qos_revoke_all_must_be_alone(monkeypatch):
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    result = CliRunner().invoke(main, ["qos", "revoke", "kemp", "-u", "all,alice", "-p", "p"])
+    assert result.exit_code == 2
+    assert "all must be used on its own" in result.output
+
+
+def test_qos_revoke_dry_run(monkeypatch):
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(
+        qos,
+        "revoke_targets_plan",
+        lambda *a, **k: [["sacctmgr", "-i", "modify", "user", "set", "QOS-=kemp"]],
+    )
+    result = CliRunner().invoke(
+        main, ["qos", "revoke", "kemp", "-u", "alice", "-p", "kempner_h100"]
+    )
+    assert result.exit_code == 0
+    assert "[DRY ] sacctmgr -i modify user set QOS-=kemp" in result.output
+
+
+def test_qos_retire_appends_delete(monkeypatch):
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "revoke_targets_plan", lambda *a, **k: [])
+    result = CliRunner().invoke(main, ["qos", "retire", "kemp", "-p", "kempner_h100"])
+    assert result.exit_code == 0
+    assert "[DRY ] sacctmgr -i delete qos kemp" in result.output
+
+
+def test_qos_retire_nonexistent(monkeypatch):
+    monkeypatch.setattr(qos, "qos_exists", lambda name: False)
+    result = CliRunner().invoke(main, ["qos", "retire", "ghost", "-p", "p"])
+    assert result.exit_code == 0
+    assert "nothing to do" in result.output
+
+
+def test_qos_sync_already_in_sync(monkeypatch):
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "account_exists", lambda name, **k: True)
+    monkeypatch.setattr(qos, "account_members", lambda account, **k: ["alice"])
+    monkeypatch.setattr(qos, "holder_rows", lambda *a, **k: [("alice", "kempner_dev", "p")])
+    result = CliRunner().invoke(main, ["qos", "sync", "kemp", "-a", "kempner_dev", "-p", "p"])
+    assert result.exit_code == 0
+    assert "already in sync" in result.output
+
+
+def test_qos_sync_dry_run(monkeypatch):
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "account_exists", lambda name, **k: True)
+    monkeypatch.setattr(qos, "account_members", lambda account, **k: ["bob"])
+    monkeypatch.setattr(qos, "holder_rows", lambda *a, **k: [("alice", "kempner_dev", "p")])
+    monkeypatch.setattr(
+        qos, "grant_plan", lambda *a, **k: [["sacctmgr", "-i", "add", "user", "bob"]]
+    )
+    monkeypatch.setattr(
+        qos, "revoke_plan", lambda *a, **k: [["sacctmgr", "-i", "del", "user", "alice"]]
+    )
+    result = CliRunner().invoke(main, ["qos", "sync", "kemp", "-a", "kempner_dev", "-p", "p"])
+    assert result.exit_code == 0
+    assert "add user bob" in result.output and "del user alice" in result.output
+
+
+def test_qos_grant_execute(monkeypatch):
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "get_accounts", lambda user, **k: ["kempner_dev"])
+    monkeypatch.setattr(qos, "grant_plan", lambda *a, **k: [["sacctmgr", "-i", "add", "user", "x"]])
+    ran = []
+    monkeypatch.setattr(process, "probe", lambda cmd: ran.append(cmd) or (0, "", ""))
+    result = CliRunner().invoke(
+        main, ["qos", "grant", "kemp", "-u", "alice", "-p", "p", "--execute", "--yes"]
+    )
+    assert result.exit_code == 0
+    assert ran == [["sacctmgr", "-i", "add", "user", "x"]]
