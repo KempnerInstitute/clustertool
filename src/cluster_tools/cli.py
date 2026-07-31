@@ -13,6 +13,7 @@ from cluster_tools.commands.gpu import gpu
 from cluster_tools.commands.jobs import jobs
 from cluster_tools.commands.me import me
 from cluster_tools.commands.nodes import nodes
+from cluster_tools.commands.qos import qos
 from cluster_tools.commands.search import search
 from cluster_tools.commands.storage import storage
 from cluster_tools.grouping import SectionedGroup, annotate_paths
@@ -66,6 +67,7 @@ main.add_command(account)
 main.add_command(nodes)
 main.add_command(storage)
 main.add_command(diag)
+main.add_command(qos)
 main.add_command(search)
 main.add_command(completion)
 main.add_command(me)

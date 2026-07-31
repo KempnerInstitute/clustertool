@@ -8,7 +8,7 @@ import sys
 from click.testing import CliRunner
 from test_gpuhealth import ECC_DISABLED, HEALTHY, _gpu, _nvlink, _smi_xml
 
-from cluster_tools import completion, gpuhealth, process, search, slurm
+from cluster_tools import completion, gpuhealth, process, qos, search, slurm
 from cluster_tools.cli import main
 
 
@@ -1674,3 +1674,161 @@ def test_diag_gpu_health_json_unwritable_exits_3(tmp_path):
 def test_diag_gpu_health_from_xml_directory_exits_3(tmp_path):
     result = CliRunner().invoke(main, ["diag", "gpu-health", "--from-xml", str(tmp_path)])
     assert result.exit_code == 3
+
+
+def test_qos_holders(monkeypatch):
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    rows = [("alice", "kempner_dev", "kempner_h100"), ("bob", "kempner_eng", "kempner_h100")]
+    monkeypatch.setattr(qos, "holder_rows", lambda *a, **k: rows)
+    result = CliRunner().invoke(main, ["qos", "holders", "kemp_gpu4"])
+    assert result.exit_code == 0
+    assert "alice" in result.output and "kempner_dev" in result.output
+    assert result.output.splitlines()[0].split() == ["USER", "ACCOUNT", "PARTITION"]
+
+
+def test_qos_holders_by_partition(monkeypatch):
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    rows = [("alice", "kempner_dev", "kempner_h100"), ("bob", "kempner_dev", "kempner_h200")]
+    monkeypatch.setattr(qos, "holder_rows", lambda *a, **k: rows)
+    result = CliRunner().invoke(main, ["qos", "holders", "q", "--by", "partition"])
+    assert result.exit_code == 0
+    assert result.output.split() == ["kempner_h100", "kempner_h200"]
+
+
+def test_qos_holders_missing(monkeypatch):
+    monkeypatch.setattr(qos, "qos_exists", lambda name: False)
+    result = CliRunner().invoke(main, ["qos", "holders", "ghost"])
+    assert result.exit_code != 0
+    assert "not defined" in result.output
+
+
+def test_qos_create_dry_run(monkeypatch):
+    monkeypatch.setattr(qos, "qos_exists", lambda name: False)
+    ran = []
+    monkeypatch.setattr(process, "probe", lambda cmd: ran.append(cmd) or (0, "", ""))
+    result = CliRunner().invoke(main, ["qos", "create", "new_qos", "-g", "4", "-G", "8"])
+    assert result.exit_code == 0
+    assert "[DRY ] sacctmgr -i add qos new_qos" in result.output
+    assert "modify qos new_qos set MaxTRESPU=gres/gpu=4 GrpTRES=gres/gpu=8" in result.output
+    assert "Dry run" in result.output
+    assert ran == []
+
+
+def test_qos_create_execute(monkeypatch):
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    ran = []
+    monkeypatch.setattr(process, "probe", lambda cmd: ran.append(cmd) or (0, "", ""))
+    result = CliRunner().invoke(main, ["qos", "create", "kemp", "-g", "4", "--execute", "--yes"])
+    assert result.exit_code == 0
+    assert ran == [["sacctmgr", "-i", "modify", "qos", "kemp", "set", "MaxTRESPU=gres/gpu=4"]]
+    assert "[EXEC]" in result.output
+
+
+def test_qos_create_requires_a_limit():
+    result = CliRunner().invoke(main, ["qos", "create", "kemp"])
+    assert result.exit_code == 2
+    assert "at least one limit" in result.output
+
+
+def test_qos_modify_missing(monkeypatch):
+    monkeypatch.setattr(qos, "qos_exists", lambda name: False)
+    result = CliRunner().invoke(main, ["qos", "modify", "ghost", "-g", "4"])
+    assert result.exit_code != 0
+    assert "does not exist" in result.output
+
+
+def test_qos_modify_per_user_only(monkeypatch):
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    result = CliRunner().invoke(main, ["qos", "modify", "kemp", "-g", "4", "--per-user-only"])
+    assert result.exit_code == 0
+    assert "MaxTRESPU=gres/gpu=4" in result.output
+    assert "GrpTRES=gres/gpu=-1" in result.output
+    assert "MaxTRES=gres/gpu=-1" in result.output
+
+
+def test_qos_delete_nonexistent(monkeypatch):
+    monkeypatch.setattr(qos, "qos_exists", lambda name: False)
+    result = CliRunner().invoke(main, ["qos", "delete", "ghost"])
+    assert result.exit_code == 0
+    assert "nothing to do" in result.output
+
+
+def test_qos_delete_held(monkeypatch):
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "any_holders", lambda name: ["odyssey|kempner_dev|alice|kempner_h100"])
+    result = CliRunner().invoke(main, ["qos", "delete", "kemp"])
+    assert result.exit_code != 0
+    assert "still held" in result.output
+
+
+def test_qos_delete_dry_run(monkeypatch):
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "any_holders", lambda name: [])
+    ran = []
+    monkeypatch.setattr(process, "probe", lambda cmd: ran.append(cmd) or (0, "", ""))
+    result = CliRunner().invoke(main, ["qos", "delete", "kemp"])
+    assert result.exit_code == 0
+    assert "[DRY ] sacctmgr -i delete qos kemp" in result.output
+    assert ran == []
+
+
+def test_qos_execute_non_tty_requires_yes(monkeypatch):
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "any_holders", lambda name: [])
+    ran = []
+    monkeypatch.setattr(process, "probe", lambda cmd: ran.append(cmd) or (0, "", ""))
+    result = CliRunner().invoke(main, ["qos", "delete", "kemp", "--execute"], input="y\n")
+    assert result.exit_code != 0
+    assert "not a terminal" in result.output
+    assert ran == []
+
+
+def test_qos_create_rejects_unsafe_name(monkeypatch):
+    ran = []
+    monkeypatch.setattr(process, "probe", lambda cmd: ran.append(cmd) or (0, "", ""))
+    result = CliRunner().invoke(main, ["qos", "create", "a,b", "-g", "4", "--execute", "--yes"])
+    assert result.exit_code != 0
+    assert "invalid QoS name" in result.output
+    assert ran == []
+
+
+def test_qos_create_execute_add_then_modify(monkeypatch):
+    monkeypatch.setattr(qos, "qos_exists", lambda name: False)
+    ran = []
+    monkeypatch.setattr(process, "probe", lambda cmd: ran.append(cmd) or (0, "", ""))
+    result = CliRunner().invoke(main, ["qos", "create", "new_qos", "-g", "4", "--execute", "--yes"])
+    assert result.exit_code == 0
+    assert ran == [
+        ["sacctmgr", "-i", "add", "qos", "new_qos"],
+        ["sacctmgr", "-i", "modify", "qos", "new_qos", "set", "MaxTRESPU=gres/gpu=4"],
+    ]
+
+
+def test_qos_modify_explicit_clear(monkeypatch):
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    result = CliRunner().invoke(main, ["qos", "modify", "kemp", "-g", "8", "-G", "-1"])
+    assert result.exit_code == 0
+    assert "MaxTRESPU=gres/gpu=8 GrpTRES=gres/gpu=-1" in result.output
+
+
+def test_qos_execute_stops_after_failure(monkeypatch):
+    monkeypatch.setattr(qos, "qos_exists", lambda name: False)
+    ran = []
+
+    def fake_probe(cmd):
+        ran.append(cmd)
+        return (1, "", "sacctmgr: boom")
+
+    monkeypatch.setattr(process, "probe", fake_probe)
+    result = CliRunner().invoke(main, ["qos", "create", "new_qos", "-g", "4", "--execute", "--yes"])
+    assert result.exit_code == 1
+    assert ran == [["sacctmgr", "-i", "add", "qos", "new_qos"]]
+
+
+def test_qos_execute_reports_failure(monkeypatch):
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "any_holders", lambda name: [])
+    monkeypatch.setattr(process, "probe", lambda cmd: (1, "", "sacctmgr: boom"))
+    result = CliRunner().invoke(main, ["qos", "delete", "kemp", "--execute", "--yes"])
+    assert result.exit_code == 1
+    assert "command failed" in result.output
