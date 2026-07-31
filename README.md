@@ -114,7 +114,7 @@ fairshare` or `clustertools search gpu reservation`.
 | [`account`](docs/commands/account.md) | `members`, `fairshare`, `balance`, `usage`, `limits`, `top-users`, `qos`, `add-user`, `remove-user`, `set-fairshare` | Account membership, fairshare, usage, limits, QOS |
 | [`nodes`](docs/commands/nodes.md) | `list`, `partitions`, `down`, `load`, `frag`, `reservations`, `resume` | Node, partition, and reservation status |
 | [`storage`](docs/commands/storage.md) | `quota`, `home`, `vast-usage`, `scratch`, `lfs-stripe`, `lfs-inodes` | Filesystem quotas, usage, and striping |
-| [`diag`](docs/commands/diag.md) | `gpu-health`, `ib`, `nccl`, `nvlink`, `scheduler` | Diagnostics and benchmarks |
+| [`diag`](docs/commands/diag.md) | `gpu-health`, `ib`, `io-probe`, `nccl`, `nvlink`, `scheduler` | Diagnostics and benchmarks |
 | [`qos`](docs/commands/qos.md) | `holders`, `create`, `modify`, `delete`, `grant`, `revoke`, `retire`, `sync` | QoS holders and (admin) provisioning and assignment |
 
 ## Configuration
@@ -135,6 +135,7 @@ src/cluster_tools/
   storage.py          # storage quota command construction
   monitor.py          # shared live per-node monitor (monitor-partition/-job)
   gpuhealth.py        # nvidia-smi parsing and GPU health verdict (diag gpu-health)
+  ioprobe.py          # filesystem write/read/metadata probe (diag io-probe)
   qos.py              # read-only Slurm QoS queries and limit-spec builder
   data/               # bundled payloads (monitor sample, nccl test, nvlink .cu)
   commands/           # one package per group; one file per command
@@ -143,7 +144,7 @@ src/cluster_tools/
     account/          # members, fairshare, balance, usage, limits, topusers, qos, adduser, removeuser, setfairshare
     nodes/            # list, partitions, down, load, frag, reservations, resume
     storage/          # quota, home, vast-usage, scratch, lfs-stripe, lfs-inodes
-    diag/             # gpu_health, ib, nccl, nvlink, scheduler
+    diag/             # gpu_health, ib, io_probe, nccl, nvlink, scheduler
     qos/              # holders, create, modify, delete, grant, revoke, retire, sync
 tests/                # unit tests
 docs/commands/        # extended per-group command reference (gpu.md, jobs.md, ...)
