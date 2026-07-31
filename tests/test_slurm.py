@@ -173,3 +173,44 @@ def test_job_nodes(monkeypatch):
 def test_job_nodes_not_running(monkeypatch):
     monkeypatch.setattr(slurm, "_run", lambda cmd: "\n")
     assert slurm.job_nodes("123") == []
+
+
+def test_node_capacity(monkeypatch):
+    sample = (
+        "NodeName=n1 State=IDLE CPUTot=96 CPUAlloc=0 RealMemory=1000000 AllocMem=0 "
+        "CfgTRES=cpu=96,mem=1000000M,gres/gpu=4 AllocTRES= Partitions=kempner_h100\n"
+        "NodeName=n2 State=MIXED CPUTot=96 CPUAlloc=48 RealMemory=1000000 AllocMem=500000 "
+        "CfgTRES=cpu=96,mem=1000000M,gres/gpu=4 AllocTRES=cpu=48,gres/gpu=2 "
+        "Partitions=kempner_h100\n"
+        "NodeName=n3 State=DOWN+DRAIN CPUTot=96 CPUAlloc=0 RealMemory=1000000 AllocMem=0 "
+        "CfgTRES=cpu=96,gres/gpu=4 AllocTRES= Partitions=kempner_h100\n"
+    )
+    monkeypatch.setattr(slurm, "_run", lambda cmd: sample)
+    n1, n2, n3 = slurm.node_capacity()
+    assert n1["available"] and n1["gpu_free"] == 4 and n1["cpu_free"] == 96
+    assert n2["gpu_free"] == 2 and n2["cpu_free"] == 48 and n2["mem_free_mb"] == 500000
+    assert n3["available"] is False
+
+
+def test_sacct_window_rows_scoping(monkeypatch):
+    captured = {}
+
+    def fake_run(cmd):
+        captured["cmd"] = cmd
+        return "1|kempner|q|s|e\n\n"
+
+    monkeypatch.setattr(slurm, "_run", fake_run)
+    rows = slurm.sacct_window_rows("A,B", "S", "E", account="acct")
+    assert rows == [["1", "kempner", "q", "s", "e"]]
+    assert "-A" in captured["cmd"] and "acct" in captured["cmd"] and "-a" in captured["cmd"]
+    slurm.sacct_window_rows("A,B", "S", "E", user="bob")
+    assert captured["cmd"][-2:] == ["-u", "bob"]
+
+
+def test_percentile():
+    values = list(range(1, 11))
+    assert slurm.percentile(values, 50) == 5
+    assert slurm.percentile(values, 90) == 9
+    assert slurm.percentile(values, 100) == 10
+    assert slurm.percentile([10, 20, 30], 50) == 20
+    assert slurm.percentile([], 50) is None

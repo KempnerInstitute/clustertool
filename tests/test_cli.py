@@ -1413,3 +1413,149 @@ def test_diag_nvlink_no_nvcc(monkeypatch):
     result = CliRunner().invoke(main, ["diag", "nvlink"])
     assert result.exit_code != 0
     assert "not found" in result.output
+
+
+def test_nodes_frag(monkeypatch):
+    nodes = [
+        {
+            "name": "n1",
+            "partitions": ["kempner_h100"],
+            "state": "IDLE",
+            "available": True,
+            "cpu_free": 96,
+            "mem_free_mb": 1_000_000,
+            "gpu_tot": 4,
+            "gpu_free": 4,
+        },
+        {
+            "name": "n2",
+            "partitions": ["kempner_h100"],
+            "state": "MIXED",
+            "available": True,
+            "cpu_free": 8,
+            "mem_free_mb": 100_000,
+            "gpu_tot": 4,
+            "gpu_free": 2,
+        },
+        {
+            "name": "n3",
+            "partitions": ["kempner_h100"],
+            "state": "DOWN",
+            "available": False,
+            "cpu_free": 0,
+            "mem_free_mb": 0,
+            "gpu_tot": 4,
+            "gpu_free": 0,
+        },
+    ]
+    monkeypatch.setattr(slurm, "node_capacity", lambda: nodes)
+    result = CliRunner().invoke(
+        main, ["nodes", "frag", "--cpus-per-gpu", "8", "--mem-per-gpu", "65536"]
+    )
+    assert result.exit_code == 0
+    assert "1 node(s) unavailable" in result.output
+    row = next(line for line in result.output.splitlines() if "kempner_h100" in line)
+    fields = row.split()
+    assert fields[1] == "2"
+    assert fields[2] == "0/0/1/0/1"
+    assert fields[3:6] == ["5", "2", "1"]
+
+
+def test_jobs_wait_times(monkeypatch):
+    rows = [
+        [
+            "101",
+            "kempner_h100",
+            "qa",
+            "2026-07-01T00:00:00",
+            "2026-07-01T00:01:00",
+            "COMPLETED",
+            "cpu=8,gres/gpu=1",
+        ],
+        [
+            "102",
+            "kempner_h100",
+            "qa",
+            "2026-07-01T00:00:00",
+            "2026-07-01T00:10:00",
+            "COMPLETED",
+            "cpu=8,gres/gpu=1",
+        ],
+        ["103", "kempner", "qb", "2026-07-01T00:00:00", "", "PENDING", "cpu=8"],
+    ]
+    monkeypatch.setattr(slurm, "sacct_window_rows", lambda *a, **k: rows)
+    result = CliRunner().invoke(main, ["jobs", "wait-times", "-u", "bob"])
+    assert result.exit_code == 0
+    assert "2 started job(s); excluded 1 pending" in result.output
+    part_row = next(
+        line for line in result.output.splitlines() if line.strip().startswith("kempner_h100")
+    )
+    assert "1m 0s" in part_row and "10m 0s" in part_row
+
+
+def test_jobs_failures(monkeypatch):
+    rows = [
+        ["201", "alice", "acct", "kempner", "COMPLETED", "0:0", "01:00:00", "n1", "train"],
+        ["202", "bob", "acct", "kempner", "FAILED", "1:0", "00:10:00", "n2", "train"],
+        ["203", "bob", "acct", "kempner", "OUT_OF_MEMORY", "0:125", "00:05:00", "n3", "big"],
+        ["204", "carol", "acct", "kempner", "TIMEOUT", "0:0", "1-00:00:00", "n1", "long"],
+        ["205", "dave", "acct", "kempner", "RUNNING", "0:0", "00:01:00", "n1", "live"],
+    ]
+    monkeypatch.setattr(slurm, "sacct_window_rows", lambda *a, **k: rows)
+    result = CliRunner().invoke(main, ["jobs", "failures", "-p", "kempner"])
+    assert result.exit_code == 0
+    assert "4 terminal job(s), 1 still active" in result.output
+    assert "failure rate: 75.0%" in result.output
+    assert "oom=1" in result.output and "timeout=1" in result.output
+    assert "n3" in result.output
+
+
+def test_jobs_wait_times_skew_and_buckets(monkeypatch):
+    rows = [
+        ["1", "p", "q", "2026-07-01T00:05:00", "2026-07-01T00:00:00", "COMPLETED", "gres/gpu=1"],
+        ["2", "p", "q", "2026-07-01T00:00:00", "2026-07-01T00:02:00", "COMPLETED", "gres/gpu=2"],
+    ]
+    monkeypatch.setattr(slurm, "sacct_window_rows", lambda *a, **k: rows)
+    result = CliRunner().invoke(main, ["jobs", "wait-times"])
+    assert result.exit_code == 0
+    assert "1 clock-skew" in result.output
+    assert "2-4" in result.output
+
+
+def test_jobs_failures_node_fail(monkeypatch):
+    rows = [["1", "u", "a", "p", "NODE_FAIL", "0:0", "00:10:00", "nX", "job"]]
+    monkeypatch.setattr(slurm, "sacct_window_rows", lambda *a, **k: rows)
+    result = CliRunner().invoke(main, ["jobs", "failures"])
+    assert result.exit_code == 0
+    assert "node_fail=1" in result.output
+    assert "nX" in result.output
+
+
+def test_nodes_frag_partition_filter(monkeypatch):
+    nodes = [
+        {
+            "name": "a",
+            "partitions": ["p1"],
+            "state": "IDLE",
+            "available": True,
+            "cpu_free": 96,
+            "mem_free_mb": 1_000_000,
+            "gpu_tot": 4,
+            "gpu_free": 4,
+        },
+        {
+            "name": "b",
+            "partitions": ["p2"],
+            "state": "IDLE",
+            "available": True,
+            "cpu_free": 96,
+            "mem_free_mb": 1_000_000,
+            "gpu_tot": 4,
+            "gpu_free": 4,
+        },
+    ]
+    monkeypatch.setattr(slurm, "node_capacity", lambda: nodes)
+    result = CliRunner().invoke(main, ["nodes", "frag", "-p", "p1"])
+    assert result.exit_code == 0
+    assert "p1" in result.output
+    assert "p2" not in result.output

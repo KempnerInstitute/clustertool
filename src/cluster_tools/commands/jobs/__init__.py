@@ -4,6 +4,7 @@ import click
 
 from cluster_tools.commands.jobs.cancel import cancel
 from cluster_tools.commands.jobs.debug import debug
+from cluster_tools.commands.jobs.failures import failures
 from cluster_tools.commands.jobs.history import history
 from cluster_tools.commands.jobs.hold import hold
 from cluster_tools.commands.jobs.list import list_jobs
@@ -21,6 +22,7 @@ from cluster_tools.commands.jobs.stats import stats
 from cluster_tools.commands.jobs.submit import submit
 from cluster_tools.commands.jobs.top import top
 from cluster_tools.commands.jobs.violators import violators
+from cluster_tools.commands.jobs.waittimes import wait_times
 from cluster_tools.commands.jobs.why import why
 from cluster_tools.grouping import SectionedGroup
 
@@ -53,3 +55,5 @@ jobs.add_command(set_priority)
 jobs.add_command(submit)
 jobs.add_command(new)
 jobs.add_command(debug)
+jobs.add_command(failures)
+jobs.add_command(wait_times)
