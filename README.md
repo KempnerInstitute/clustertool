@@ -115,6 +115,7 @@ fairshare` or `clustertools search gpu reservation`.
 | [`nodes`](docs/commands/nodes.md) | `list`, `partitions`, `down`, `load`, `frag`, `reservations`, `resume` | Node, partition, and reservation status |
 | [`storage`](docs/commands/storage.md) | `quota`, `home`, `vast-usage`, `scratch`, `lfs-stripe`, `lfs-inodes` | Filesystem quotas, usage, and striping |
 | [`diag`](docs/commands/diag.md) | `gpu-health`, `ib`, `nccl`, `nvlink`, `scheduler` | Diagnostics and benchmarks |
+| [`qos`](docs/commands/qos.md) | `holders`, `create`, `modify`, `delete` | QoS holders and (admin) limit provisioning |
 
 ## Configuration
 
@@ -134,6 +135,7 @@ src/cluster_tools/
   storage.py          # storage quota command construction
   monitor.py          # shared live per-node monitor (monitor-partition/-job)
   gpuhealth.py        # nvidia-smi parsing and GPU health verdict (diag gpu-health)
+  qos.py              # read-only Slurm QoS queries and limit-spec builder
   data/               # bundled payloads (monitor sample, nccl test, nvlink .cu)
   commands/           # one package per group; one file per command
     gpu/              # usage, util, status, avail, session, monitor_partition, monitor_job, nvtop, pulse
@@ -142,6 +144,7 @@ src/cluster_tools/
     nodes/            # list, partitions, down, load, frag, reservations, resume
     storage/          # quota, home, vast-usage, scratch, lfs-stripe, lfs-inodes
     diag/             # gpu_health, ib, nccl, nvlink, scheduler
+    qos/              # holders, create, modify, delete
 tests/                # unit tests
 docs/commands/        # extended per-group command reference (gpu.md, jobs.md, ...)
 ```
