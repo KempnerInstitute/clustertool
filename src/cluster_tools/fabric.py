@@ -12,8 +12,6 @@ _GPU_QUERY = (
     "memory.total,memory.used,clocks.current.sm,clocks.current.memory"
 )
 
-# nvidia-smi topo connection qualities, best to worst. A score below NODE means
-# the GPU reaches its nearest NIC only across a NUMA boundary.
 _QUALITY = {
     "NV18": 10,
     "NV12": 10,
@@ -270,8 +268,6 @@ def render_drift(findings: dict, strict: bool) -> str:
     return "\n".join(lines)
 
 
-# Counters whose non-zero growth signals a fabric problem. Benign traffic
-# counters (port_xmit_data, port_rcv_data) are expected to move and are skipped.
 _ERROR_COUNTERS = frozenset(
     {
         "symbol_error",

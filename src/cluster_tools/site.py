@@ -80,6 +80,11 @@ def reload() -> None:
     _cache = None
 
 
+def slurm_group_prefix() -> str:
+    """Return the prefix of Slurm pseudo-groups that map to priority tiers."""
+    return str(config()["site"]["slurm_group_prefix"])
+
+
 def site_name() -> str:
     """Return the human-readable site name."""
     return str(config()["site"]["name"])

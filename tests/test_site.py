@@ -29,6 +29,12 @@ def test_default_accessors():
     assert site.path_prefix() == "/n"
     assert site.scratch_path() == "/n/netscratch"
     assert site.scratch_purge_days() == 90
+    assert site.slurm_group_prefix() == "slurm_group_"
+    assert site.qos_cluster() == "odyssey"
+    assert site.qos_grant_fairshare() == "parent"
+    assert site.qos_grant_strip() == ["normal"]
+    assert site.storage_lab_roots()[0] == "/n/netscratch"
+    assert "kempnerpulse" in site.pulse_remote_venv()
 
 
 def test_deep_merge_is_recursive():
