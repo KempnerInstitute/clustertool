@@ -1,12 +1,14 @@
 """Tests for the CLI commands."""
 
+import json
 import os
 import shutil
 import sys
 
 from click.testing import CliRunner
+from test_gpuhealth import ECC_DISABLED, HEALTHY, _gpu, _nvlink, _smi_xml
 
-from cluster_tools import completion, process, search, slurm
+from cluster_tools import completion, gpuhealth, process, search, slurm
 from cluster_tools.cli import main
 
 
@@ -1578,3 +1580,97 @@ def test_account_balance(monkeypatch):
     assert "2.00" in over
     acctb_row = next(line for line in result.output.splitlines() if "acctB" in line)
     assert acctb_row.rstrip().endswith("-")
+
+
+def _write_capture(tmp_path, xml, nvlink=None):
+    path = tmp_path / "smi.xml"
+    path.write_text(xml)
+    if nvlink is not None:
+        (tmp_path / "smi.xml.nvlink").write_text(nvlink)
+    return str(path)
+
+
+def test_diag_gpu_health_from_xml_ok(tmp_path):
+    path = _write_capture(tmp_path, HEALTHY, _nvlink())
+    result = CliRunner().invoke(main, ["diag", "gpu-health", "--from-xml", path])
+    assert result.exit_code == 0
+    assert result.output.rstrip().endswith("node verdict: OK")
+
+
+def test_diag_gpu_health_warn_exits_1(tmp_path):
+    path = _write_capture(tmp_path, _smi_xml(_gpu(power_cap=True)))
+    result = CliRunner().invoke(main, ["diag", "gpu-health", "--from-xml", path])
+    assert result.exit_code == 1
+    assert "node verdict: WARN" in result.output
+
+
+def test_diag_gpu_health_fail_exits_2(tmp_path):
+    path = _write_capture(tmp_path, _smi_xml(_gpu(vol_unc=3)))
+    result = CliRunner().invoke(main, ["diag", "gpu-health", "--from-xml", path])
+    assert result.exit_code == 2
+    assert "node verdict: FAIL (GPU 0)" in result.output
+
+
+def test_diag_gpu_health_garbled_exits_3(tmp_path):
+    path = _write_capture(tmp_path, "<nvidia_smi_log><gpu><product_name>NVIDIA")
+    result = CliRunner().invoke(main, ["diag", "gpu-health", "--from-xml", path])
+    assert result.exit_code == 3
+    assert "error" in result.output.lower()
+
+
+def test_diag_gpu_health_missing_file_exits_3():
+    result = CliRunner().invoke(main, ["diag", "gpu-health", "--from-xml", "/nonexistent.xml"])
+    assert result.exit_code == 3
+
+
+def test_diag_gpu_health_probe_error_exits_3(monkeypatch):
+    def boom():
+        raise gpuhealth.ProbeError("nvidia-smi not found on this host")
+
+    monkeypatch.setattr(gpuhealth, "collect", boom)
+    result = CliRunner().invoke(main, ["diag", "gpu-health"])
+    assert result.exit_code == 3
+    assert "nvidia-smi" in result.output
+
+
+def test_diag_gpu_health_json_stdout(tmp_path):
+    path = _write_capture(tmp_path, HEALTHY, _nvlink())
+    result = CliRunner().invoke(main, ["diag", "gpu-health", "--from-xml", path, "--json"])
+    assert result.exit_code == 0
+    snapshot = json.loads(result.output)
+    assert snapshot["verdict"] == "OK"
+    assert len(snapshot["gpus"]) == 2
+    assert snapshot["gpus"][0]["checks"]["nvlink"]["status"] == "OK"
+
+
+def test_diag_gpu_health_json_to_file(tmp_path):
+    path = _write_capture(tmp_path, HEALTHY)
+    out = tmp_path / "snap.json"
+    result = CliRunner().invoke(
+        main, ["diag", "gpu-health", "--from-xml", path, "--json", str(out)]
+    )
+    assert result.exit_code == 0
+    assert json.loads(out.read_text())["verdict"] == "OK"
+
+
+def test_diag_gpu_health_ecc_disabled_na(tmp_path):
+    path = _write_capture(tmp_path, ECC_DISABLED)
+    result = CliRunner().invoke(main, ["diag", "gpu-health", "--from-xml", path])
+    assert result.exit_code == 0
+    assert "ecc:      n/a" in result.output
+    assert "nvlink:   n/a" in result.output
+
+
+def test_diag_gpu_health_json_unwritable_exits_3(tmp_path):
+    path = _write_capture(tmp_path, HEALTHY)
+    bad = tmp_path / "nope" / "out.json"
+    result = CliRunner().invoke(
+        main, ["diag", "gpu-health", "--from-xml", path, "--json", str(bad)]
+    )
+    assert result.exit_code == 3
+    assert "error" in result.output.lower()
+
+
+def test_diag_gpu_health_from_xml_directory_exits_3(tmp_path):
+    result = CliRunner().invoke(main, ["diag", "gpu-health", "--from-xml", str(tmp_path)])
+    assert result.exit_code == 3
