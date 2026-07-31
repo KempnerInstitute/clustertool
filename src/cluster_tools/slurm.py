@@ -550,3 +550,27 @@ def account_shares(account: str | None = None) -> list[dict]:
             }
         )
     return rows
+
+
+def user_associations(user: str) -> list[tuple[str, str, str]]:
+    """Return the unique (account, partition, qos) associations a user may submit under."""
+    cmd = ["sacctmgr", "-n", "-P", "show", "assoc", f"user={user}", "format=Account,Partition,QOS"]
+    rows: list[tuple[str, str, str]] = []
+    seen = set()
+    for line in _run(cmd).splitlines():
+        parts = line.split("|")
+        if len(parts) != 3 or not parts[0]:
+            continue
+        key = (parts[0], parts[1], parts[2])
+        if key not in seen:
+            seen.add(key)
+            rows.append(key)
+    return rows
+
+
+def default_account(user: str) -> str:
+    """Return a user's default Slurm account, or '' when unknown."""
+    lines = _run(
+        ["sacctmgr", "-n", "-P", "show", "user", user, "format=DefaultAccount"]
+    ).splitlines()
+    return lines[0].strip() if lines and lines[0].strip() else ""

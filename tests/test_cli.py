@@ -288,6 +288,34 @@ def test_me_overview(monkeypatch):
     assert "kempner_dev" in result.output
 
 
+def test_me_access(monkeypatch):
+    monkeypatch.setattr(slurm, "my_jobs", lambda user: [])
+    monkeypatch.setattr(slurm, "user_gpu_count", lambda user: 0)
+    monkeypatch.setattr(slurm, "user_fairshare", lambda user: [])
+    monkeypatch.setattr(
+        slurm,
+        "user_associations",
+        lambda user: [("kempner_dev", "kempner_h100", "kemp_gpu4"), ("kempner_eng", "", "normal")],
+    )
+    monkeypatch.setattr(slurm, "default_account", lambda user: "kempner_dev")
+    monkeypatch.setattr(storage, "user_groups", lambda user: ["kempner_dev", "slurm_group_x"])
+    result = CliRunner().invoke(main, ["me", "-u", "alice", "--access"])
+    assert result.exit_code == 0
+    assert "kempner_dev  (default)" in result.output
+    assert "Where you can submit" in result.output
+    assert "kempner_h100" in result.output
+    assert "slurm_group_x" in result.output
+
+
+def test_me_default_hides_access(monkeypatch):
+    monkeypatch.setattr(slurm, "my_jobs", lambda user: [])
+    monkeypatch.setattr(slurm, "user_gpu_count", lambda user: 0)
+    monkeypatch.setattr(slurm, "user_fairshare", lambda user: [])
+    result = CliRunner().invoke(main, ["me", "-u", "alice"])
+    assert result.exit_code == 0
+    assert "Where you can submit" not in result.output
+
+
 def test_me_explicit_user(monkeypatch):
     monkeypatch.setattr(slurm, "my_jobs", lambda user: [])
     monkeypatch.setattr(slurm, "user_gpu_count", lambda user: 0)
