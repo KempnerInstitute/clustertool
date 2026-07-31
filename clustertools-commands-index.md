@@ -113,6 +113,10 @@ out to.
 | `qos create QOS_NAME` | admin | sacctmgr | Create or update a QoS's TRES limits (dry run unless `--execute`). |
 | `qos modify QOS_NAME` | admin | sacctmgr | Change an existing QoS's TRES limits (dry run unless `--execute`). |
 | `qos delete QOS_NAME` | admin | sacctmgr | Delete a QoS definition, refusing while it is held (dry run default). |
+| `qos grant QOS_NAME` | admin | sacctmgr | Grant a priority QoS to users on a partition (dry run default). |
+| `qos revoke QOS_NAME` | admin | sacctmgr | Remove a QoS from users (or all holders) on a partition (dry run default). |
+| `qos retire QOS_NAME` | admin | sacctmgr | Revoke a QoS from all holders, then delete it (dry run default). |
+| `qos sync QOS_NAME` | admin | sacctmgr | Reconcile a QoS's holders to an account's membership (dry run default). |
 
 ---
 
