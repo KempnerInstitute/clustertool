@@ -8,7 +8,7 @@ import sys
 from click.testing import CliRunner
 from test_gpuhealth import ECC_DISABLED, HEALTHY, _gpu, _nvlink, _smi_xml
 
-from cluster_tools import completion, gpuhealth, process, qos, search, site, slurm, storage
+from cluster_tools import completion, fabric, gpuhealth, process, qos, search, site, slurm, storage
 from cluster_tools.cli import main
 
 
@@ -2141,3 +2141,19 @@ def test_diag_ib_affinity_snapshot(tmp_path):
     result = CliRunner().invoke(main, ["diag", "ib-affinity", "--snapshot", str(snap)])
     assert result.exit_code == 0
     assert "OK" in result.output
+
+
+def test_diag_ib_snapshot_stdout(monkeypatch):
+    monkeypatch.setattr(fabric, "collect_snapshot", lambda: {"hostname": "n1", "ib": {"hcas": []}})
+    result = CliRunner().invoke(main, ["diag", "ib-snapshot"])
+    assert result.exit_code == 0
+    assert json.loads(result.output)["hostname"] == "n1"
+
+
+def test_diag_ib_snapshot_file(monkeypatch, tmp_path):
+    monkeypatch.setattr(fabric, "collect_snapshot", lambda: {"hostname": "n1"})
+    out = tmp_path / "snap.json"
+    result = CliRunner().invoke(main, ["diag", "ib-snapshot", str(out)])
+    assert result.exit_code == 0
+    assert json.loads(out.read_text())["hostname"] == "n1"
+    assert "wrote" in result.output
