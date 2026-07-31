@@ -54,6 +54,24 @@ NUMA (WARN), 1 a GPU reaches no NIC (FAIL), 2 probe or parse error.
 **Inputs**
 - `--snapshot`: Analyze a saved `ib-snapshot` JSON instead of probing the node.
 
+## `diag ib-counters BEFORE AFTER`
+
+Diff two `ib-snapshot` files for InfiniBand error-counter growth.
+
+Compares the per-port counters in a BEFORE and AFTER snapshot (bracket a run with
+two `diag ib-snapshot` captures). Benign traffic counters are shown but ignored;
+growth on an error-class counter (symbol errors, discards, link recoveries, ...)
+means the fabric hiccupped under load. The exit code is 0 no error growth, 1 an
+error-class counter advanced, 2 a file could not be read.
+
+**Use cases**
+- Confirm a benchmark did not degrade the fabric.
+- Localize which port grew errors during a run.
+
+**Inputs**
+- `BEFORE`: The earlier `ib-snapshot` JSON.
+- `AFTER`: The later `ib-snapshot` JSON.
+
 ## `diag ib-snapshot [OUTPUT]`
 
 Capture a node's IB and GPU topology and counters as a JSON snapshot (via

@@ -89,3 +89,30 @@ def test_read_hcas(tmp_path):
 
 def test_read_hcas_missing_root():
     assert fabric.read_hcas("/nonexistent-ib-root-xyz") == []
+
+
+def _counter_snap(counters):
+    return {"ib": {"hcas": [{"name": "mlx5_0", "ports": [{"port": 1, "counters": counters}]}]}}
+
+
+def test_counter_deltas_flags_error_growth():
+    before = _counter_snap({"symbol_error": 0, "port_rcv_data": 100})
+    after = _counter_snap({"symbol_error": 5, "port_rcv_data": 999})
+    rows, any_error = fabric.counter_deltas(before, after)
+    assert any_error is True
+    by_counter = {row[1]: row for row in rows}
+    assert by_counter["symbol_error"][4] == 5 and by_counter["symbol_error"][5] is True
+    assert by_counter["port_rcv_data"][5] is False
+
+
+def test_counter_deltas_benign_only():
+    before = _counter_snap({"symbol_error": 0, "port_rcv_data": 100})
+    after = _counter_snap({"symbol_error": 0, "port_rcv_data": 999})
+    rows, any_error = fabric.counter_deltas(before, after)
+    assert any_error is False
+    assert [row[1] for row in rows] == ["port_rcv_data"]
+
+
+def test_counter_deltas_identical():
+    snap = _counter_snap({"symbol_error": 0})
+    assert fabric.counter_deltas(snap, snap) == ([], False)
