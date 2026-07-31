@@ -214,3 +214,22 @@ def test_percentile():
     assert slurm.percentile(values, 100) == 10
     assert slurm.percentile([10, 20, 30], 50) == 20
     assert slurm.percentile([], 50) is None
+
+
+def test_account_shares(monkeypatch):
+    sample = (
+        "Account|User|RawShares|NormShares|RawUsage|EffectvUsage|FairShare\n"
+        "root||1|1.0|100|1.0|0.5\n"
+        "lab_a||100|0.5|80|0.8|0.3\n"
+        " lab_a|alice|10|0.1|8|0.2|0.4\n"
+        "lab_b||100|0.5|10|0.1|0.7\n"
+        "lab_c||100|0.5|10|bad|xyz\n"
+    )
+    monkeypatch.setattr(slurm, "_run", lambda cmd: sample)
+    rows = slurm.account_shares()
+    assert [r["account"] for r in rows] == ["lab_a", "lab_b", "lab_c"]
+    assert rows[0]["norm_shares"] == 0.5
+    assert rows[0]["effectv_usage"] == 0.8
+    assert rows[0]["fairshare"] == 0.3
+    assert rows[2]["effectv_usage"] is None
+    assert rows[2]["fairshare"] is None
