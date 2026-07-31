@@ -35,3 +35,57 @@ def test_quota_cmd_user_verbose():
         "-v",
         "/n/holystore01",
     ]
+
+
+def test_parse_quota_row_nfs():
+    out = "Filesystem Used Quota Files FQuota\n/n/netscratch/kempner_dev 1.5T 10T 1200000 5000000\n"
+    assert storage.parse_quota_row(out) == ("1.5T", "10T", "15%", "24%")
+
+
+def test_parse_quota_row_lustre():
+    out = "/n/holylfs06/LABS/kempner_dev 800G 2T 2T none 500000 1000000 1000000 none\n"
+    assert storage.parse_quota_row(out) == ("800G", "2T", "39%", "50%")
+
+
+def test_parse_quota_row_no_cap_is_dash():
+    out = "/n/x 500G - 100 -\n"
+    assert storage.parse_quota_row(out) == ("500G", "-", "-", "-")
+
+
+def test_parse_quota_row_none():
+    assert storage.parse_quota_row("no filesystem line here\n") is None
+    assert storage.parse_quota_row("/short row\n") is None
+
+
+def test_percent_value():
+    assert storage.percent_value("90%") == 90.0
+    assert storage.percent_value("-") == -1.0
+
+
+def test_lab_targets_skips_slurm_groups_and_dedups():
+    groups = ["kempner_dev", "slurm_group_x", "kempner_dev"]
+    roots = ["/n/netscratch", "/n/holylfs06/LABS"]
+    targets = storage.lab_targets(groups, roots, is_dir=lambda p: p.endswith("kempner_dev"))
+    assert targets == [
+        ("/n/netscratch/kempner_dev", "kempner_dev"),
+        ("/n/holylfs06/LABS/kempner_dev", "kempner_dev"),
+    ]
+
+
+def test_fleet_targets(tmp_path):
+    (tmp_path / "kempner_dev").mkdir()
+    (tmp_path / "kempner_eng").mkdir()
+    (tmp_path / "other_lab").mkdir()
+    (tmp_path / "kempner_file").write_text("x")
+    targets = storage.fleet_targets(str(tmp_path), "kempner")
+    assert targets == [
+        (str(tmp_path / "kempner_dev"), "kempner_dev"),
+        (str(tmp_path / "kempner_eng"), "kempner_eng"),
+    ]
+
+
+def test_user_groups(monkeypatch):
+    from cluster_tools import process
+
+    monkeypatch.setattr(process, "run", lambda cmd: "kempner_dev kempner_shared\n")
+    assert storage.user_groups("alice") == ["kempner_dev", "kempner_shared"]
