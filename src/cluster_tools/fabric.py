@@ -164,6 +164,61 @@ def read_hcas(root: str = "/sys/class/infiniband") -> list[dict]:
     return hcas
 
 
+# Counters whose non-zero growth signals a fabric problem. Benign traffic
+# counters (port_xmit_data, port_rcv_data) are expected to move and are skipped.
+_ERROR_COUNTERS = frozenset(
+    {
+        "symbol_error",
+        "link_downed",
+        "link_error_recovery",
+        "port_rcv_errors",
+        "port_rcv_remote_physical_errors",
+        "port_rcv_switch_relay_errors",
+        "port_xmit_discards",
+        "port_xmit_constraint_errors",
+        "port_rcv_constraint_errors",
+        "local_link_integrity_errors",
+        "excessive_buffer_overrun_errors",
+        "VL15_dropped",
+        "port_xmit_wait",
+    }
+)
+
+
+def counters_by_port(snapshot: dict) -> dict[str, dict]:
+    """Return {hca/portN: counters} from an ib-snapshot."""
+    result = {}
+    for hca in snapshot.get("ib", {}).get("hcas", []):
+        for port in hca.get("ports", []):
+            result[f"{hca['name']}/port{port['port']}"] = port.get("counters") or {}
+    return result
+
+
+def counter_deltas(before: dict, after: dict) -> tuple[list[tuple], bool]:
+    """Diff two snapshots' per-port counters.
+
+    Returns (rows, any_error) where rows is
+    (port, counter, before, after, delta, is_error) for every non-zero delta,
+    and any_error is True when an error-class counter advanced.
+    """
+    a = counters_by_port(before)
+    b = counters_by_port(after)
+    rows = []
+    any_error = False
+    for port in sorted(set(a) | set(b)):
+        a_counters, b_counters = a.get(port, {}), b.get(port, {})
+        for counter in sorted(set(a_counters) | set(b_counters)):
+            before_v = a_counters.get(counter) or 0
+            after_v = b_counters.get(counter) or 0
+            delta = after_v - before_v
+            if delta == 0:
+                continue
+            is_error = counter in _ERROR_COUNTERS and delta > 0
+            rows.append((port, counter, before_v, after_v, delta, is_error))
+            any_error = any_error or is_error
+    return rows, any_error
+
+
 def collect_snapshot(ib_root: str = "/sys/class/infiniband", timestamp: str | None = None) -> dict:
     """Probe the node and return the IB/GPU snapshot dict (the ib-snapshot schema)."""
 
