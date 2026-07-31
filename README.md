@@ -115,7 +115,7 @@ fairshare` or `clustertools search gpu reservation`.
 | [`nodes`](docs/commands/nodes.md) | `list`, `partitions`, `down`, `load`, `frag`, `reservations`, `resume` | Node, partition, and reservation status |
 | [`storage`](docs/commands/storage.md) | `quota`, `home`, `vast-usage`, `scratch`, `lfs-stripe`, `lfs-inodes` | Filesystem quotas, usage, and striping |
 | [`diag`](docs/commands/diag.md) | `gpu-health`, `ib`, `nccl`, `nvlink`, `scheduler` | Diagnostics and benchmarks |
-| [`qos`](docs/commands/qos.md) | `holders`, `create`, `modify`, `delete` | QoS holders and (admin) limit provisioning |
+| [`qos`](docs/commands/qos.md) | `holders`, `create`, `modify`, `delete`, `grant`, `revoke`, `retire`, `sync` | QoS holders and (admin) provisioning and assignment |
 
 ## Configuration
 
@@ -144,7 +144,7 @@ src/cluster_tools/
     nodes/            # list, partitions, down, load, frag, reservations, resume
     storage/          # quota, home, vast-usage, scratch, lfs-stripe, lfs-inodes
     diag/             # gpu_health, ib, nccl, nvlink, scheduler
-    qos/              # holders, create, modify, delete
+    qos/              # holders, create, modify, delete, grant, revoke, retire, sync
 tests/                # unit tests
 docs/commands/        # extended per-group command reference (gpu.md, jobs.md, ...)
 ```
