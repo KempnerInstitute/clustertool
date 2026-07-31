@@ -28,7 +28,7 @@ out to.
 | `gpu monitor-partition PARTITION` | user | ssh, nvidia-smi | Live per-node GPU/CPU/memory/network table for a partition. |
 | `gpu monitor-job JOBID` | user | ssh, nvidia-smi | Live per-node GPU/CPU/memory/network table for a running job. |
 | `gpu nvtop JOBID` | user | tmux, nvtop, ssh | tmux session running nvtop on each of a job's nodes. |
-| `gpu pulse [ARG...]` | user | kempnerpulse | Live per-GPU dashboard (bundled kempnerpulse); all arguments forwarded. |
+| `gpu pulse [ARG...]` | user | kempnerpulse, ssh | Live per-GPU dashboard (bundled kempnerpulse); `--node`/`--job` launch it on a remote node. |
 
 ## jobs
 
