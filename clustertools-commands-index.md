@@ -104,6 +104,7 @@ out to.
 | `diag ib-affinity` | user | nvidia-smi | GPU-to-IB-NIC NUMA affinity verdict (exit 0 OK, 3 cross-NUMA, 1 unreachable). |
 | `diag ib-counters BEFORE AFTER` | user | (none) | Diff two ib-snapshots for IB error-counter growth (exit 1 if any advanced). |
 | `diag ib-snapshot [OUT]` | user | nvidia-smi, ibdev2netdev | Capture node IB/GPU topology and counters as JSON, for diffing. |
+| `diag ib-verify GOLDEN` | user | nvidia-smi, ibdev2netdev | Compare a node's snapshot against a golden one; exit 1 on hardware drift. |
 | `diag io-probe -d DIR` | user | (none) | Filesystem write/read MB/s and metadata latency, with optional pass/fail gates. |
 | `diag nccl` | user | srun, torch | Multi-node FSDP NCCL sanity check inside a Slurm job. |
 | `diag nvlink` | user | nvcc, NCCL | Saturate a node's NVLink fabric with NCCL all-reduce. |
