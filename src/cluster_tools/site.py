@@ -115,6 +115,16 @@ def qos_cluster() -> str:
     return str(config()["qos"]["cluster"])
 
 
+def qos_grant_fairshare() -> str:
+    """Return the fairshare set on a new association created by qos grant."""
+    return str(config()["qos"]["grant_fairshare"])
+
+
+def qos_grant_strip() -> list[str]:
+    """Return the QoS names stripped from a user's list on a priority grant."""
+    return [str(name) for name in config()["qos"]["grant_strip"]]
+
+
 def partition_limits() -> dict[str, tuple[int, int]]:
     """Return {partition: (cpus_per_gpu, mem_per_gpu_mb)} enforced limits."""
     limits = config()["partitions"]["limits"]

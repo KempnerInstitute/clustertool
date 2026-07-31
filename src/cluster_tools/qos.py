@@ -37,6 +37,14 @@ def qos_exists(name: str) -> bool:
     return name in _show("qos", name, "format=Name")
 
 
+def account_exists(name: str, cluster: str | None = None) -> bool:
+    """Return True if the account has any association on the cluster."""
+    rows = _show(
+        "assoc", "where", f"account={name}", f"cluster={_cluster(cluster)}", "format=Account"
+    )
+    return bool(rows)
+
+
 def holder_rows(
     qos_name: str,
     cluster: str | None = None,
@@ -70,6 +78,206 @@ def any_holders(qos_name: str) -> list[str]:
     deleted. Rows are the raw Cluster|Account|User|Partition lines.
     """
     return _show("assoc", "where", f"qos={qos_name}", "format=Cluster,Account,User,Partition")
+
+
+def flatten_users(values: tuple[str, ...]) -> list[str]:
+    """Flatten repeated, comma-separated -u values into an ordered unique list."""
+    users: list[str] = []
+    for value in values:
+        for name in value.split(","):
+            name = name.strip()
+            if name and name not in users:
+                users.append(name)
+    return users
+
+
+def get_accounts(user: str, cluster: str | None = None, account_regex: str = "^") -> list[str]:
+    """Return the sorted distinct accounts a user belongs to, filtered by regex."""
+    pattern = re.compile(account_regex)
+    accounts = {
+        line
+        for line in _show(
+            "assoc", "where", f"user={user}", f"cluster={_cluster(cluster)}", "format=Account"
+        )
+        if pattern.search(line)
+    }
+    return sorted(accounts)
+
+
+def account_members(account: str, cluster: str | None = None) -> list[str]:
+    """Return the sorted distinct users with an association in an account."""
+    users = {
+        line.strip()
+        for line in _show(
+            "assoc", "where", f"account={account}", f"cluster={_cluster(cluster)}", "format=User"
+        )
+        if line.strip()
+    }
+    return sorted(users)
+
+
+def read_assoc(
+    user: str, account: str, partition: str, cluster: str | None = None
+) -> tuple[str, str] | None:
+    """Return (qos_csv, default_qos) for a partition-scoped association, or None.
+
+    None means the association does not exist; the qos_csv may be empty when the
+    association exists but carries no QoS.
+    """
+    lines = _show(
+        "assoc",
+        "where",
+        f"user={user}",
+        f"account={account}",
+        f"partition={partition}",
+        f"cluster={_cluster(cluster)}",
+        "format=User,QOS,DefaultQOS",
+    )
+    if not lines:
+        return None
+    parts = lines[0].split("|")
+    if len(parts) != 3 or not parts[0]:
+        return None
+    return parts[1], parts[2]
+
+
+def _strip_names(partition: str) -> list[str]:
+    """Return the QoS names to strip on grant: the configured set plus the partition."""
+    names = list(site.qos_grant_strip())
+    if partition not in names:
+        names.append(partition)
+    return names
+
+
+def grant_plan(
+    user: str, account: str, partition: str, qos_name: str, default_qos: str, cluster: str | None
+) -> list[list[str]]:
+    """Build the sacctmgr commands to grant qos_name to (user, account) on a partition.
+
+    Creates the association if absent (with the QoS list set exactly), otherwise
+    adds the QoS, fixes the default, and strips the catch-all and partition-named
+    QoS. Returns an empty plan when nothing needs to change.
+    """
+    resolved = _cluster(cluster)
+    where = [
+        "where",
+        f"user={user}",
+        f"account={account}",
+        f"partition={partition}",
+        f"cluster={resolved}",
+    ]
+    assoc = read_assoc(user, account, partition, cluster=resolved)
+    if assoc is None:
+        qlist = qos_name if default_qos == qos_name else f"{qos_name},{default_qos}"
+        return [
+            [
+                "sacctmgr",
+                "-i",
+                "add",
+                "user",
+                f"name={user}",
+                f"account={account}",
+                f"partition={partition}",
+                f"cluster={resolved}",
+                f"fairshare={site.qos_grant_fairshare()}",
+                f"qos={qlist}",
+                f"defaultqos={default_qos}",
+            ]
+        ]
+    current, default = assoc
+    current_list = [entry for entry in current.split(",") if entry]
+    plan = []
+    if qos_name not in current_list:
+        plan.append(["sacctmgr", "-i", "modify", "user", *where, "set", f"QOS+={qos_name}"])
+    if default != default_qos:
+        plan.append(
+            ["sacctmgr", "-i", "modify", "user", *where, "set", f"DefaultQOS={default_qos}"]
+        )
+    strip = [name for name in _strip_names(partition) if name != qos_name and name in current_list]
+    if strip:
+        plan.append(["sacctmgr", "-i", "modify", "user", *where, "set", f"QOS-={','.join(strip)}"])
+    return plan
+
+
+def revoke_plan(
+    user: str, account: str, partition: str, qos_name: str, cluster: str | None
+) -> list[list[str]]:
+    """Build the sacctmgr commands to remove qos_name from (user, account) on a partition.
+
+    Deletes the association when the QoS was its only entry; otherwise moves the
+    default off the QoS first when needed, then removes it. Returns an empty plan
+    when the association is absent or does not carry the QoS.
+    """
+    resolved = _cluster(cluster)
+    assoc = read_assoc(user, account, partition, cluster=resolved)
+    if assoc is None:
+        return []
+    current, default = assoc
+    current_list = [entry for entry in current.split(",") if entry]
+    if qos_name not in current_list:
+        return []
+    if len(current_list) == 1:
+        return [
+            [
+                "sacctmgr",
+                "-i",
+                "delete",
+                "user",
+                "where",
+                f"cluster={resolved}",
+                f"name={user}",
+                f"account={account}",
+                f"partition={partition}",
+            ]
+        ]
+    where = [
+        "where",
+        f"user={user}",
+        f"account={account}",
+        f"partition={partition}",
+        f"cluster={resolved}",
+    ]
+    plan = []
+    if default == qos_name:
+        new_default = next(entry for entry in current_list if entry != qos_name)
+        plan.append(
+            ["sacctmgr", "-i", "modify", "user", *where, "set", f"DefaultQOS={new_default}"]
+        )
+    plan.append(["sacctmgr", "-i", "modify", "user", *where, "set", f"QOS-={qos_name}"])
+    return plan
+
+
+def revoke_targets_plan(
+    qos_name: str,
+    users: list[str],
+    partition: str,
+    cluster: str | None = None,
+    account_regex: str = "^",
+) -> list[list[str]]:
+    """Build the combined revoke plan for the given users and partition.
+
+    Expands the 'all' keyword: partition 'all' resolves to every partition that
+    holds the QoS, and users ['all'] to every user holding it on those
+    partitions (scoped by account_regex).
+    """
+    if partition == "all":
+        partitions = sorted(
+            {row[2] for row in holder_rows(qos_name, cluster=cluster, account_regex=account_regex)}
+        )
+    else:
+        partitions = [partition]
+    if users == ["all"]:
+        rows = holder_rows(qos_name, cluster=cluster, account_regex=account_regex)
+        user_list = sorted({row[0] for row in rows if row[2] in partitions})
+    else:
+        user_list = users
+    plan = []
+    for user in user_list:
+        accounts = get_accounts(user, cluster=cluster, account_regex=account_regex)
+        for part in partitions:
+            for account in accounts:
+                plan += revoke_plan(user, account, part, qos_name, cluster)
+    return plan
 
 
 def build_limit_specs(

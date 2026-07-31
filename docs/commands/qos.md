@@ -83,3 +83,83 @@ from those associations first. A QoS that does not exist is a no-op.
 - `QOS_NAME`: Name of the QoS to delete.
 - `-x, --execute`: Apply the change instead of previewing it.
 - `-y, --yes`: Skip the confirmation prompt.
+
+## `qos grant QOS_NAME -u USERS -p PART [-d DEFAULT] [-c CLUSTER] [-r REGEX] [-x] [-y]`
+
+Grant a priority QoS to users across their matching accounts on a partition (via
+`sacctmgr`). Operator only.
+
+For each user, adds the QoS to every association whose account matches the regex,
+sets the default QoS, and strips the catch-all and partition-named QoS so the
+granted one takes effect. Missing associations are created. Dry run by default.
+
+**Use cases**
+- Give a set of users a priority QoS on a GPU partition.
+
+**Inputs**
+- `QOS_NAME`: The QoS to grant.
+- `-u, --users`: Users (repeatable, comma-separated).
+- `-p, --partition`: Partition to grant the QoS on.
+- `-d, --default-qos`: Default QoS to set (default: the granted QoS).
+- `-c, --cluster`: Slurm cluster (default: the site cluster).
+- `-r, --account-regex`: Only accounts matching this regex (default: all).
+- `-x, --execute` / `-y, --yes`: Apply, and skip the prompt.
+
+## `qos revoke QOS_NAME -u USERS|all -p PART|all [-c CLUSTER] [-r REGEX] [-x] [-y]`
+
+Remove a priority QoS from users on a partition (via `sacctmgr`). Operator only.
+
+Removes the QoS from each matching association, moving the default off it first
+when needed and deleting the association if the QoS was its only entry. Pass
+`all` for `--users` or `--partition` to act on every current holder. Dry run by
+default.
+
+**Use cases**
+- Revoke a priority QoS from users who no longer need it.
+- Clear a QoS off every holder with `-u all -p all`.
+
+**Inputs**
+- `QOS_NAME`: The QoS to remove.
+- `-u, --users`: Users, or `all` (repeatable, comma-separated).
+- `-p, --partition`: Partition, or `all`.
+- `-c, --cluster`: Slurm cluster (default: the site cluster).
+- `-r, --account-regex`: Only accounts matching this regex (default: all).
+- `-x, --execute` / `-y, --yes`: Apply, and skip the prompt.
+
+## `qos retire QOS_NAME -p PART|all [-c CLUSTER] [-r REGEX] [-x] [-y]`
+
+Remove a QoS from all its holders on a partition, then delete it (via
+`sacctmgr`). Operator only.
+
+Revokes the QoS from every holder, then deletes the QoS definition. The delete
+runs only if every revoke succeeded, so a QoS still held elsewhere (an
+account-level or out-of-scope association) is left in place. Dry run by default.
+
+**Use cases**
+- Fully decommission a priority QoS in one step.
+
+**Inputs**
+- `QOS_NAME`: The QoS to retire.
+- `-p, --partition`: Partition to clear, or `all`.
+- `-c, --cluster`: Slurm cluster (default: the site cluster).
+- `-r, --account-regex`: Only accounts matching this regex (default: all).
+- `-x, --execute` / `-y, --yes`: Apply, and skip the prompt.
+
+## `qos sync QOS_NAME -a ACCOUNT -p PART [-c CLUSTER] [-x] [-y]`
+
+Reconcile a QoS's holders to an account's current membership (via `sacctmgr`).
+Operator only.
+
+Grants the QoS to account members who lack it and revokes it from holders no
+longer in the account, on the given partition. Idempotent and cron-friendly. Dry
+run by default.
+
+**Use cases**
+- Keep a lab's priority QoS aligned with its Slurm account membership.
+
+**Inputs**
+- `QOS_NAME`: The QoS to reconcile.
+- `-a, --account`: Account whose membership drives the QoS.
+- `-p, --partition`: Partition to reconcile on.
+- `-c, --cluster`: Slurm cluster (default: the site cluster).
+- `-x, --execute` / `-y, --yes`: Apply, and skip the prompt.

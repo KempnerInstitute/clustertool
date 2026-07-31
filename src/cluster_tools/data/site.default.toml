@@ -34,6 +34,11 @@ base = "kempner_base"
 default_cap = 96
 # Slurm cluster name that the admin qos commands operate on.
 cluster = "odyssey"
+# Fairshare set on a new association created by qos grant.
+grant_fairshare = "parent"
+# QoS names stripped from a user's list when a priority QoS is granted (the
+# partition-named QoS is also stripped, dynamically).
+grant_strip = ["normal"]
 
 [gpu_types]
 a100 = "kempner"

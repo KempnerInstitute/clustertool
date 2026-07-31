@@ -87,3 +87,144 @@ def test_valid_name():
     assert qos.valid_name("a,b") is False
     assert qos.valid_name("a b") is False
     assert qos.valid_name("") is False
+
+
+def test_flatten_users():
+    assert qos.flatten_users(("a,b", "b", " c ")) == ["a", "b", "c"]
+    assert qos.flatten_users(("all",)) == ["all"]
+
+
+def test_get_accounts_filters(monkeypatch):
+    monkeypatch.setattr(qos, "_run", lambda cmd: "kempner_dev\nkempner_eng\nother_lab\n")
+    assert qos.get_accounts("alice", account_regex="^kempner_") == ["kempner_dev", "kempner_eng"]
+
+
+def test_account_members(monkeypatch):
+    monkeypatch.setattr(qos, "_run", lambda cmd: "bob\nalice\nbob\n\n")
+    assert qos.account_members("kempner_dev") == ["alice", "bob"]
+
+
+def test_account_exists(monkeypatch):
+    monkeypatch.setattr(qos, "_run", lambda cmd: "kempner_dev\n")
+    assert qos.account_exists("kempner_dev") is True
+    monkeypatch.setattr(qos, "_run", lambda cmd: "\n")
+    assert qos.account_exists("ghost") is False
+
+
+def test_read_assoc(monkeypatch):
+    monkeypatch.setattr(qos, "_run", lambda cmd: "alice|kemp,normal|kemp\n")
+    assert qos.read_assoc("alice", "kempner_dev", "kempner_h100") == ("kemp,normal", "kemp")
+    monkeypatch.setattr(qos, "_run", lambda cmd: "")
+    assert qos.read_assoc("alice", "kempner_dev", "kempner_h100") is None
+
+
+def test_grant_plan_create(monkeypatch):
+    monkeypatch.setattr(qos, "_run", lambda cmd: "")
+    plan = qos.grant_plan("alice", "kempner_dev", "kempner_h100", "kemp", "kemp", "odyssey")
+    assert plan == [
+        [
+            "sacctmgr",
+            "-i",
+            "add",
+            "user",
+            "name=alice",
+            "account=kempner_dev",
+            "partition=kempner_h100",
+            "cluster=odyssey",
+            "fairshare=parent",
+            "qos=kemp",
+            "defaultqos=kemp",
+        ]
+    ]
+
+
+def test_grant_plan_create_distinct_default(monkeypatch):
+    monkeypatch.setattr(qos, "_run", lambda cmd: "")
+    plan = qos.grant_plan("alice", "kempner_dev", "kempner_h100", "kemp", "normal", "odyssey")
+    assert "qos=kemp,normal" in plan[0]
+    assert "defaultqos=normal" in plan[0]
+
+
+def test_grant_plan_update_and_strip(monkeypatch):
+    monkeypatch.setattr(qos, "_run", lambda cmd: "alice|normal,kempner_h100|normal\n")
+    plan = qos.grant_plan("alice", "kempner_dev", "kempner_h100", "kemp", "kemp", "odyssey")
+    joined = [" ".join(cmd) for cmd in plan]
+    assert any(j.endswith("set QOS+=kemp") for j in joined)
+    assert any(j.endswith("set DefaultQOS=kemp") for j in joined)
+    assert any(j.endswith("set QOS-=normal,kempner_h100") for j in joined)
+
+
+def test_grant_plan_noop(monkeypatch):
+    monkeypatch.setattr(qos, "_run", lambda cmd: "alice|kemp|kemp\n")
+    assert qos.grant_plan("alice", "kempner_dev", "kempner_h100", "kemp", "kemp", "odyssey") == []
+
+
+def test_revoke_plan_only_entry(monkeypatch):
+    monkeypatch.setattr(qos, "_run", lambda cmd: "alice|kemp|kemp\n")
+    plan = qos.revoke_plan("alice", "kempner_dev", "kempner_h100", "kemp", "odyssey")
+    assert plan == [
+        [
+            "sacctmgr",
+            "-i",
+            "delete",
+            "user",
+            "where",
+            "cluster=odyssey",
+            "name=alice",
+            "account=kempner_dev",
+            "partition=kempner_h100",
+        ]
+    ]
+
+
+def test_revoke_plan_moves_default_then_removes(monkeypatch):
+    monkeypatch.setattr(qos, "_run", lambda cmd: "alice|kemp,normal|kemp\n")
+    plan = qos.revoke_plan("alice", "kempner_dev", "kempner_h100", "kemp", "odyssey")
+    joined = [" ".join(cmd) for cmd in plan]
+    assert joined[0].endswith("set DefaultQOS=normal")
+    assert joined[1].endswith("set QOS-=kemp")
+
+
+def test_revoke_plan_removes_without_default_move(monkeypatch):
+    monkeypatch.setattr(qos, "_run", lambda cmd: "alice|kemp,normal|normal\n")
+    plan = qos.revoke_plan("alice", "kempner_dev", "kempner_h100", "kemp", "odyssey")
+    joined = [" ".join(cmd) for cmd in plan]
+    assert joined == [
+        "sacctmgr -i modify user where user=alice account=kempner_dev "
+        "partition=kempner_h100 cluster=odyssey set QOS-=kemp"
+    ]
+
+
+def test_revoke_plan_skips(monkeypatch):
+    monkeypatch.setattr(qos, "_run", lambda cmd: "")
+    assert qos.revoke_plan("alice", "kempner_dev", "kempner_h100", "kemp", "odyssey") == []
+    monkeypatch.setattr(qos, "_run", lambda cmd: "alice|other|other\n")
+    assert qos.revoke_plan("alice", "kempner_dev", "kempner_h100", "kemp", "odyssey") == []
+
+
+def test_revoke_targets_plan_expands_all(monkeypatch):
+    def fake(cmd):
+        tail = " ".join(cmd).split("format=")[-1]
+        if tail == "User,Account,Partition":
+            return "alice|kempner_dev|kempner_h100\n"
+        if tail == "Account":
+            return "kempner_dev\n"
+        if tail == "User,QOS,DefaultQOS":
+            return "alice|kemp|kemp\n"
+        return ""
+
+    monkeypatch.setattr(qos, "_run", fake)
+    plan = qos.revoke_targets_plan("kemp", ["all"], "all", cluster="odyssey")
+    assert plan == [
+        [
+            "sacctmgr",
+            "-i",
+            "delete",
+            "user",
+            "where",
+            "cluster=odyssey",
+            "name=alice",
+            "account=kempner_dev",
+            "partition=kempner_h100",
+        ]
+    ]
