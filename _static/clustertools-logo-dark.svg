@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 404 88" role="img" aria-label="ClusterTools">
+  <title>ClusterTools</title>
+  <g>
+    <rect x="8" y="12" width="16" height="16" rx="4.5" fill="#F2F2FA" fill-opacity="0.30"/>
+    <rect x="56" y="12" width="16" height="16" rx="4.5" fill="#F2F2FA" fill-opacity="0.30"/>
+    <rect x="32" y="36" width="16" height="16" rx="4.5" fill="#F2F2FA" fill-opacity="0.30"/>
+    <rect x="8" y="60" width="16" height="16" rx="4.5" fill="#F2F2FA" fill-opacity="0.30"/>
+    <rect x="56" y="60" width="16" height="16" rx="4.5" fill="#F2F2FA" fill-opacity="0.30"/>
+    <rect x="32" y="12" width="16" height="16" rx="4.5" fill="#FB264C"/>
+    <rect x="8" y="36" width="16" height="16" rx="4.5" fill="#FB264C"/>
+    <rect x="56" y="36" width="16" height="16" rx="4.5" fill="#FB264C"/>
+    <rect x="32" y="60" width="16" height="16" rx="4.5" fill="#FB264C"/>
+  </g>
+  <path d="M89 30 L104 44 L89 58" fill="none" stroke="#FB264C" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="122" y="58" font-family="'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="40" font-weight="800" letter-spacing="-1" textLength="272" lengthAdjust="spacingAndGlyphs">
+    <tspan fill="#F2F2FA">Cluster</tspan><tspan fill="#FB264C">Tools</tspan>
+  </text>
+</svg>

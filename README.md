@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="_static/ct-repo-image.png" alt="Cluster Tools" width="60%">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="_static/clustertools-logo-dark.svg">
+    <img src="_static/clustertools-logo-light.svg" alt="ClusterTools" width="440">
+  </picture>
 </p>
 
 # Cluster Tools
