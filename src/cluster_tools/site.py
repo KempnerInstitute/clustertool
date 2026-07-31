@@ -156,6 +156,11 @@ def path_prefix() -> str:
     return str(config()["storage"]["path_prefix"])
 
 
+def storage_lab_roots() -> list[str]:
+    """Return the storage roots probed by storage quota --all for lab directories."""
+    return [str(root) for root in config()["storage"]["lab_roots"]]
+
+
 def scratch_path() -> str:
     """Return the default networked scratch path."""
     return str(config()["storage"]["scratch"])

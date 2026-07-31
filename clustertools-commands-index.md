@@ -88,7 +88,7 @@ out to.
 
 | Command | Scope | Wraps | Description |
 | --- | --- | --- | --- |
-| `storage quota PATH` | user | quota | Storage quota on any filesystem (VAST, Lustre, home). |
+| `storage quota [PATH]` | user | quota | Storage quota on any filesystem; `--all` your labs, `--fleet LAB` a filesystem's labs. |
 | `storage home` | user | df, du, ncdu | Home directory usage; largest subdirectories with `--scan`. |
 | `storage vast-usage PATH -g GROUP` | user | quota | Per-user usage for a group on a VAST filesystem. |
 | `storage scratch [PATH]` | user | quota | Netscratch usage and the 90-day purge reminder. |
