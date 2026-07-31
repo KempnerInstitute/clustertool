@@ -2195,3 +2195,51 @@ def test_diag_ib_counters_bad_json(tmp_path):
     after.write_text("{}")
     result = CliRunner().invoke(main, ["diag", "ib-counters", str(before), str(after)])
     assert result.exit_code == 2
+
+
+def _verify_file(tmp_path, name, snap):
+    path = tmp_path / name
+    path.write_text(json.dumps(snap))
+    return str(path)
+
+
+def test_diag_ib_verify_match(tmp_path):
+    snap = {
+        "gpus": [],
+        "ib": {"hcas": []},
+        "ibdev2netdev": [],
+        "topology": {"raw": ""},
+        "system": {},
+    }
+    golden = _verify_file(tmp_path, "g.json", snap)
+    current = _verify_file(tmp_path, "c.json", snap)
+    result = CliRunner().invoke(main, ["diag", "ib-verify", golden, "--current", current])
+    assert result.exit_code == 0
+    assert "MATCH" in result.output
+
+
+def test_diag_ib_verify_drift(tmp_path):
+    base = {"ib": {"hcas": []}, "ibdev2netdev": [], "topology": {"raw": ""}, "system": {}}
+    golden = _verify_file(tmp_path, "g.json", {**base, "gpus": [{"index": 0, "name": "A100"}]})
+    current = _verify_file(tmp_path, "c.json", {**base, "gpus": [{"index": 0, "name": "H100"}]})
+    result = CliRunner().invoke(main, ["diag", "ib-verify", golden, "--current", current])
+    assert result.exit_code == 1
+    assert "DRIFT" in result.output
+
+
+def test_diag_ib_verify_save_golden(monkeypatch, tmp_path):
+    monkeypatch.setattr(fabric, "collect_snapshot", lambda: {"hostname": "n1", "gpus": []})
+    golden = tmp_path / "g.json"
+    result = CliRunner().invoke(main, ["diag", "ib-verify", str(golden), "--save-golden"])
+    assert result.exit_code == 0
+    assert json.loads(golden.read_text())["hostname"] == "n1"
+    assert "golden saved" in result.output
+
+
+def test_diag_ib_verify_no_golden(tmp_path):
+    current = _verify_file(tmp_path, "c.json", {"gpus": []})
+    result = CliRunner().invoke(
+        main, ["diag", "ib-verify", str(tmp_path / "missing.json"), "--current", current]
+    )
+    assert result.exit_code == 3
+    assert "no golden" in result.output

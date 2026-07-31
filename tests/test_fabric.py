@@ -116,3 +116,61 @@ def test_counter_deltas_benign_only():
 def test_counter_deltas_identical():
     snap = _counter_snap({"symbol_error": 0})
     assert fabric.counter_deltas(snap, snap) == ([], False)
+
+
+def _verify_snap(gpu_name="A100", rate="200 Gb/sec", driver="575.57.08"):
+    return {
+        "gpus": [{"index": 0, "name": gpu_name, "pci_bus_id": "00:19.0"}],
+        "ib": {
+            "hcas": [
+                {
+                    "name": "mlx5_0",
+                    "ports": [
+                        {
+                            "port": 1,
+                            "state": "4: ACTIVE",
+                            "phys_state": "5: LinkUp",
+                            "rate": rate,
+                            "link_layer": "InfiniBand",
+                        }
+                    ],
+                }
+            ]
+        },
+        "ibdev2netdev": [{"hca": "mlx5_0", "port": 1, "netdev": "ib0", "state": "Up"}],
+        "topology": {"raw": "\tGPU0\tNIC0\nGPU0\t X \tNODE\n"},
+        "system": {"uname": "Linux h 5.14.0 x", "nvidia_driver": driver},
+    }
+
+
+def test_compare_snapshots_match():
+    snap = _verify_snap()
+    assert fabric.compare_snapshots(snap, snap) == {"hardware": [], "informational": []}
+
+
+def test_compare_snapshots_rate_drift():
+    findings = fabric.compare_snapshots(
+        _verify_snap(rate="200 Gb/sec"), _verify_snap(rate="100 Gb/sec")
+    )
+    assert any("rate" in item for item in findings["hardware"])
+    assert findings["informational"] == []
+
+
+def test_compare_snapshots_gpu_drift():
+    findings = fabric.compare_snapshots(
+        _verify_snap(gpu_name="A100"), _verify_snap(gpu_name="H100")
+    )
+    assert any("gpu inventory" in item for item in findings["hardware"])
+
+
+def test_compare_snapshots_driver_is_informational():
+    findings = fabric.compare_snapshots(_verify_snap(driver="575"), _verify_snap(driver="576"))
+    assert findings["hardware"] == []
+    assert any("driver" in item for item in findings["informational"])
+
+
+def test_render_drift_verdict():
+    assert "MATCH" in fabric.render_drift({"hardware": [], "informational": []}, False)
+    assert "DRIFT" in fabric.render_drift({"hardware": ["x"], "informational": []}, False)
+    assert "MATCH" in fabric.render_drift({"hardware": [], "informational": ["d"]}, False)
+    assert "DRIFT" in fabric.render_drift({"hardware": [], "informational": ["d"]}, True)
