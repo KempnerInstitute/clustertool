@@ -38,6 +38,22 @@ skipped.
 - `PARTITION...`: One or more Slurm partition names (e.g. `kempner_h100`).
 - `--parallel`: Maximum parallel ssh checks (default 24).
 
+## `diag ib-affinity [--snapshot FILE]`
+
+Check GPU-to-IB-NIC NUMA affinity (via `nvidia-smi topo -m`).
+
+Each GPU's best link to an InfiniBand NIC should be `NODE`-level or closer; a
+`SYS` link (across the CPU interconnect) costs 30-50% of cross-node bandwidth.
+Run it on a GPU node. The exit code is 0 all NODE or better, 3 a GPU crosses
+NUMA (WARN), 1 a GPU reaches no NIC (FAIL), 2 probe or parse error.
+
+**Use cases**
+- Confirm every GPU has a same-NUMA path to an IB NIC before a distributed run.
+- Triage a node that gets poor cross-node bandwidth.
+
+**Inputs**
+- `--snapshot`: Analyze a saved `ib-snapshot` JSON instead of probing the node.
+
 ## `diag io-probe -d TARGET [--size MB] [--meta-files N] [--min-write MBS] [--min-read MBS] [--max-meta-ms MS] [--keep] [--json]`
 
 Probe a filesystem's write/read throughput and metadata latency (not a
