@@ -54,7 +54,7 @@ def _diagnose(info: dict, log_text: str) -> list[tuple[str, str]]:
     code, _, signal = info.get("exit_code", "").partition(":")
     matched_state = any(state.startswith(key) for key, _, _ in _STATE_RULES)
     signal_num = int(signal) if signal.isdigit() else 0
-    if signal == "9":
+    if signal == "9" and not matched_state:
         findings.append(
             ("Killed by signal 9 (SIGKILL)", "Often an out-of-memory kill; request more memory.")
         )
