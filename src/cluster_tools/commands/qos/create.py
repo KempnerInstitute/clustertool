@@ -28,7 +28,7 @@ def create(
 
     Dry run by default: prints the sacctmgr commands and changes nothing. Re-run
     with --execute to apply, confirming unless --yes. Give at least one limit; a
-    value of -1 clears that limit. Operator only.
+    value of -1 clears that limit. Slurm or system admin only.
 
     \b
     Use cases:

@@ -75,7 +75,9 @@ List active reservations on the cluster (via `scontrol show reservation`).
 
 Return drained or down nodes to service (via `scontrol update ... State=RESUME`).
 Give explicit node names, or `--partition` to resume every drained node in a
-partition. Prompts for confirmation unless `-y`. Operator only.
+partition. Prompts for confirmation unless `-y`. Slurm or system admin only:
+`scontrol update node` needs `AdminLevel=Administrator` (or root/SlurmUser), not
+merely operator rights.
 
 **Use cases**
 - Bring auto-drained requeue nodes back after a transient issue.

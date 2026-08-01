@@ -4,9 +4,12 @@ A single-page reference for every `clustertools` command, grouped by area. Run
 each as `clustertools <command>` (for example `clustertools gpu util`). For full
 help, use `--help` on any command, or see [docs/commands/](docs/commands/).
 
-Scope: **user** commands need no special privilege; **admin** commands require
-Slurm operator rights. The Wraps column names the host tool each command shells
-out to.
+Scope: **user** commands need no special privilege; **admin** commands need
+elevated rights. Which rights depends on the command, so check its help: editing
+accounts or assigning a QoS takes Slurm operator rights or a coordinator of the
+account, while resuming nodes or changing a QoS definition takes a Slurm or
+system admin (`AdminLevel=Administrator`, or root/SlurmUser). The Wraps column
+names the host tool each command shells out to.
 
 ## top-level
 
@@ -53,7 +56,7 @@ out to.
 | `jobs hold JOBID...` | user | scontrol | Prevent pending jobs from starting. |
 | `jobs release JOBID...` | user | scontrol | Release held jobs. |
 | `jobs requeue JOBID...` | user | scontrol | Cancel and re-queue jobs. |
-| `jobs set-priority JOBID PRIORITY` | admin | scontrol update | Set (pin) a job's scheduling priority (alias: setprio). |
+| `jobs set-priority JOBID PRIORITY [-y]` | admin | scontrol update | Set (pin) a job's scheduling priority (alias: setprio). |
 | `jobs submit [ARG...]` | user | sbatch | Submit a batch job (passthrough to sbatch). |
 | `jobs new` | user | sbatch | Build (and optionally submit) a GPU sbatch script. |
 
@@ -92,7 +95,7 @@ out to.
 | `storage home` | user | df, du, ncdu | Home directory usage; largest subdirectories with `--scan`. |
 | `storage vast-usage PATH -g GROUP` | user | quota | Per-user usage for a group on a VAST filesystem. |
 | `storage scratch [PATH]` | user | quota | Netscratch usage and the 90-day purge reminder. |
-| `storage lfs-stripe PATH [-c N]` | user | lfs | Show or set Lustre striping. |
+| `storage lfs-stripe PATH [-c N] [-y]` | user | lfs | Show or set Lustre striping (setting prompts). |
 | `storage lfs-inodes PATH` | user | lfs | Inode capacity and usage for a Lustre filesystem. |
 
 ## diag

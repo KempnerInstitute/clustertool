@@ -31,7 +31,7 @@ def sync(
     Grants the QoS to account members who lack it and revokes it from holders no
     longer in the account, on the given partition. Idempotent and cron-friendly.
     Dry run by default; re-run with --execute to apply, confirming unless --yes.
-    Operator only.
+    Operator or coordinator only.
 
     \b
     Use cases:

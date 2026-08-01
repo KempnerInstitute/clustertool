@@ -14,7 +14,7 @@ from cluster_tools.grouping import admin, keywords
 @click.option("--fairshare", default="parent", show_default=True, help="Fairshare value.")
 @click.option("-y", "--yes", is_flag=True, help="Skip the confirmation prompt.")
 def add_user(user: str, account: str, fairshare: str, yes: bool) -> None:
-    """Add a user to a fairshare account (via sacctmgr). Operator only.
+    """Add a user to a fairshare account (via sacctmgr). Operator or coordinator only.
 
     Prompts for confirmation unless -y is given.
 

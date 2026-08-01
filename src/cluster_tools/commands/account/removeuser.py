@@ -13,7 +13,7 @@ from cluster_tools.grouping import admin, keywords
 @click.argument("account", shell_complete=completion.complete_accounts)
 @click.option("-y", "--yes", is_flag=True, help="Skip the confirmation prompt.")
 def remove_user(user: str, account: str, yes: bool) -> None:
-    """Remove a user's association with an account (via sacctmgr). Operator only.
+    """Remove a user's association with an account (via sacctmgr). Operator or coordinator only.
 
     Removes only the USER and ACCOUNT association, not the user's other accounts.
     Prompts for confirmation unless -y.

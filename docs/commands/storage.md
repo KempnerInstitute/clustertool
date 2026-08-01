@@ -76,12 +76,14 @@ to `$SCRATCH`, then `/n/netscratch`.
 **Inputs**
 - `PATH`: Scratch path (default: `$SCRATCH`, else `/n/netscratch`).
 
-## `storage lfs-stripe PATH [-c COUNT]`
+## `storage lfs-stripe PATH [-c COUNT] [-y]`
 
 Show or set Lustre striping for a path (via `lfs`). Without `--count`, print the
 current stripe layout (`lfs getstripe`). With `--count`, set the stripe count
 for newly created files under PATH (`lfs setstripe`); existing files are not
-restriped. Use 8 to 16 for large multi-GB or TB files.
+restriped. Use 8 to 16 for large multi-GB or TB files. Setting a count changes
+the default for everyone who writes new files there, including in a shared lab
+directory, so it prompts for confirmation unless `-y`.
 
 **Use cases**
 - Check how a directory is striped across Lustre targets.
@@ -90,6 +92,7 @@ restriped. Use 8 to 16 for large multi-GB or TB files.
 **Inputs**
 - `PATH`: A path on a Lustre filesystem (e.g. `/n/holylfs06/...`).
 - `-c, --count`: Stripe count to set for new files under PATH.
+- `-y, --yes`: Skip the confirmation prompt.
 
 ## `storage lfs-inodes PATH`
 

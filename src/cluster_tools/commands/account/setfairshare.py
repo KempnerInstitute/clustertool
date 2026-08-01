@@ -14,7 +14,7 @@ from cluster_tools.grouping import admin, keywords
 @click.argument("share")
 @click.option("-y", "--yes", is_flag=True, help="Skip the confirmation prompt.")
 def set_fairshare(user: str, account: str, share: str, yes: bool) -> None:
-    """Set a user's fairshare in an account (via sacctmgr). Operator only.
+    """Set a user's fairshare in an account (via sacctmgr). Operator or coordinator only.
 
     SHARE is an integer number of raw shares, or 'parent' to inherit the
     account's shares. Prompts for confirmation unless -y.

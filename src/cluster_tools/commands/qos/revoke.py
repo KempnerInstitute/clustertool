@@ -46,7 +46,7 @@ def revoke(
     first when needed and deleting the association if the QoS was its only entry.
     Pass 'all' for --users or --partition to act on every current holder. Dry run
     by default; re-run with --execute to apply, confirming unless --yes. Operator
-    only.
+    or coordinator only.
 
     \b
     Use cases:

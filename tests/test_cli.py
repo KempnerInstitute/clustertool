@@ -766,9 +766,27 @@ def test_storage_lfs_stripe_get(monkeypatch):
 
 def test_storage_lfs_stripe_set(monkeypatch):
     calls = _capture_stream(monkeypatch)
-    result = CliRunner().invoke(main, ["storage", "lfs-stripe", "/n/holylfs06/x", "-c", "8"])
+    result = CliRunner().invoke(main, ["storage", "lfs-stripe", "/n/holylfs06/x", "-c", "8", "-y"])
     assert result.exit_code == 0
     assert calls[0] == ["lfs", "setstripe", "-c", "8", "/n/holylfs06/x"]
+
+
+def test_storage_lfs_stripe_set_prompts(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(
+        main, ["storage", "lfs-stripe", "/n/holylfs06/x", "-c", "8"], input="y\n"
+    )
+    assert result.exit_code == 0
+    assert calls[0] == ["lfs", "setstripe", "-c", "8", "/n/holylfs06/x"]
+
+
+def test_storage_lfs_stripe_set_abort(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(
+        main, ["storage", "lfs-stripe", "/n/holylfs06/x", "-c", "8"], input="n\n"
+    )
+    assert result.exit_code != 0
+    assert calls == []
 
 
 def test_gpu_session_a100(monkeypatch):
@@ -909,14 +927,28 @@ def test_diag_scheduler(monkeypatch):
 
 def test_jobs_set_priority(monkeypatch):
     calls = _capture_stream(monkeypatch)
-    result = CliRunner().invoke(main, ["jobs", "set-priority", "123", "5000"])
+    result = CliRunner().invoke(main, ["jobs", "set-priority", "123", "5000", "-y"])
     assert result.exit_code == 0
     assert calls[0] == ["scontrol", "update", "jobid=123", "priority=5000"]
 
 
+def test_jobs_set_priority_prompts(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "set-priority", "123", "5000"], input="y\n")
+    assert result.exit_code == 0
+    assert calls[0] == ["scontrol", "update", "jobid=123", "priority=5000"]
+
+
+def test_jobs_set_priority_abort(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "set-priority", "123", "5000"], input="n\n")
+    assert result.exit_code != 0
+    assert calls == []
+
+
 def test_jobs_setprio_alias(monkeypatch):
     calls = _capture_stream(monkeypatch)
-    result = CliRunner().invoke(main, ["jobs", "setprio", "123", "5000"])
+    result = CliRunner().invoke(main, ["jobs", "setprio", "123", "5000", "-y"])
     assert result.exit_code == 0
     assert calls[0] == ["scontrol", "update", "jobid=123", "priority=5000"]
 
