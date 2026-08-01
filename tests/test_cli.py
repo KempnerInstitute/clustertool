@@ -2785,9 +2785,27 @@ def test_nodes_frag_partition_filter(monkeypatch):
 
 def test_account_balance(monkeypatch):
     accounts = [
-        {"account": "acctA", "norm_shares": 0.1, "effectv_usage": 0.2, "raw_usage": 20},
-        {"account": "acctB", "norm_shares": 0.8, "effectv_usage": 0.2, "raw_usage": 20},
-        {"account": "acctC", "norm_shares": 0.0, "effectv_usage": 0.5, "raw_usage": 50},
+        {
+            "account": "acctA",
+            "raw_shares": 1,
+            "norm_shares": 0.1,
+            "effectv_usage": 0.2,
+            "raw_usage": 20,
+        },
+        {
+            "account": "acctB",
+            "raw_shares": 8,
+            "norm_shares": 0.8,
+            "effectv_usage": 0.2,
+            "raw_usage": 20,
+        },
+        {
+            "account": "acctC",
+            "raw_shares": 0,
+            "norm_shares": 0.0,
+            "effectv_usage": 0.5,
+            "raw_usage": 50,
+        },
     ]
     monkeypatch.setattr(slurm, "account_shares", lambda a=None: accounts)
     result = CliRunner().invoke(main, ["account", "balance"])
@@ -2803,8 +2821,20 @@ def test_account_balance(monkeypatch):
 def test_account_balance_ranks_an_unused_account_as_most_under_served(monkeypatch):
     """man sshare: an association with no usage is the most under-served there is."""
     accounts = [
-        {"account": "busy_lab", "norm_shares": 0.1, "effectv_usage": 0.5, "raw_usage": 500},
-        {"account": "idle_lab", "norm_shares": 0.2, "effectv_usage": 0.0, "raw_usage": 0},
+        {
+            "account": "busy_lab",
+            "raw_shares": 1,
+            "norm_shares": 0.1,
+            "effectv_usage": 0.5,
+            "raw_usage": 500,
+        },
+        {
+            "account": "idle_lab",
+            "raw_shares": 2,
+            "norm_shares": 0.2,
+            "effectv_usage": 0.0,
+            "raw_usage": 0,
+        },
     ]
     monkeypatch.setattr(slurm, "account_shares", lambda a=None: accounts)
     result = CliRunner().invoke(main, ["account", "balance"])
@@ -4267,3 +4297,47 @@ def test_jobs_requeue_yes_skips_the_prompt(monkeypatch):
     result = CliRunner().invoke(main, ["jobs", "requeue", "123", "-y"])
     assert result.exit_code == 0
     assert calls[0] == ["scontrol", "requeue", "123"]
+
+
+def test_account_balance_keeps_a_share_too_small_to_print(monkeypatch):
+    """sshare prints NormShares to six decimals, so a real share can round to zero."""
+    accounts = [
+        {
+            "account": "big_lab",
+            "raw_shares": 3578602,
+            "norm_shares": 0.999999,
+            "effectv_usage": 0.5,
+            "raw_usage": 500,
+        },
+        {
+            "account": "tiny_lab",
+            "raw_shares": 1,
+            "norm_shares": 0.0,
+            "effectv_usage": 0.0,
+            "raw_usage": 0,
+        },
+    ]
+    monkeypatch.setattr(slurm, "account_shares", lambda a=None: accounts)
+    result = CliRunner().invoke(main, ["account", "balance"])
+    assert result.exit_code == 0
+    assert "2 account(s) with shares" in result.output
+    assert "tiny_lab" in result.output
+
+
+def test_account_balance_does_not_invent_a_share_for_one_account(monkeypatch):
+    """With no siblings in the result there is nothing to normalize against."""
+    accounts = [
+        {
+            "account": "tiny_lab",
+            "raw_shares": 1,
+            "norm_shares": 0.0,
+            "effectv_usage": 0.0,
+            "raw_usage": 0,
+        },
+    ]
+    monkeypatch.setattr(slurm, "account_shares", lambda a=None: accounts)
+    monkeypatch.setattr(slurm, "account_exists", lambda a: True)
+    result = CliRunner().invoke(main, ["account", "balance", "tiny_lab"])
+    assert result.exit_code == 0
+    assert "1.000000" not in result.output
+    assert "most over-served" not in result.output

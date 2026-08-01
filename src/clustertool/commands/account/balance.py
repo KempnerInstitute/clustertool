@@ -41,16 +41,23 @@ def balance(account: str | None, top: int) -> None:
       ACCOUNT    Narrow to one account subtree (optional).
       -n, --top  Rows to show per ranking (default 10).
     """
-    if account and not slurm.account_exists(account):
-        raise click.ClickException(f"account '{account}' not found")
+    account = account.strip() if account is not None else None
+    if account is not None and not slurm.account_exists(account):
+        raise click.ClickException(f"account {account!r} not found")
     accounts = slurm.account_shares(account)
-    ranked = [a for a in accounts if a["norm_shares"] and a["norm_shares"] > 0]
+    ranked = [a for a in accounts if (a["raw_shares"] or 0) > 0]
+    total_raw = sum(entry["raw_shares"] or 0 for entry in ranked)
     for entry in ranked:
-        entry["ratio"] = entry["effectv_usage"] / entry["norm_shares"]
+        share = entry["norm_shares"] or 0.0
+        if not share and len(ranked) > 1 and total_raw:
+            share = (entry["raw_shares"] or 0) / total_raw
+        entry["share"] = share
+        entry["ratio"] = (entry["effectv_usage"] / share) if share else None
     if not ranked:
         raise click.ClickException("no accounts with shares to rank")
-    over = sorted(ranked, key=lambda a: a["ratio"], reverse=True)[:top]
-    under = sorted(ranked, key=lambda a: a["ratio"])[:top]
+    rankable = [entry for entry in ranked if entry["ratio"] is not None]
+    over = sorted(rankable, key=lambda a: a["ratio"], reverse=True)[:top]
+    under = sorted(rankable, key=lambda a: a["ratio"])[:top]
     with_usage = sum(1 for entry in ranked if entry["raw_usage"] > 0)
 
     click.echo(f"Fairshare balance: {len(ranked)} account(s) with shares, {with_usage} with usage")
@@ -60,15 +67,18 @@ def balance(account: str | None, top: int) -> None:
             return
         click.echo()
         click.echo(f"{title}:")
-        click.echo(f"  {'Account':<28}{'NormShare':>12}{'EffUsage':>12}{'Ratio':>9}")
+        click.echo(f"  {'Account':<28}{'NormShare':>12}{'NormUsage':>12}{'Ratio':>9}")
         for entry in rows:
+            ratio = "-" if entry["ratio"] is None else f"{entry['ratio']:.2f}"
             click.echo(
-                f"  {entry['account']:<28}{entry['norm_shares']:>12.6f}"
-                f"{entry['effectv_usage']:>12.6f}{entry['ratio']:>9.2f}"
+                f"  {entry['account']:<28}{entry['share']:>12.6f}"
+                f"{entry['effectv_usage']:>12.6f}{ratio:>9}"
             )
 
-    table("most over-served (usage above share)", over)
-    if len(ranked) > 1:
+    if len(ranked) == 1:
+        table("fairshare balance", ranked)
+    else:
+        table("most over-served (usage above share)", over)
         table("most under-served (usage below share)", under)
     click.echo()
     click.echo("note: point-in-time snapshot; sshare keeps no history")

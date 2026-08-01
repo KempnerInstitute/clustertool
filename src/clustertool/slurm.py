@@ -857,13 +857,18 @@ def _root_raw_usage() -> float:
     """Return the root account's RawUsage, the denominator for effective usage.
 
     sshare omits the root row when scoped with -A, so an account-scoped query has
-    to ask for it separately or every ratio comes out zero.
+    to ask for it separately or every ratio comes out zero. Raises when that query
+    fails, since returning zero would report every account as unused rather than
+    admitting the denominator is unknown.
     """
-    code, out, _ = process.probe(
+    code, out, err = process.probe(
         ["sshare", "-a", "-P", "-o", "Account,User,RawUsage", "-A", "root"]
     )
     if code != 0:
-        return 0.0
+        raise CommandError(
+            "could not read the root account's usage, which every ratio is measured "
+            f"against: {err.strip() or code}"
+        )
     for line in out.splitlines():
         parts = line.split("|")
         if len(parts) >= 3 and parts[0].strip() == "root" and not parts[1].strip():
@@ -903,15 +908,16 @@ def account_shares(account: str | None = None) -> list[dict]:
         if name == "root":
             root_usage = raw_usage
             continue
-        parsed.append((name, _float_field(parts[3]), raw_usage))
+        parsed.append((name, _float_field(parts[2]), _float_field(parts[3]), raw_usage))
     if not root_usage:
         root_usage = _root_raw_usage()
 
     rows: list[dict] = []
-    for name, norm_shares, raw_usage in parsed:
+    for name, raw_shares, norm_shares, raw_usage in parsed:
         rows.append(
             {
                 "account": name,
+                "raw_shares": raw_shares,
                 "norm_shares": norm_shares,
                 "raw_usage": raw_usage,
                 "effectv_usage": (raw_usage / root_usage) if root_usage else 0.0,

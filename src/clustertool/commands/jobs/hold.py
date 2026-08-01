@@ -1,8 +1,11 @@
 """jobs hold command."""
 
+import os
+import pwd
+
 import click
 
-from clustertool import completion, process
+from clustertool import completion, process, slurm
 from clustertool.grouping import keywords
 
 
@@ -23,6 +26,11 @@ def hold(jobids: tuple[str, ...]) -> None:
     scontrol it only sets the priority to 0, which keeps the job held if it is
     later requeued.
 
+    A job owned by someone else is refused. man scontrol records an admin-hold
+    rather than a user-hold when a privileged user holds a job, and its owner
+    cannot lift that with 'jobs release', so a mistyped id would otherwise strand
+    a stranger's job.
+
     \b
     Use cases:
       - Pause a pending job you are not ready to run.
@@ -34,6 +42,13 @@ def hold(jobids: tuple[str, ...]) -> None:
     """
     if any(not jobid.strip() for jobid in jobids):
         raise click.UsageError("JOBID may not be empty.")
+    me = pwd.getpwuid(os.getuid()).pw_name
+    others = {jid: owner for jid in jobids if (owner := slurm.job_owner(jid)) and owner != me}
+    if others:
+        listed = ", ".join(f"{jid} ({owner})" for jid, owner in sorted(others.items()))
+        raise click.ClickException(
+            f"these jobs belong to another user: {listed}. Hold only your own"
+        )
     process.passthrough(
         ["scontrol", "hold", ",".join(jobids)],
         f"could not hold one or more of {', '.join(jobids)}; see the messages above for which",
