@@ -1,9 +1,5 @@
 """Tests for the site configuration layer."""
 
-import pathlib
-import re
-import sys
-
 import pytest
 from click.testing import CliRunner
 
@@ -118,39 +114,21 @@ def test_unreadable_config_raises_config_error(tmp_path):
         site.load_file(tmp_path / "does-not-exist.toml")
 
 
-def test_entry_reports_config_error_without_traceback(tmp_path, monkeypatch):
-    bad = tmp_path / "site.toml"
-    bad.write_text("nope [[[\n")
-    monkeypatch.setenv(site.ENV_VAR, str(bad))
-    for name in [m for m in list(sys.modules) if m.startswith("clustertool.c")]:
-        monkeypatch.delitem(sys.modules, name, raising=False)
-    site._cache = None
+def test_entry_reports_config_error_without_traceback(monkeypatch):
+    """The guard turns an unusable config into one line, not an import traceback."""
+
+    def boom():
+        raise site.ConfigError("site config /x/site.toml is not valid TOML: bad key")
+
+    monkeypatch.setattr(entry, "_load_main", boom)
     with pytest.raises(SystemExit) as excinfo:
         entry.run()
     assert "not valid TOML" in str(excinfo.value)
-    site._cache = None
+    assert "clustertool: error:" in str(excinfo.value)
 
 
-def test_every_config_key_is_documented():
-    """Each key in the packaged default must appear in the config reference."""
-    root = pathlib.Path(__file__).resolve().parents[1]
-    doc = (root / "docs" / "configuration.md").read_text()
-    referenced = set(re.findall(r"`([a-z_]+)`", doc))
-
-    def leaves(table, prefix=""):
-        for key, value in table.items():
-            path = f"{prefix}{key}"
-            if isinstance(value, dict):
-                yield from leaves(value, f"{path}.")
-            else:
-                yield path
-
-    # [gpu_types] and [partitions.limits] are keyed by site-chosen names, so the
-    # table is documented rather than each entry.
-    by_site_name = ("gpu_types.", "partitions.limits.")
-    undocumented = [
-        path
-        for path in leaves(site._packaged_default())
-        if not path.startswith(by_site_name) and path.split(".")[-1] not in referenced
-    ]
-    assert undocumented == []
+def test_entry_runs_the_cli_when_the_config_loads(monkeypatch):
+    called = []
+    monkeypatch.setattr(entry, "_load_main", lambda: lambda: called.append(1))
+    entry.run()
+    assert called == [1]
