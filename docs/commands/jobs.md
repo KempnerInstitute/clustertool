@@ -309,8 +309,10 @@ mail flags all work. Run `sbatch --help` for the full list.
 
 Build a GPU sbatch script and print, save, or submit it. Prompts for the
 GPU type and account if not given, sizes CPUs and memory to the partition's
-enforced per-GPU limits, and writes a correct sbatch header. Prints the script
-by default; `-o` saves it and `--submit` submits it.
+enforced per-GPU limits, and writes a correct sbatch header. A partition with no
+configured ratio and no override gets no `cpus-per-task` or `mem` line, leaving
+Slurm to apply its own defaults. Prints the script by default; `-o` saves it and
+`--submit` submits it.
 
 **Use cases**
 - Generate a correct sbatch header without memorizing the conventions.

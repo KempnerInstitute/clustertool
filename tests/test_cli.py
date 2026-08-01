@@ -2533,3 +2533,37 @@ def test_gpu_avail_reads_the_fleet_once(monkeypatch):
     result = CliRunner().invoke(main, ["gpu", "avail", "kempner_h100"])
     assert result.exit_code == 0
     assert len(passes) == 1
+
+
+def test_gpu_session_omits_sizing_without_configured_limits(monkeypatch):
+    """A site can map a GPU type to a partition it sets no per-GPU ratio for."""
+    monkeypatch.setattr(slurm, "GPU_TYPE_PARTITION", {"a100": "gpu"}, raising=False)
+    monkeypatch.setattr(slurm, "PARTITION_LIMITS", {}, raising=False)
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["gpu", "session", "a100", "-A", "acct"])
+    assert result.exit_code == 0
+    built = " ".join(calls[0])
+    assert "--gres=gpu:1" in built
+    assert "--cpus-per-task" not in built
+    assert "--mem=" not in built
+
+
+def test_jobs_new_script_omits_sizing_without_configured_limits(monkeypatch):
+    from clustertool.commands.jobs.new import _build_script
+
+    monkeypatch.setattr(slurm, "GPU_TYPE_PARTITION", {"a100": "gpu"}, raising=False)
+    monkeypatch.setattr(slurm, "PARTITION_LIMITS", {}, raising=False)
+    script = _build_script("a100", 1, 1, "0-01:00", "acct", "job", None, None)
+    assert "--gres=gpu:1" in script
+    assert "--cpus-per-task" not in script
+    assert "--mem=" not in script
+
+
+def test_jobs_new_script_still_honors_an_override_without_config(monkeypatch):
+    from clustertool.commands.jobs.new import _build_script
+
+    monkeypatch.setattr(slurm, "GPU_TYPE_PARTITION", {"a100": "gpu"}, raising=False)
+    monkeypatch.setattr(slurm, "PARTITION_LIMITS", {}, raising=False)
+    script = _build_script("a100", 2, 1, "0-01:00", "acct", "job", 8, 50000)
+    assert "--cpus-per-task=16" in script
+    assert "--mem=100000" in script

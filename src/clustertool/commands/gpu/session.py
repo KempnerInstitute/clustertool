@@ -68,7 +68,9 @@ def session(
 
     The GPU types listed above are the ones your site defines under [gpu_types],
     each mapped to a partition whose per-GPU CPU and memory come from
-    [partitions.limits]. Run 'nodes partitions' to see that mapping.
+    [partitions.limits]. Run 'nodes partitions' to see that mapping. When a
+    partition has no configured ratio, no CPU or memory request is made and
+    Slurm applies that partition's own defaults.
 
     \b
     Use cases:
@@ -85,19 +87,12 @@ def session(
       [SALLOC_ARG]...  Extra salloc arguments, forwarded (override the defaults).
     """
     partition = slurm.GPU_TYPE_PARTITION[gpu_type.lower()]
-    cpus, mem_mb = slurm.PARTITION_LIMITS[partition]
-    cmd = [
-        "salloc",
-        "-p",
-        partition,
-        "--account=" + account,
-        "--gres=gpu:1",
-        "--cpus-per-task=" + str(cpus),
-        "--mem=" + str(mem_mb),
-        "-t",
-        time_limit,
-        *salloc_args,
-    ]
+    cmd = ["salloc", "-p", partition, "--account=" + account, "--gres=gpu:1"]
+    limits = slurm.PARTITION_LIMITS.get(partition)
+    if limits:
+        cpus, mem_mb = limits
+        cmd += ["--cpus-per-task=" + str(cpus), "--mem=" + str(mem_mb)]
+    cmd += ["-t", time_limit, *salloc_args]
     if jupyter:
         cmd += _jupyter_command(port)
     code = process.stream(cmd)

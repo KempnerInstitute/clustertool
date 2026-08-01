@@ -85,7 +85,9 @@ packaged Kempner profile that is:
 | `rtx` | `kempner_rtx` | 16 | 180000 MB |
 
 Run `nodes partitions` to see the mapping in force on your cluster. Memory is
-passed in MB (Slurm's default unit), so `--mem=360000`, not `360G`.
+passed in MB (Slurm's default unit), so `--mem=360000`, not `360G`. When a
+partition has no configured ratio, no CPU or memory request is made and Slurm
+applies that partition's own defaults.
 
 Any extra arguments are forwarded to `salloc` after these defaults, so you can
 override or add flags (salloc uses the last value): for example

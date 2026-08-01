@@ -18,11 +18,13 @@ def _build_script(
     cpus_per_gpu: int | None,
     mem_per_gpu: int | None,
 ) -> str:
-    """Return an sbatch script for a GPU job, sized to the per-GPU limits."""
+    """Return an sbatch script for a GPU job, sized to the per-GPU limits.
+
+    A partition with no configured ratio and no override gets no cpus-per-task or
+    mem line, leaving Slurm to apply that partition's own defaults.
+    """
     partition = slurm.GPU_TYPE_PARTITION[gpu_type.lower()]
-    default_cpu, default_mem = slurm.PARTITION_LIMITS[partition]
-    cpus = (cpus_per_gpu or default_cpu) * gpus
-    mem = (mem_per_gpu or default_mem) * gpus
+    default_cpu, default_mem = slurm.PARTITION_LIMITS.get(partition, (None, None))
     lines = [
         "#!/bin/bash",
         f"#SBATCH --job-name={name}",
@@ -30,8 +32,14 @@ def _build_script(
         f"#SBATCH --account={account}",
         f"#SBATCH --nodes={nodes}",
         f"#SBATCH --gres=gpu:{gpus}",
-        f"#SBATCH --cpus-per-task={cpus}",
-        f"#SBATCH --mem={mem}",
+    ]
+    cpu_each = cpus_per_gpu or default_cpu
+    mem_each = mem_per_gpu or default_mem
+    if cpu_each:
+        lines.append(f"#SBATCH --cpus-per-task={cpu_each * gpus}")
+    if mem_each:
+        lines.append(f"#SBATCH --mem={mem_each * gpus}")
+    lines += [
         f"#SBATCH --time={time_limit}",
         "#SBATCH --output=%x_%j.out",
         "",
