@@ -23,21 +23,31 @@ so every user on that cluster gets the right values with no per-user setup.
 The packaged default lists every key with Kempner values; it is the reference:
 `src/clustertool/data/site.default.toml`. The sections are:
 
-- `[site]` `name`: shown in the top-level `--help`.
+- `[site]` `name`, `slurm_group_prefix`: a label for the cluster, and the prefix
+  of the Unix groups that map to Slurm priority tiers, which `me --access` lists.
 - `[partitions]` `base`, `requeue`, `priority_pattern`: the base GPU partitions
   that count toward the cap, the partition spanning every GPU node, and the
   regex identifying priority partitions.
 - `[partitions.limits.<name>]` `cpus_per_gpu`, `mem_per_gpu_mb`: the enforced
   per-GPU limits used to size sessions and flag over-requests.
-- `[qos]` `base`, `default_cap`: the QoS whose MaxTRESPA holds the per-account
-  GPU cap, and a fallback cap.
+- `[qos]` `base`, `default_cap`, `cluster`, `grant_fairshare`, `grant_strip`: the
+  QoS whose MaxTRESPA holds the per-account GPU cap, and a fallback cap. Then the
+  three used by the admin `qos` commands: `cluster` is the Slurm cluster name
+  every `sacctmgr` write targets, so **set it before running any `qos` command**
+  or you will aim them at a cluster named `odyssey`; `grant_fairshare` is the
+  fairshare value given to associations that `qos grant` creates; `grant_strip`
+  lists the QoS that `qos grant` removes so the granted one takes effect.
 - `[gpu_types]`: the `session` / `jobs new` GPU-type to partition map.
 - `[gpu_status]` `types`: GPU node types in display order, each a `label` and
   the Slurm node `feature` tag that identifies it.
 - `[accounts]` `roster_partition`, `lab_prefix`: the partition whose
   AllowAccounts enumerates lab accounts, and the prefix identifying them.
-- `[storage]` `path_prefix`, `scratch`, `scratch_purge_days`: the prefix a bare
-  name expands to, the default scratch path, and its auto-purge age.
+- `[storage]` `path_prefix`, `scratch`, `scratch_purge_days`, `lab_roots`: the
+  prefix a bare name expands to, the default scratch path, its auto-purge age,
+  and the parent directories searched for a lab's directories by
+  `storage quota --all`.
+- `[pulse]` `remote_venv`: the virtualenv that `gpu pulse --node` activates on a
+  remote GPU node. Leave it empty and that flag reports it is not configured.
 - `[tools]`: the binary each tool-backed command runs (`queue`, `partitions`,
   `node_load`, `account_usage`, `account_efficiency`, `job_stats`, `quota`). A
   command whose tool is not on PATH is hidden from help and search, so a cluster

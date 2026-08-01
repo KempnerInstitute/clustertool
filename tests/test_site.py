@@ -1,5 +1,7 @@
 """Tests for the site configuration layer."""
 
+import pathlib
+import re
 import sys
 
 import pytest
@@ -127,3 +129,28 @@ def test_entry_reports_config_error_without_traceback(tmp_path, monkeypatch):
         entry.run()
     assert "not valid TOML" in str(excinfo.value)
     site._cache = None
+
+
+def test_every_config_key_is_documented():
+    """Each key in the packaged default must appear in the config reference."""
+    root = pathlib.Path(__file__).resolve().parents[1]
+    doc = (root / "docs" / "configuration.md").read_text()
+    referenced = set(re.findall(r"`([a-z_]+)`", doc))
+
+    def leaves(table, prefix=""):
+        for key, value in table.items():
+            path = f"{prefix}{key}"
+            if isinstance(value, dict):
+                yield from leaves(value, f"{path}.")
+            else:
+                yield path
+
+    # [gpu_types] and [partitions.limits] are keyed by site-chosen names, so the
+    # table is documented rather than each entry.
+    by_site_name = ("gpu_types.", "partitions.limits.")
+    undocumented = [
+        path
+        for path in leaves(site._packaged_default())
+        if not path.startswith(by_site_name) and path.split(".")[-1] not in referenced
+    ]
+    assert undocumented == []
