@@ -16,6 +16,7 @@ States are Slurm's own short codes: `idle` is free, `mix` partly allocated,
 not match its configuration, and `plnd` is reserved by the backfill scheduler for
 a higher-priority job. Two flags can follow: `*` means the node is not
 responding, and `-` that backfill has planned it for a higher-priority job.
+`man sinfo` documents seven more flags that this cluster does not currently use.
 
 An unknown partition name is an error rather than an empty list.
 
@@ -24,7 +25,7 @@ An unknown partition name is an error rather than an empty list.
 - Check node states before targeting a node for a job.
 
 **Inputs**
-- `PARTITION...`: One or more Slurm partition names (e.g. `kempner_h100`).
+- `PARTITION...`: One or more Slurm partition names.
 
 ## `nodes partitions [-f TEXT]`
 
@@ -42,8 +43,8 @@ with the packaged Kempner profile).
 ## `nodes down [-p PARTITION]`
 
 List nodes not accepting work, with the scheduler's reason (via `sinfo -R`).
-Covers down, drained, draining and failing nodes. The reason is shown in full;
-`sinfo -R`'s default format truncates it to 20 characters.
+Covers down, drained, draining and failing nodes. The reason is shown to 60
+characters; `sinfo -R`'s default format truncates it to 20.
 
 **Use cases**
 - See which nodes are out, and why, before blaming your job.
@@ -65,7 +66,7 @@ profile).
 **Inputs**
 - `-f, --filter`: Only show rows containing this text (the header is kept).
 
-## `nodes frag [-p PARTITION] [--cpus-per-gpu N] [--mem-per-gpu MB]`
+## `nodes frag [-p PARTITION] [--cpus-per-gpu N] [--mem-per-gpu MiB]`
 
 Show free GPU shards per partition and how many N-GPU jobs could start now (via
 one `scontrol` pass over the GPU nodes). Prints the free-GPU distribution
@@ -81,7 +82,7 @@ enough to finish first. Partitions with no GPU nodes are not listed.
 With `--partition`, the job shape defaults to that partition's per-GPU CPU and
 memory policy from `[partitions.limits]` in the site config, so the fit counts
 describe a job that partition would actually accept. Across partitions, or for a
-partition with no configured ratio, it falls back to 8 CPU and 65536 MB per GPU.
+partition with no configured ratio, it falls back to 8 CPU and 65536 MiB per GPU.
 Either value can be overridden. The header states the shape in force and whether
 it came from the partition's policy.
 
@@ -92,7 +93,7 @@ it came from the partition's policy.
 **Inputs**
 - `-p, --partition`: Limit to one partition.
 - `--cpus-per-gpu`: CPUs per GPU in the job shape.
-- `--mem-per-gpu`: Memory per GPU in MB in the job shape.
+- `--mem-per-gpu`: Memory per GPU in MiB in the job shape.
 
 ## `nodes reservations`
 
@@ -109,8 +110,9 @@ reservation`). Shows every reservation Slurm knows about, current and scheduled:
 
 Return drained or down nodes to service (via `scontrol update ... State=RESUME`).
 Give explicit node names, or `--partition` to sweep a whole partition. The sweep
-covers every state `RESUME` accepts, which `man scontrol` gives as DRAIN,
-DRAINING, DOWN and REBOOT. Each node is listed with its state and the scheduler's
+covers every state `man scontrol` lists `RESUME` as accepting: DRAIN, DRAINING,
+DOWN and REBOOT, plus a node whose registration Slurm marked `INVALID_REG`,
+which is normally also DOWN and DRAIN. Each node is listed with its state and the scheduler's
 reason before you confirm, whether you named it or the sweep found it. Prompts for
 confirmation unless `-y`.
 

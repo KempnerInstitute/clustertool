@@ -334,3 +334,48 @@ def test_account_exists_raises_when_the_query_fails(monkeypatch):
     monkeypatch.setattr(slurm.process, "probe", lambda cmd, timeout=None: (1, "", "no slurmdbd"))
     with pytest.raises(slurm.SlurmError):
         slurm.account_exists("kempner_dev")
+
+
+def test_partition_gpu_util_columns_sum_to_total(monkeypatch):
+    """Every GPU belongs to exactly one column, so the four must reconcile."""
+    nodes = [
+        {
+            "name": "up",
+            "partitions": ["gpu"],
+            "state": "MIXED",
+            "available": True,
+            "cpu_free": 0,
+            "mem_free_mb": 0,
+            "gpu_tot": 4,
+            "gpu_free": 1,
+        },
+        {
+            "name": "draining",
+            "partitions": ["gpu"],
+            "state": "MIXED+DRAIN",
+            "available": False,
+            "cpu_free": 0,
+            "mem_free_mb": 0,
+            "gpu_tot": 4,
+            "gpu_free": 3,
+        },
+    ]
+    monkeypatch.setattr(slurm, "gpus_allocated_in", lambda p: 2)
+    total, unavailable, used, other, free, _ = slurm.partition_gpu_util("gpu", nodes)
+    assert total == 8
+    assert unavailable + used + other + free == total
+    assert (used, other, free, unavailable) == (2, 2, 1, 3)
+
+
+def test_resumable_nodes_includes_an_invalid_registration(monkeypatch):
+    """sinfo %T collapses DOWN+DRAIN+INVALID_REG to 'inval', hiding the node."""
+    out = (
+        "NodeName=n1 State=DOWN+DRAIN+INVALID_REG Partitions=gpu "
+        "Reason=gres/gpu count reported lower than configured (3 < 4) [slurm@2026-07-28T17:13:24]\n"
+        "NodeName=n2 State=IDLE Partitions=gpu Reason=none\n"
+        "NodeName=n3 State=IDLE+POWERED_DOWN Partitions=gpu Reason=none\n"
+    )
+    monkeypatch.setattr(slurm, "_run", lambda cmd: out)
+    rows = slurm.resumable_nodes("gpu")
+    assert [name for name, _, _ in rows] == ["n1"]
+    assert rows[0][2] == "gres/gpu count reported lower than configured (3 < 4)"

@@ -50,6 +50,6 @@ def list_nodes(partitions: tuple[str, ...]) -> None:
             if state.endswith("-"):
                 notes.append("planned by backfill")
             note = f"  ({', '.join(notes)})" if notes else ""
-            click.echo(f"  {node:<20} {state:<8}{note}")
+            click.echo(f"  {node:<20} {state:<8}{note}".rstrip())
         click.echo(f"  ({len(rows)} node(s))")
         click.echo()

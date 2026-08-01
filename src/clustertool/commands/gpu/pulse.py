@@ -93,7 +93,9 @@ def pulse(args: tuple[str, ...]) -> None:
     if job and not node:
         owner = slurm.job_owner(job)
         me = os.environ.get("USER", "")
-        if owner and me and owner != me:
+        if owner and not me:
+            raise click.ClickException("cannot tell whose job this is: $USER is not set")
+        if owner and owner != me:
             raise click.ClickException(
                 f"job {job} belongs to {owner}, not you. Node login is gated on having "
                 "an allocation there, so the ssh would be refused"

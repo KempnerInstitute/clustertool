@@ -67,7 +67,9 @@ def nvtop(jobid: str, attach: bool) -> None:
     """
     owner = slurm.job_owner(jobid)
     me = os.environ.get("USER", "")
-    if owner and me and owner != me:
+    if owner and not me:
+        raise click.ClickException("cannot tell whose job this is: $USER is not set")
+    if owner and owner != me:
         raise click.ClickException(
             f"job {jobid} belongs to {owner}, not you. Node login is gated on having "
             "an allocation there, so this would be refused on every node; monitor one "

@@ -22,9 +22,10 @@ def resume(nodes: tuple[str, ...], partition: str | None, yes: bool) -> None:
     """Return drained or down nodes to service (via scontrol). Slurm or system admin only.
 
     Give explicit node names, or --partition to sweep a whole partition. The sweep
-    covers every state scontrol's RESUME accepts: drained, draining, down, failing,
-    and rebooting. Each node is listed with its state and the scheduler's reason
-    before you confirm. Prompts for confirmation unless -y.
+    covers every state man scontrol lists RESUME as accepting: drained, draining,
+    down and rebooting, plus a node whose registration Slurm marked invalid. Each
+    node is listed with its state and the scheduler's reason before you confirm.
+    Prompts for confirmation unless -y.
 
     \b
     Use cases:

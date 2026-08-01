@@ -2,7 +2,7 @@
 
 import click
 
-from clustertool import completion, slurm
+from clustertool import completion, qos, slurm
 from clustertool.grouping import keywords
 
 
@@ -55,7 +55,9 @@ def avail(partition: str, cpus_per_gpu: int | None, mem_per_gpu: int | None) -> 
 
     nodes = [node for node in slurm.node_capacity() if partition in node["partitions"]]
     if not nodes:
-        raise click.ClickException(f"no nodes found in partition '{partition}'")
+        if not qos.partition_exists(partition):
+            raise click.ClickException(f"partition '{partition}' does not exist")
+        raise click.ClickException(f"partition '{partition}' has no nodes")
 
     rows = []
     for node in nodes:
@@ -76,7 +78,7 @@ def avail(partition: str, cpus_per_gpu: int | None, mem_per_gpu: int | None) -> 
     if cpus_per_gpu:
         caps.append(f"{cpus_per_gpu} CPU")
     if mem_per_gpu:
-        caps.append(f"{mem_per_gpu} MB" if mem_per_gpu < 1024 else f"{mem_per_gpu / 1024:.0f} GB")
+        caps.append(f"{mem_per_gpu} MiB")
     limit = f"capped by {' / '.join(caps)} per GPU" if caps else "raw free; no per-GPU ratio known"
     click.echo(f"Allocatable GPUs on '{partition}' ({limit}), most first")
     click.echo()

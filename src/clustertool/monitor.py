@@ -72,7 +72,7 @@ def _colorize(
     try:
         num = float(str(value).rstrip("%"))
     except ValueError:
-        return str(value)
+        return f"{value}{unit}"
     if idle_is_bad:
         color = _RED if num < low else _YELLOW if num < high else _GREEN
     else:

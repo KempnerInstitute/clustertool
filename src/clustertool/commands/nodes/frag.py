@@ -27,7 +27,7 @@ _FALLBACK_SHAPE = (8, 65536)
     "--mem-per-gpu",
     type=click.IntRange(min=1),
     default=None,
-    help="Memory per GPU in MB in the hypothetical job shape.",
+    help="Memory per GPU in MiB in the hypothetical job shape.",
 )
 def frag(partition: str | None, cpus_per_gpu: int | None, mem_per_gpu: int | None) -> None:
     """Show free GPU shards per partition and how many N-GPU jobs could start now.
@@ -43,7 +43,7 @@ def frag(partition: str | None, cpus_per_gpu: int | None, mem_per_gpu: int | Non
     With --partition, the job shape defaults to that partition's per-GPU CPU and
     memory policy from [partitions.limits] in the site config, so the fit counts
     describe a job that partition would actually accept. Across partitions, or for
-    a partition with no configured ratio, it falls back to 8 CPU and 65536 MB per
+    a partition with no configured ratio, it falls back to 8 CPU and 65536 MiB per
     GPU. Either value can be overridden. The header states the shape in force.
 
     \b
@@ -55,7 +55,7 @@ def frag(partition: str | None, cpus_per_gpu: int | None, mem_per_gpu: int | Non
     Inputs:
       -p, --partition  Limit to one partition.
       --cpus-per-gpu   CPUs per GPU in the job shape.
-      --mem-per-gpu    Memory per GPU in MB in the job shape.
+      --mem-per-gpu    Memory per GPU in MiB in the job shape.
     """
     limits = slurm.PARTITION_LIMITS.get(partition) if partition else None
     from_policy = limits is not None and cpus_per_gpu is None and mem_per_gpu is None
@@ -98,7 +98,7 @@ def frag(partition: str | None, cpus_per_gpu: int | None, mem_per_gpu: int | Non
     source = f", the {partition} per-GPU policy" if from_policy else ""
     click.echo(
         f"Free GPU shards and N-GPU-job fit  "
-        f"(job shape: {cpus_per_gpu} CPU + {mem_per_gpu} MB per GPU{source})"
+        f"(job shape: {cpus_per_gpu} CPU + {mem_per_gpu} MiB per GPU{source})"
     )
     click.echo()
     width = max(24, *(len(part) for part in per_part)) + 1 if per_part else 24

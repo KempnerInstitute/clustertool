@@ -63,47 +63,61 @@ def partition_gpu_util(
 ) -> tuple[int, int, int, int, int, float]:
     """Return (total, unavailable, used, other, free, percent) GPUs for a partition.
 
-    Total, unavailable and free describe the partition's nodes, read from one
-    scontrol pass: the GPUs those nodes have, those on nodes that cannot take a new
-    job, and those still unallocated on nodes that can.
-
-    Used is the GPUs held by jobs submitted to this partition. Other is what jobs
-    from partitions sharing the same nodes hold, which is why used plus free need
-    not reach total. Percent is used over total. Pass nodes to reuse a
-    node_capacity() result.
+    Every GPU falls in exactly one column, so the four sum to total. Used is what
+    jobs submitted to this partition hold and other is what jobs from partitions
+    sharing the same nodes hold, wherever those nodes are. Of what is left,
+    unavailable is idle on a node that cannot take a new job and free is idle on
+    one that can. A drained node still running a job therefore contributes that
+    job to used or other, not to unavailable. Percent is used over total. Pass
+    nodes to reuse a node_capacity() result.
     """
     rows = [row for row in (nodes if nodes is not None else node_capacity()) if row["gpu_tot"]]
     rows = [row for row in rows if partition in row["partitions"]]
     total = sum(row["gpu_tot"] for row in rows)
-    unavailable = sum(row["gpu_tot"] for row in rows if not row["available"])
     allocated = sum(row["gpu_tot"] - row["gpu_free"] for row in rows)
     free = sum(row["gpu_free"] for row in rows if row["available"])
+    unavailable = sum(row["gpu_free"] for row in rows if not row["available"])
     used = min(gpus_allocated_in(partition), allocated)
     other = max(allocated - used, 0)
     percent = (100.0 * used / total) if total else 0.0
     return total, unavailable, used, other, free, percent
 
 
-_RESUMABLE_STATES = ("drain", "down", "fail", "reboot")
+_RESUMABLE_STATES = frozenset({"DRAIN", "DRAINING", "DRAINED", "DOWN", "REBOOT", "INVALID_REG"})
 
 
 def resumable_nodes(partition: str) -> list[tuple[str, str, str]]:
     """Return (name, state, reason) for the nodes in a partition that RESUME accepts.
 
     Per man scontrol, State=RESUME moves a node out of DRAIN, DRAINING, DOWN or
-    REBOOT, so all of those belong in a sweep. A trailing star on the state marks a
-    node that is not responding.
+    REBOOT. The state is read from scontrol rather than sinfo's %T, which collapses
+    a compound state such as DOWN+DRAIN+INVALID_REG to the single word inval and so
+    hides a node that is exactly what the sweep is for. Matching is on the flag
+    tokens, so a powered-down node is not swept by the substring in POWERED_DOWN.
     """
     result = []
-    out = _run(["sinfo", "-h", "-N", "-o", "%N|%T|%E", "-p", partition])
-    for line in out.splitlines():
-        parts = line.split("|")
-        if len(parts) != 3:
+    for line in _run(["scontrol", "show", "node", "-o"]).splitlines():
+        kv = _node_kv(line)
+        name = kv.get("NodeName")
+        if not name or partition not in kv.get("Partitions", "").split(","):
             continue
-        state = parts[1].strip().lower()
-        if any(bad in state for bad in _RESUMABLE_STATES):
-            result.append((parts[0].strip(), parts[1].strip(), parts[2].strip()))
+        state = kv.get("State", "")
+        flags = {flag.strip("*~#!%$@^-") for flag in state.upper().split("+")}
+        if flags & _RESUMABLE_STATES:
+            result.append((name, state, _node_reason(line)))
     return result
+
+
+def _node_reason(line: str) -> str:
+    """Return a node's Reason from one scontrol -o line.
+
+    The reason runs to the end of the line and contains spaces, so it cannot be
+    read as a whitespace-delimited key=value token.
+    """
+    match = re.search(r"Reason=(.*)$", line)
+    if not match:
+        return ""
+    return re.sub(r"\s*\[[^\]]*\]\s*$", "", match.group(1)).strip()
 
 
 def resumable_nodes_by_name(names: tuple[str, ...]) -> dict[str, tuple[str, str, str]]:
@@ -542,25 +556,47 @@ def job_maxrss_mb(jobid: str) -> float:
     return max((_mem_to_mb(row.strip()) for row in out.splitlines()), default=0.0)
 
 
-def _expand_log_pattern(path: str, jobid: str, name: str) -> str:
-    """Expand the sbatch filename patterns sacct stores unexpanded."""
-    master, _, task = jobid.partition("_")
-    return (
-        path.replace("%A", master)
-        .replace("%a", task or "0")
-        .replace("%j", jobid.replace("_", "_"))
-        .replace("%x", name)
-        .replace("%N", "")
+_UNRESOLVABLE_PATTERN = re.compile(r"%\d*[nNstS]")
+_PADDED_PATTERN = re.compile(r"%(\d+)([AajJux])")
+
+
+def _expand_log_pattern(path: str, fields: dict) -> str:
+    """Expand the sbatch filename patterns sacct stores unexpanded.
+
+    Returns an empty string when the pattern needs something only the running job
+    knew, such as %N for the node it landed on: a half-expanded path names a file
+    that cannot exist, which is worse than admitting the log cannot be located.
+    man sbatch defines the symbols; %j is the job's own id, which for an array
+    element is its JobIDRaw rather than the master's.
+    """
+    if _UNRESOLVABLE_PATTERN.search(path):
+        return ""
+    raw = fields.get("raw_id", "")
+    master, _, task = fields.get("job_id", "").partition("_")
+    values = {
+        "%%": "%",
+        "%A": master,
+        "%a": task,
+        "%J": raw,
+        "%j": raw,
+        "%u": fields.get("user", ""),
+        "%x": fields.get("name", ""),
+    }
+    path = _PADDED_PATTERN.sub(
+        lambda m: values.get(f"%{m.group(2)}", "").zfill(int(m.group(1))), path
     )
+    for symbol, value in values.items():
+        path = path.replace(symbol, value)
+    return "" if "%" in path else path
 
 
 def job_output_path(jobid: str) -> str:
     """Return a job's stdout path, or empty when it cannot be determined.
 
     Asks the controller first, which holds the expanded path while the job is
-    recent, then accounting, which keeps the pattern long after MinJobAge has
-    purged the job from scontrol. sbatch's default is used when neither records
-    one.
+    recent, then accounting, which keeps the unexpanded pattern long after
+    MinJobAge has purged the job from scontrol. A pattern sacct stores relative is
+    relative to the job's WorkDir, not to the caller's directory.
     """
     code, out, _ = process.probe(["scontrol", "show", "job", jobid])
     if code == 0:
@@ -569,19 +605,39 @@ def job_output_path(jobid: str) -> str:
             return match.group(1)
 
     code, out, _ = process.probe(
-        ["sacct", "-j", jobid, "-X", "-n", "-P", "-o", "StdOut,WorkDir,JobName"]
+        [
+            "sacct",
+            "-j",
+            jobid,
+            "-X",
+            "-n",
+            "-P",
+            "-o",
+            "JobIDRaw,StdOut,WorkDir,JobName,User",
+        ]
     )
     if code != 0:
         return ""
     row = next((line.split("|") for line in out.splitlines() if line.strip()), [])
-    if len(row) < 3:
+    if len(row) < 5:
         return ""
-    stdout_path, workdir, name = row[0].strip(), row[1].strip(), row[2].strip()
-    if stdout_path:
-        return _expand_log_pattern(stdout_path, jobid, name)
-    if workdir:
-        return f"{workdir}/slurm-{jobid}.out"
-    return ""
+    fields = {
+        "raw_id": row[0].strip(),
+        "job_id": jobid,
+        "user": row[4].strip(),
+        "name": row[3].strip(),
+    }
+    workdir = row[2].strip()
+    stdout_path = _expand_log_pattern(row[1].strip(), fields) if row[1].strip() else ""
+    if not stdout_path and workdir:
+        stdout_path = f"slurm-{fields['raw_id'] or jobid}.out"
+    if not stdout_path:
+        return ""
+    if not stdout_path.startswith("/"):
+        if not workdir:
+            return ""
+        stdout_path = f"{workdir.rstrip('/')}/{stdout_path}"
+    return stdout_path
 
 
 def job_output_tail(jobid: str, lines: int = 200) -> str:
@@ -601,6 +657,7 @@ _BAD_NODE_STATES = (
     "RESERVED",
     "COMPLETING",
     "FAIL",
+    "POWER_DOWN",
     "POWERED_DOWN",
     "POWERING_DOWN",
     "INVAL",
