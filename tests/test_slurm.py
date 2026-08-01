@@ -157,11 +157,22 @@ def test_running_jobs_reqtres(monkeypatch):
 
 def test_partition_accounts(monkeypatch):
     monkeypatch.setattr(
-        slurm,
-        "_run",
-        lambda cmd: "PartitionName=kempner AllowAccounts=kempner_dev,kempner_sham_lab State=UP\n",
+        slurm.process,
+        "probe",
+        lambda cmd, timeout=None: (
+            0,
+            "PartitionName=kempner AllowAccounts=kempner_dev,kempner_sham_lab State=UP\n",
+            "",
+        ),
     )
     assert slurm.partition_accounts("kempner") == ["kempner_dev", "kempner_sham_lab"]
+
+
+def test_partition_accounts_raises_when_the_read_fails(monkeypatch):
+    """An unreachable controller must not read as a partition open to every account."""
+    monkeypatch.setattr(slurm.process, "probe", lambda cmd, timeout=None: (1, "", "no controller"))
+    with pytest.raises(slurm.SlurmError):
+        slurm.partition_accounts("kempner")
 
 
 def test_user_fullnames(monkeypatch):
@@ -231,21 +242,38 @@ def test_percentile():
 
 def test_account_shares(monkeypatch):
     sample = (
-        "Account|User|RawShares|NormShares|RawUsage|EffectvUsage|FairShare\n"
-        "root||1|1.0|100|1.0|0.5\n"
-        "lab_a||100|0.5|80|0.8|0.3\n"
-        " lab_a|alice|10|0.1|8|0.2|0.4\n"
-        "lab_b||100|0.5|10|0.1|0.7\n"
-        "lab_c||100|0.5|10|bad|xyz\n"
+        "Account|User|RawShares|NormShares|RawUsage|EffectvUsage\n"
+        "root||1|1.0|100|1.0\n"
+        "lab_a||100|0.5|80|0.8\n"
+        " lab_a|alice|10|0.1|8|0.2\n"
+        "lab_b||100|0.5|10|0.1\n"
     )
-    monkeypatch.setattr(slurm, "_run", lambda cmd: sample)
+    monkeypatch.setattr(slurm.process, "probe", lambda cmd, timeout=None: (0, sample, ""))
     rows = slurm.account_shares()
-    assert [r["account"] for r in rows] == ["lab_a", "lab_b", "lab_c"]
+    assert [r["account"] for r in rows] == ["lab_a", "lab_b"]
     assert rows[0]["norm_shares"] == 0.5
     assert rows[0]["effectv_usage"] == 0.8
-    assert rows[0]["fairshare"] == 0.3
-    assert rows[2]["effectv_usage"] is None
-    assert rows[2]["fairshare"] is None
+    assert rows[1]["effectv_usage"] == 0.1
+
+
+def test_account_shares_computes_usage_below_sshare_rounding(monkeypatch):
+    """sshare prints EffectvUsage to six decimals, so small accounts round to zero."""
+    sample = (
+        "Account|User|RawShares|NormShares|RawUsage|EffectvUsage\n"
+        "root||1|1.0|1000000000|1.0\n"
+        "tiny_lab||700|0.000196|58300|0.000000\n"
+    )
+    monkeypatch.setattr(slurm.process, "probe", lambda cmd, timeout=None: (0, sample, ""))
+    rows = slurm.account_shares()
+    assert rows[0]["raw_usage"] == 58300
+    assert rows[0]["effectv_usage"] > 0
+
+
+def test_account_shares_raises_when_sshare_fails(monkeypatch):
+    """A failed read must not be reported as a cluster with no accounts."""
+    monkeypatch.setattr(slurm.process, "probe", lambda cmd, timeout=None: (1, "", "no slurmdbd"))
+    with pytest.raises(slurm.SlurmError):
+        slurm.account_shares()
 
 
 def test_user_associations(monkeypatch):
@@ -277,5 +305,12 @@ def test_account_exists_is_case_insensitive(monkeypatch):
 
 
 def test_account_exists_rejects_an_unrelated_reply(monkeypatch):
-    monkeypatch.setattr(slurm, "_run", lambda cmd: "other_acct\n")
+    monkeypatch.setattr(slurm.process, "probe", lambda cmd, timeout=None: (0, "other_acct\n", ""))
     assert slurm.account_exists("kempner_dev") is False
+
+
+def test_account_exists_raises_when_the_query_fails(monkeypatch):
+    """A failed read must not be reported as an account that does not exist."""
+    monkeypatch.setattr(slurm.process, "probe", lambda cmd, timeout=None: (1, "", "no slurmdbd"))
+    with pytest.raises(slurm.SlurmError):
+        slurm.account_exists("kempner_dev")

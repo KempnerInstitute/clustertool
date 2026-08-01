@@ -4,10 +4,10 @@ import os
 
 import click
 
-from clustertool import completion, process
+from clustertool import completion, process, slurm
 from clustertool.grouping import keywords
 
-_FORMAT = "Account,User,Partition,QOS,Priority,GrpTRES,MaxTRES"
+_FORMAT = "Account%-30,User%-24,Partition%-30,QOS%-70,Priority,GrpTRES%-26,MaxTRES%-26"
 
 
 @keywords("cap", "quota", "restrictions", "maximum")
@@ -29,8 +29,17 @@ def limits(account: str | None, user: str | None) -> None:
       ACCOUNT      Slurm account. Omit to show your own associations.
       -u, --user   User to look up (default: current user).
     """
-    where = f"account={account}" if account else f"user={user or os.environ.get('USER', '')}"
+    if account and user:
+        raise click.UsageError("give either ACCOUNT or --user, not both")
+    if account:
+        if not slurm.account_exists(account):
+            raise click.ClickException(f"account '{account}' not found")
+        where = f"account={account}"
+    else:
+        target = user or os.environ.get("USER", "")
+        if not target:
+            raise click.ClickException("no user to look up: give --user, or set $USER")
+        where = f"user={target}"
     cmd = ["sacctmgr", "show", "assoc", where, "format=" + _FORMAT]
-    code = process.stream(cmd)
-    if code:
-        raise SystemExit(code)
+    if process.stream(cmd):
+        raise click.ClickException("'sacctmgr show assoc' failed")

@@ -22,9 +22,11 @@ roster partition whose name carries the site's lab prefix, both set under
 ## `account fairshare [ACCOUNT] [-u USER]`
 
 Show fairshare standing and priority (via `sshare`). With an ACCOUNT, show every
-member's shares and usage; otherwise show your own across the accounts you
-belong to. The FairShare column is the effective score (higher is higher
-priority).
+member's shares and usage; otherwise show your own across the accounts you belong
+to. The FairShare column is the effective score (higher is higher priority).
+Partition-scoped associations are labeled with their partition (`sshare -m`), so
+a user's several rows in one account can be told apart. ACCOUNT and `--user`
+cannot be combined.
 
 **Use cases**
 - See your priority standing and why jobs may be deprioritized.
@@ -38,8 +40,18 @@ priority).
 
 Rank accounts by fairshare balance (via `sshare`): effective usage versus
 normalized share. A ratio above 1 means an account is over-served (drawing more
-than its share); below 1 means under-served. Point-in-time only, since `sshare`
-keeps no history.
+than its share); below 1 means under-served. An account with shares and no usage
+is the most under-served there is, so it ranks at a ratio of zero rather than
+being left out. Point-in-time only, since `sshare` keeps no history.
+
+Effective usage is computed from `RawUsage` against the root account rather than
+read from `sshare`'s own `EffectvUsage` column, which is printed to six decimals
+and so rounds any account below a millionth of cluster usage to zero.
+
+The ranking compares accounts against each other, which holds where shares are
+normalized cluster-wide. Under Slurm's default `PriorityFlags=FAIR_TREE` those
+figures are normalized within each level instead, so at a site with nested
+accounts compare siblings rather than the whole list.
 
 **Use cases**
 - See which labs are drawing more than their fair share right now.
@@ -104,8 +116,11 @@ per-user job-count, submit, Flags, Preempt, and UsageFactor columns.
 
 ## `account add-user USER ACCOUNT`
 
-Add a user to a fairshare account (via `sacctmgr`). Prompts for confirmation
-unless `-y`. Operator or a coordinator of the account only.
+Add a user to a fairshare account (via `sacctmgr`), creating the account's base
+association for them. The fairshare value defaults to `[qos].grant_fairshare`
+from the site config, the same value `qos grant` gives the associations it
+creates. Prompts for confirmation unless `-y`. Slurm operator, or a coordinator of the account; a site that sets
+`DisableCoordDBD` in `slurmdbd.conf` restricts this to operators.
 
 **Use cases**
 - Grant a new lab member access to the lab's Slurm account.
@@ -113,28 +128,40 @@ unless `-y`. Operator or a coordinator of the account only.
 **Inputs**
 - `USER`: Username to add.
 - `ACCOUNT`: Slurm account to add them to.
-- `--fairshare`: Fairshare value (default `parent`).
+- `--fairshare`: Fairshare value (default: the site's `grant_fairshare`).
+- `-c, --cluster`: Slurm cluster (default: the site cluster).
 - `-y, --yes`: Skip the confirmation prompt.
 
 ## `account remove-user USER ACCOUNT`
 
-Remove a user's association with an account (via `sacctmgr`). Removes only the
-USER and ACCOUNT association, not the user's other accounts. Prompts for
-confirmation unless `-y`. Operator or a coordinator of the account only.
+Remove a user's associations with an account (via `sacctmgr`).
+
+A user can hold several associations in one account: a base one, plus one per
+partition, each with its own QoS list. Without `--partition` this removes all of
+them, so a priority QoS granted on a single partition goes too; every association
+is listed before you confirm. Give `--partition` to remove just that one. The
+user's other accounts are untouched. Prompts for confirmation unless `-y`. Slurm operator, or a coordinator of the account; a site that sets
+`DisableCoordDBD` in `slurmdbd.conf` restricts this to operators.
 
 **Use cases**
 - Remove a former member from a lab's Slurm account.
+- Drop one partition's association while keeping the account membership.
 
 **Inputs**
 - `USER`: Username to remove.
 - `ACCOUNT`: Slurm account to remove them from.
+- `-p, --partition`: Remove only the association on this partition.
+- `-c, --cluster`: Slurm cluster (default: the site cluster).
 - `-y, --yes`: Skip the confirmation prompt.
 
 ## `account set-fairshare USER ACCOUNT SHARE`
 
-Set a user's fairshare in an account (via `sacctmgr`). SHARE is an integer
-number of raw shares, or `parent` to inherit the account's shares. Prompts for
-confirmation unless `-y`. Operator or a coordinator of the account only.
+Set a user's fairshare in an account (via `sacctmgr`). SHARE is an integer number
+of raw shares, or `parent` to inherit the account's shares; anything else is
+refused. This changes the user's base association in the account, and their
+partition-scoped associations inherit it where they are set to `parent`. Prompts
+for confirmation unless `-y`. Slurm operator, or a coordinator of the account; a site that sets
+`DisableCoordDBD` in `slurmdbd.conf` restricts this to operators.
 
 **Use cases**
 - Adjust a member's fairshare weight within a lab.
@@ -143,4 +170,5 @@ confirmation unless `-y`. Operator or a coordinator of the account only.
 - `USER`: Username.
 - `ACCOUNT`: Slurm account.
 - `SHARE`: Raw shares (integer) or `parent`.
+- `-c, --cluster`: Slurm cluster (default: the site cluster).
 - `-y, --yes`: Skip the confirmation prompt.

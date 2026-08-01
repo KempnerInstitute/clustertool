@@ -4,7 +4,7 @@ import os
 
 import click
 
-from clustertool import completion, process
+from clustertool import completion, process, slurm
 from clustertool.grouping import keywords
 
 
@@ -29,10 +29,16 @@ def fairshare(account: str | None, user: str | None) -> None:
       ACCOUNT      Slurm account (e.g. kempner_dev). Omit for your own standing.
       -u, --user   User to look up (default: current user).
     """
+    if account and user:
+        raise click.UsageError("give either ACCOUNT or --user, not both")
     if account:
-        cmd = ["sshare", "--account=" + account, "-a"]
+        if not slurm.account_exists(account):
+            raise click.ClickException(f"account '{account}' not found")
+        cmd = ["sshare", "--account=" + account, "-a", "-m"]
     else:
-        cmd = ["sshare", "-U", "-u", user or os.environ.get("USER", "")]
-    code = process.stream(cmd)
-    if code:
-        raise SystemExit(code)
+        target = user or os.environ.get("USER", "")
+        if not target:
+            raise click.ClickException("no user to look up: give --user, or set $USER")
+        cmd = ["sshare", "-U", "-u", target, "-m"]
+    if process.stream(cmd):
+        raise click.ClickException("'sshare' failed")

@@ -728,14 +728,14 @@ def test_account_fairshare_self(monkeypatch):
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["account", "fairshare"])
     assert result.exit_code == 0
-    assert calls[0] == ["sshare", "-U", "-u", "alice"]
+    assert calls[0] == ["sshare", "-U", "-u", "alice", "-m"]
 
 
 def test_account_fairshare_account(monkeypatch):
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["account", "fairshare", "kempner_dev"])
     assert result.exit_code == 0
-    assert calls[0] == ["sshare", "--account=kempner_dev", "-a"]
+    assert calls[0] == ["sshare", "--account=kempner_dev", "-a", "-m"]
 
 
 def test_account_usage_self(monkeypatch):
@@ -1240,11 +1240,56 @@ def test_nodes_resume_needs_target(monkeypatch):
 
 
 def test_account_top_users(monkeypatch):
-    out = "acct 700 0.1 900 0.2\n acct alice 20 0.1 500 0.2 0.3\n acct bob 20 0.1 900 0.2 0.3\n"
-    monkeypatch.setattr(process, "run", lambda cmd, input_text=None: out)
+    monkeypatch.setattr(slurm, "account_exists", lambda a: True)
+    out = "|900\nalice|500\nbob|900\n"
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, out, ""))
     result = CliRunner().invoke(main, ["account", "top-users", "kempner_dev"])
     assert result.exit_code == 0
     assert result.output.index("bob") < result.output.index("alice")
+
+
+def test_account_top_users_keeps_long_usernames_whole(monkeypatch):
+    """sshare's default format truncates to 10 characters under a USER header."""
+    monkeypatch.setattr(slurm, "account_exists", lambda a: True)
+    out = "|900\npaularodriguezflores|500\n"
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, out, ""))
+    result = CliRunner().invoke(main, ["account", "top-users", "kempner_dev"])
+    assert result.exit_code == 0
+    assert "paularodriguezflores" in result.output
+
+
+def test_account_top_users_sums_a_users_associations(monkeypatch):
+    """A user's partition association accrues usage of its own."""
+    monkeypatch.setattr(slurm, "account_exists", lambda a: True)
+    out = "|900\nalice|500\nalice|400\n"
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, out, ""))
+    result = CliRunner().invoke(main, ["account", "top-users", "kempner_dev"])
+    assert result.exit_code == 0
+    assert "900" in result.output
+
+
+def test_account_top_users_reports_a_failed_sshare(monkeypatch):
+    monkeypatch.setattr(slurm, "account_exists", lambda a: True)
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (1, "", "no slurmdbd"))
+    result = CliRunner().invoke(main, ["account", "top-users", "kempner_dev"])
+    assert result.exit_code != 0
+    assert "no slurmdbd" in result.output
+
+
+def test_account_limits_rejects_account_with_user(monkeypatch):
+    result = CliRunner().invoke(main, ["account", "limits", "kempner_dev", "-u", "alice"])
+    assert result.exit_code == 2
+    assert "not both" in result.output
+
+
+def test_account_limits_needs_a_user(monkeypatch):
+    """An empty user= filter makes sacctmgr dump every association on the cluster."""
+    monkeypatch.setenv("USER", "")
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["account", "limits"])
+    assert result.exit_code != 0
+    assert "no user to look up" in result.output
+    assert calls == []
 
 
 def test_account_qos_default(monkeypatch):
@@ -2079,9 +2124,9 @@ def test_nodes_frag_partition_filter(monkeypatch):
 
 def test_account_balance(monkeypatch):
     accounts = [
-        {"account": "acctA", "norm_shares": 0.1, "effectv_usage": 0.2, "fairshare": 0.3},
-        {"account": "acctB", "norm_shares": 0.8, "effectv_usage": 0.2, "fairshare": None},
-        {"account": "acctC", "norm_shares": 0.0, "effectv_usage": 0.5, "fairshare": 0.0},
+        {"account": "acctA", "norm_shares": 0.1, "effectv_usage": 0.2, "raw_usage": 20},
+        {"account": "acctB", "norm_shares": 0.8, "effectv_usage": 0.2, "raw_usage": 20},
+        {"account": "acctC", "norm_shares": 0.0, "effectv_usage": 0.5, "raw_usage": 50},
     ]
     monkeypatch.setattr(slurm, "account_shares", lambda a=None: accounts)
     result = CliRunner().invoke(main, ["account", "balance"])
@@ -2092,8 +2137,27 @@ def test_account_balance(monkeypatch):
     assert over.index("acctA") < over.index("acctB")
     assert under.index("acctB") < under.index("acctA")
     assert "2.00" in over
-    acctb_row = next(line for line in result.output.splitlines() if "acctB" in line)
-    assert acctb_row.rstrip().endswith("-")
+
+
+def test_account_balance_ranks_an_unused_account_as_most_under_served(monkeypatch):
+    """man sshare: an association with no usage is the most under-served there is."""
+    accounts = [
+        {"account": "busy_lab", "norm_shares": 0.1, "effectv_usage": 0.5, "raw_usage": 500},
+        {"account": "idle_lab", "norm_shares": 0.2, "effectv_usage": 0.0, "raw_usage": 0},
+    ]
+    monkeypatch.setattr(slurm, "account_shares", lambda a=None: accounts)
+    result = CliRunner().invoke(main, ["account", "balance"])
+    assert result.exit_code == 0
+    assert "2 account(s) with shares, 1 with usage" in result.output
+    under = result.output.split("under-served")[1]
+    assert under.index("idle_lab") < under.index("busy_lab")
+
+
+def test_account_balance_rejects_an_unknown_account(monkeypatch):
+    monkeypatch.setattr(slurm, "account_exists", lambda a: False)
+    result = CliRunner().invoke(main, ["account", "balance", "no_such_account"])
+    assert result.exit_code != 0
+    assert "not found" in result.output
 
 
 def _write_capture(tmp_path, xml, nvlink=None):

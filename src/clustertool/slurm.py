@@ -2,7 +2,7 @@
 
 import re
 
-from clustertool import site
+from clustertool import process, site
 from clustertool.process import CommandError
 from clustertool.process import run as _run
 
@@ -123,8 +123,17 @@ def account_cap() -> int | None:
 
 
 def account_exists(account: str) -> bool:
-    """Return True if the Slurm account exists, matching the name case-insensitively."""
-    out = _run(["sacctmgr", "-nP", "show", "account", account, "format=Account"])
+    """Return True if the Slurm account exists, matching the name case-insensitively.
+
+    Raises if the query fails, so an unreachable accounting database is not
+    reported as an account that does not exist.
+    """
+    cmd = ["sacctmgr", "-nP", "show", "account", account, "format=Account"]
+    code, out, err = process.probe(cmd)
+    if code != 0:
+        raise CommandError(
+            f"could not check whether account {account} exists: {err.strip() or code}"
+        )
     names = {line.strip().lower() for line in out.splitlines() if line.strip()}
     return account.strip().lower() in names
 
@@ -356,8 +365,16 @@ def running_jobs_reqtres(partition: str) -> list[tuple[str, str, int, int, int]]
 
 
 def partition_accounts(partition: str) -> list[str]:
-    """Return the accounts allowed on a partition."""
-    out = _run(["scontrol", "show", "partition", partition])
+    """Return the accounts allowed on a partition.
+
+    Raises if the partition cannot be read, so a controller that is unreachable is
+    not reported as a partition that allows every account.
+    """
+    code, out, err = process.probe(["scontrol", "-a", "show", "partition", partition])
+    if code != 0:
+        raise CommandError(
+            f"could not read partition {partition}: {err.strip() or out.strip() or code}"
+        )
     match = re.search(r"AllowAccounts=(\S+)", out)
     if not match or match.group(1).upper() == "ALL":
         return []
@@ -577,27 +594,45 @@ def _float_field(value: str | None) -> float | None:
 def account_shares(account: str | None = None) -> list[dict]:
     """Return per-account normalized share and effective usage from sshare.
 
-    Skips the root row, the header, and per-user rows, keeping one row per
-    top-level account with norm_shares, effectv_usage, and fairshare.
+    Skips the header and per-user rows, keeping one row per account with
+    norm_shares, effectv_usage, and raw_usage. Effective usage is computed from
+    RawUsage against the root row rather than read from sshare's own
+    EffectvUsage column, which is printed to six decimals and so rounds any
+    account below a millionth of cluster usage to zero. Raises if the query
+    fails, so an unreachable controller is not reported as a cluster with no
+    accounts.
     """
-    fields = "Account,User,RawShares,NormShares,RawUsage,EffectvUsage,FairShare"
+    fields = "Account,User,RawShares,NormShares,RawUsage,EffectvUsage"
     cmd = ["sshare", "-a", "-P", "-o", fields]
     if account:
         cmd += ["-A", account]
-    rows: list[dict] = []
-    for line in _run(cmd).splitlines():
+    code, out, err = process.probe(cmd)
+    if code != 0:
+        raise CommandError(f"could not read fairshare from sshare: {err.strip() or code}")
+
+    parsed = []
+    root_usage = 0.0
+    for line in out.splitlines():
         parts = line.split("|")
-        if len(parts) < 7:
+        if len(parts) < 6:
             continue
         name, user = parts[0].strip(), parts[1].strip()
-        if name in ("Account", "root") or user:
+        if name == "Account" or user:
             continue
+        raw_usage = _float_field(parts[4]) or 0.0
+        if name == "root":
+            root_usage = raw_usage
+            continue
+        parsed.append((name, _float_field(parts[3]), raw_usage))
+
+    rows: list[dict] = []
+    for name, norm_shares, raw_usage in parsed:
         rows.append(
             {
                 "account": name,
-                "norm_shares": _float_field(parts[3]),
-                "effectv_usage": _float_field(parts[5]),
-                "fairshare": _float_field(parts[6]),
+                "norm_shares": norm_shares,
+                "raw_usage": raw_usage,
+                "effectv_usage": (raw_usage / root_usage) if root_usage else 0.0,
             }
         )
     return rows

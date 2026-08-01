@@ -5,9 +5,9 @@ import click
 from clustertool import process
 from clustertool.grouping import keywords
 
-_FORMAT = "Name%28,Priority,MaxWall,MaxTRESPU%22,MaxTRES%18,GrpTRES%18"
+_FORMAT = "Name%28,Priority,MaxWall,MaxTRESPU%-32,MaxTRES%18,GrpTRES%18"
 _LONG_FORMAT = (
-    "Name%28,Priority,MaxWall,GrpTRES%18,MaxTRES%18,MaxTRESPU%22,"
+    "Name%28,Priority,MaxWall,GrpTRES%18,MaxTRES%18,MaxTRESPU%-32,"
     "MaxJobsPU,MaxSubmitPU,Flags%20,Preempt%18,UsageFactor"
 )
 
@@ -43,10 +43,12 @@ def qos(name_filter: str | None, long_format: bool) -> None:
     """
     cmd = ["sacctmgr", "show", "qos", "format=" + (_LONG_FORMAT if long_format else _FORMAT)]
     if not name_filter:
-        code = process.stream(cmd)
-        if code:
-            raise SystemExit(code)
+        if process.stream(cmd):
+            raise click.ClickException("'sacctmgr show qos' failed")
         return
-    for i, line in enumerate(process.run(cmd).splitlines()):
+    code, out, err = process.probe(cmd)
+    if code:
+        raise click.ClickException(f"'sacctmgr show qos' failed: {err.strip() or code}")
+    for i, line in enumerate(out.splitlines()):
         if i < 2 or name_filter.lower() in line.lower():
             click.echo(line)

@@ -6,11 +6,11 @@ import os
 import click
 
 from clustertool import completion, process, site
-from clustertool.grouping import ToolCommand, keywords
+from clustertool.grouping import keywords
 
 
 @keywords("hours", "spend", "cost")
-@click.command("usage", cls=ToolCommand, tool_key="account_usage")
+@click.command("usage")
 @click.argument("account", required=False, shell_complete=completion.complete_accounts)
 @click.option(
     "-d", "--days", type=int, default=30, show_default=True, help="Period length in days."
@@ -54,7 +54,12 @@ def usage(account: str | None, days: int, user: str | None, efficiency: bool) ->
             )
         cmd = [site.tool("account_efficiency"), *scope, "-S", start, "-E", end]
     else:
+        if not site.tool_available("account_usage"):
+            raise click.ClickException(
+                f"this command needs '{site.tool('account_usage')}', which was not found on "
+                "this host. Install it, or set [tools].account_usage in your site config "
+                "(see docs/configuration.md). For per-job efficiency instead, use --efficiency."
+            )
         cmd = [site.tool("account_usage"), *scope, "-S", start, "-E", end, "-d"]
-    code = process.stream(cmd)
-    if code:
-        raise SystemExit(code)
+    if process.stream(cmd):
+        raise click.ClickException(f"'{cmd[0]}' failed")
