@@ -1,5 +1,5 @@
 [project]
-name = "cluster-tools"
+name = "clustertool"
 version = "0.1.0"
 description = "A single umbrella CLI for Slurm cluster tools."
 readme = "README.md"
@@ -29,12 +29,12 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/KempnerInstitute/cluster-tools"
-Repository = "https://github.com/KempnerInstitute/cluster-tools"
-Issues = "https://github.com/KempnerInstitute/cluster-tools/issues"
+Homepage = "https://github.com/KempnerInstitute/clustertool"
+Repository = "https://github.com/KempnerInstitute/clustertool"
+Issues = "https://github.com/KempnerInstitute/clustertool/issues"
 
 [project.scripts]
-clustertools = "cluster_tools.cli:main"
+clustertool = "clustertool.cli:main"
 
 [dependency-groups]
 dev = ["pytest>=8", "ruff>=0.6"]
@@ -44,12 +44,12 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/cluster_tools"]
+packages = ["src/clustertool"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py310"
-extend-exclude = ["src/cluster_tools/data"]
+extend-exclude = ["src/clustertool/data"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

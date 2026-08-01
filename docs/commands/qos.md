@@ -1,7 +1,7 @@
 # qos
 
 Slurm QoS: who holds them, and (admin) provisioning their limits. Run
-`clustertools qos --help` to list these commands, or `clustertools qos <command>
+`clustertool qos --help` to list these commands, or `clustertool qos <command>
 --help` for one.
 
 The admin write commands are dry run by default: they print the exact `sacctmgr`

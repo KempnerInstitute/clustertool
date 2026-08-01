@@ -2,7 +2,7 @@
 
 import pytest
 
-from cluster_tools import slurm
+from clustertool import slurm
 
 
 def test_parse_gpu_count():

@@ -8,8 +8,8 @@ import sys
 from click.testing import CliRunner
 from test_gpuhealth import ECC_DISABLED, HEALTHY, _gpu, _nvlink, _smi_xml
 
-from cluster_tools import completion, fabric, gpuhealth, process, qos, search, site, slurm, storage
-from cluster_tools.cli import main
+from clustertool import completion, fabric, gpuhealth, process, qos, search, site, slurm, storage
+from clustertool.cli import main
 
 
 def test_usage_all_labs(monkeypatch):
@@ -224,7 +224,7 @@ def test_search_rank_unit():
 def test_completion_prints_eval_line():
     result = CliRunner().invoke(main, ["completion", "bash"])
     assert result.exit_code == 0
-    assert "_CLUSTERTOOLS_COMPLETE=bash_source clustertools" in result.output
+    assert "_CLUSTERTOOL_COMPLETE=bash_source clustertool" in result.output
 
 
 def test_completion_install_is_idempotent(tmp_path, monkeypatch):
@@ -449,7 +449,7 @@ def test_job_accounting_parsing(monkeypatch):
 
 
 def test_diagnose_oom_and_timeout():
-    from cluster_tools.commands.jobs.debug import _diagnose
+    from clustertool.commands.jobs.debug import _diagnose
 
     oom = _diagnose({"state": "OUT_OF_MEMORY", "exit_code": "0:0"}, "")
     assert any("out of memory" in cause.lower() for cause, _ in oom)
@@ -458,7 +458,7 @@ def test_diagnose_oom_and_timeout():
 
 
 def test_diagnose_exit_code_and_log():
-    from cluster_tools.commands.jobs.debug import _diagnose
+    from clustertool.commands.jobs.debug import _diagnose
 
     findings = _diagnose({"state": "FAILED", "exit_code": "1:0"}, "CUDA out of memory. Tried ...")
     causes = [cause for cause, _ in findings]
@@ -1105,7 +1105,7 @@ def test_gpu_pulse_exit_code(monkeypatch):
 
 
 def test_pulse_split_args():
-    from cluster_tools.commands.gpu.pulse import _split_args
+    from clustertool.commands.gpu.pulse import _split_args
 
     node, job, forward, dry = _split_args(("--node", "n1", "--once", "--gpus", "0,1"))
     assert node == "n1" and job is None and forward == ["--once", "--gpus", "0,1"] and dry is False
@@ -1114,7 +1114,7 @@ def test_pulse_split_args():
 
 
 def test_pulse_remote_command():
-    from cluster_tools.commands.gpu.pulse import _remote_command
+    from clustertool.commands.gpu.pulse import _remote_command
 
     cmd = _remote_command("/venv", ["--once"])
     assert "source /venv/bin/activate" in cmd
@@ -1403,7 +1403,7 @@ def test_diag_ib(monkeypatch):
 
 
 def test_gpu_monitor_job(monkeypatch):
-    from cluster_tools import monitor
+    from clustertool import monitor
 
     monkeypatch.setattr(slurm, "job_nodes", lambda j: ["n1", "n2"])
     captured = {}

@@ -1,7 +1,7 @@
 # gpu
 
-GPU usage, availability, sessions, and monitoring. Run `clustertools gpu --help` to list these
-commands, or `clustertools gpu <command> --help` for one.
+GPU usage, availability, sessions, and monitoring. Run `clustertool gpu --help` to list these
+commands, or `clustertool gpu <command> --help` for one.
 
 ## `gpu usage [ACCOUNT]`
 
@@ -147,7 +147,7 @@ Live GPU utilization dashboard, via the bundled
 [kempnerpulse](https://github.com/KempnerInstitute/kempnerpulse) tool. It shows a
 real-time per-GPU view (SM, tensor, and memory activity, real-utilization, and
 workload classification) from DCGM metrics. Every argument is forwarded to
-kempnerpulse unchanged, so its full option set is available; run `clustertools
+kempnerpulse unchanged, so its full option set is available; run `clustertool
 gpu pulse --help` for the complete list.
 
 Run this on a GPU node (for example inside a Slurm job); by default it reads the

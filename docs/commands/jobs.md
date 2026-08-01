@@ -1,7 +1,7 @@
 # jobs
 
-Inspect, submit, and control Slurm jobs. Run `clustertools jobs --help` to list these commands, or
-`clustertools jobs <command> --help` for one.
+Inspect, submit, and control Slurm jobs. Run `clustertool jobs --help` to list these commands, or
+`clustertool jobs <command> --help` for one.
 
 ## `jobs list [-t STATE] [-p PARTITION] [-A ACCOUNT] [--start]`
 
@@ -155,7 +155,7 @@ the CPU/memory/GPU utilization Slurm records for each finished job (the same
 numbers `jobstats` reports, read in one bulk `sacct` query with no per-job cap),
 and for the GPU view adds DCGM profiling from Prometheus. Every argument is
 forwarded to jobscope unchanged, so all of its views and selectors are
-available; run `clustertools jobs scope --help` for the full list.
+available; run `clustertool jobs scope --help` for the full list.
 
 This is for completed jobs; for live (running) jobs use `gpu monitor-job`. The
 GPU views need a Prometheus endpoint, auto-discovered from the cluster's

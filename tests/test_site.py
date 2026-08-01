@@ -3,8 +3,8 @@
 import pytest
 from click.testing import CliRunner
 
-from cluster_tools import site, slurm
-from cluster_tools.cli import main
+from clustertool import site, slurm
+from clustertool.cli import main
 
 
 def test_packaged_default_is_kempner():

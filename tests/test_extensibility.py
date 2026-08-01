@@ -5,8 +5,8 @@ import importlib.metadata
 import click
 from click.testing import CliRunner
 
-from cluster_tools import site
-from cluster_tools.cli import _register_plugins, main
+from clustertool import site
+from clustertool.cli import _register_plugins, main
 
 
 def test_not_disabled_by_default():
@@ -50,7 +50,7 @@ def test_plugin_command_registered(monkeypatch):
     monkeypatch.setattr(
         importlib.metadata,
         "entry_points",
-        lambda group=None: [FakeEP()] if group == "clustertools.commands" else [],
+        lambda group=None: [FakeEP()] if group == "clustertool.commands" else [],
     )
     group = click.Group("root")
     _register_plugins(group)

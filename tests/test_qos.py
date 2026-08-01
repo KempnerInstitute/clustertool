@@ -1,6 +1,6 @@
 """Tests for the qos helper module."""
 
-from cluster_tools import qos
+from clustertool import qos
 
 
 def test_qos_exists_exact_match(monkeypatch):

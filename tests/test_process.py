@@ -3,7 +3,7 @@
 import os
 import sys
 
-from cluster_tools import process
+from clustertool import process
 
 
 def test_child_env_strips_virtualenv(monkeypatch):
