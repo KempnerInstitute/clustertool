@@ -6,13 +6,22 @@ at a site whose `[tools].lfs` binary is not installed.
 
 ## `storage quota [PATH] [-g GROUP | -u USER] [-a] [--fleet LAB] [-v]`
 
-Show a storage quota on any filesystem (via the FASRC `quota` tool).
+Show a storage quota on any filesystem (via the site `quota` tool).
 
-Reports quota and usage for PATH, which selects the filesystem: VAST
-(`/n/netscratch`), Lustre (`/n/holylfs06`, `/n/holystore01`, ...), home, and so
-on. Use `--group` for a lab's quota or `--user` for a user's; with neither, the
-quota tool infers from the path. A bare name like `holylfs06` becomes
-`/n/holylfs06`.
+Reports quota and usage for PATH, which selects the filesystem. Use `--group` for
+a lab's quota or `--user` for a user's; with neither, the quota tool infers from
+the path. A bare name is completed with `[storage].path_prefix` from the site
+config, so `holylfs06` becomes `/n/holylfs06` with the packaged Kempner profile.
+
+Whether `--user` is honored depends on the site tool: some report per-user usage
+only on filesystems that track it, and fall back to the caller's own figures
+elsewhere. Check the header the tool prints.
+
+`--all` reports only your own lab directories, so it takes neither a PATH,
+`--group`, nor `--fleet`. A target whose quota cannot be read shows `error`,
+`timeout`, `no tool`, or `n/a` in the USED column, with the cause on stderr; the
+command exits nonzero when no target could be read at all. `--fleet` orders rows
+by percent of quota used, breaking ties by absolute usage.
 
 With `--all`, PATH is optional and the command reports every lab directory you
 belong to (auto-detected from your Unix groups across the site's lab roots) as a
@@ -27,7 +36,7 @@ than at the mount point: `/n/holylfs06/LABS`, not `/n/holylfs06`.
 - Fleet view of one root: `storage quota holylfs06/LABS --fleet kempner`
 
 **Inputs**
-- `PATH`: Filesystem path, or a bare name that becomes `/n/<name>`. Optional with `--all`.
+- `PATH`: Filesystem path, or a bare name the site prefix completes. Not accepted with `--all`.
 - `-g, --group`: Group/lab name for the lookup.
 - `-u, --user`: User for the lookup (also whose labs `--all` reports).
 - `-a, --all`: Report every lab directory you belong to as a table.
@@ -54,20 +63,20 @@ instead.
 
 ## `storage vast-usage PATH -g GROUP`
 
-Show per-user usage for a group on a VAST filesystem such as `/n/netscratch`
-(via the FASRC `quota` tool). Lists how much each member of GROUP is using under
-PATH. A bare name like `netscratch` becomes `/n/netscratch`.
+Show per-user usage for a group on a VAST filesystem (via the site `quota`
+tool). Lists how much each member of GROUP is using under PATH. A bare name is
+completed with `[storage].path_prefix`.
 
 **Use cases**
 - See who in a lab is filling a shared scratch or VAST allocation.
 
 **Inputs**
-- `PATH`: Filesystem path, or a bare name that becomes `/n/<name>`.
+- `PATH`: Filesystem path, or a bare name the site prefix completes.
 - `-g, --group`: Unix group to break usage down by.
 
 ## `storage scratch [PATH]`
 
-Show networked scratch usage and the purge policy (via the FASRC `quota` tool).
+Show networked scratch usage and the purge policy (via the site `quota` tool).
 Reports quota and usage for your scratch path, then restates the site's purge
 policy: how long files survive there, and that scratch is not backed up. The path
 and the purge age both come from `[storage]` in the site config, so a center with
@@ -79,7 +88,8 @@ scratch path (`/n/netscratch` with the packaged Kempner profile).
 - Remember the auto-deletion age before staging data there.
 
 **Inputs**
-- `PATH`: Scratch path (default: `$SCRATCH`, else the site's scratch path).
+- `PATH`: Scratch path (default: `$SCRATCH`, else the site's scratch path). Given
+  a path outside the site scratch, the note says the purge does not apply to it.
 
 ## `storage lfs-stripe PATH [-c COUNT] [-y]`
 
@@ -113,11 +123,10 @@ Lustre allows it only on a directory you own, whatever the write permissions.
 ## `storage lfs-inodes PATH`
 
 Show inode capacity and usage for a Lustre filesystem (via `lfs df -i`). PATH
-must be on Lustre (for example `/n/holylfs06`); a bare name like `holylfs06`
-becomes `/n/holylfs06`.
+must be on Lustre; a bare name is completed with `[storage].path_prefix`.
 
 **Use cases**
 - Check whether a Lustre filesystem is running low on inodes.
 
 **Inputs**
-- `PATH`: A Lustre path, or a bare name that becomes `/n/<name>`.
+- `PATH`: A Lustre path, or a bare name the site prefix completes.

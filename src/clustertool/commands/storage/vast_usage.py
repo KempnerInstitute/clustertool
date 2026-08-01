@@ -14,8 +14,9 @@ def vast_usage(path: str, group: str) -> None:
     """Show per-user usage for a group on a VAST filesystem (via the quota tool).
 
     Lists how much each member of GROUP is using under PATH. Works on VAST
-    filesystems such as /n/netscratch. A bare name like 'netscratch' becomes
-    '/n/netscratch'.
+    filesystems. A bare name is completed with [storage].path_prefix from the
+    site config, so 'netscratch' becomes '/n/netscratch' with the packaged
+    Kempner profile.
 
     \b
     Use cases:
@@ -23,7 +24,7 @@ def vast_usage(path: str, group: str) -> None:
 
     \b
     Inputs:
-      PATH         Filesystem path, or a bare name that becomes /n/<name>.
+      PATH         Filesystem path, or a bare name the site prefix completes.
       -g, --group  Unix group to break usage down by.
     """
     target = path if path.startswith("/") else f"{site.path_prefix()}/{path}"

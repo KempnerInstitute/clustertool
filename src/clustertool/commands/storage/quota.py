@@ -32,27 +32,30 @@ def quota(
     fleet_keyword: str | None,
     verbose: bool,
 ) -> None:
-    """Show a storage quota on any filesystem (via the FASRC quota tool).
+    """Show a storage quota on any filesystem (via the site quota tool).
 
-    Reports quota and usage for PATH, which selects the filesystem: VAST
-    (/n/netscratch), Lustre (/n/holylfs06, /n/holystore01, ...), home, and so on.
-    Use --group for a lab's quota or --user for a user's; with neither, the quota
-    tool infers from the path. A bare name like 'holylfs06' becomes
-    '/n/holylfs06', and 'home' resolves to your home directory. With --all,
-    report every lab directory you belong to as a table; with --fleet LAB, report
-    every LAB* directory directly under PATH, by usage. Lab directories usually
-    sit in a subdirectory of the filesystem, so point --fleet at that parent, not
-    at the mount point.
+    Reports quota and usage for PATH, which selects the filesystem. Use --group for
+    a lab's quota or --user for a user's; with neither, the quota tool infers from
+    the path. A bare name is prefixed with [storage].path_prefix from the site
+    config, and 'home' resolves to your home directory. With --all, report every
+    lab directory you belong to as a table; with --fleet LAB, report every LAB*
+    directory directly under PATH, by usage. Lab directories usually sit in a
+    subdirectory of the filesystem, so point --fleet at that parent, not at the
+    mount point.
+
+    Whether --user is honored depends on the site tool: some report per-user usage
+    only on filesystems that track it, and fall back to the caller's own figures
+    elsewhere. Check the header the tool prints.
 
     \b
     Use cases:
-      - Lab quota on scratch: storage quota netscratch -g kempner_dev
+      - Lab quota on one filesystem: storage quota netscratch -g kempner_dev
       - Your lab dirs at a glance: storage quota --all
       - Fleet view of one root: storage quota holylfs06/LABS --fleet kempner
 
     \b
     Inputs:
-      PATH           Filesystem path, or a bare name that becomes /n/<name>.
+      PATH           Filesystem path, or a bare name the site prefix completes.
       -g, --group    Group/lab name for the lookup.
       -u, --user     User for the lookup (also whose labs --all reports).
       -a, --all      Report every lab directory you belong to as a table.
@@ -61,7 +64,12 @@ def quota(
     """
     if group and user:
         raise click.ClickException("give at most one of --group / --user")
-    if show_all or fleet_keyword:
+    if show_all and (path or group or fleet_keyword is not None):
+        raise click.UsageError(
+            "--all reports your own lab directories, so it takes neither a PATH, "
+            "--group, nor --fleet (--user selects whose labs)"
+        )
+    if show_all or fleet_keyword is not None:
         _report_table(path, fleet_keyword, user)
         return
     if not path:
@@ -76,10 +84,13 @@ def quota(
 
 def _report_table(path: str | None, fleet_keyword: str | None, user: str | None) -> None:
     """Query quota for a set of lab directories and print a usage table."""
-    if fleet_keyword:
+    if fleet_keyword is not None:
+        if not fleet_keyword.strip() or "/" in fleet_keyword:
+            raise click.UsageError("--fleet takes a directory-name prefix, e.g. --fleet kempner")
         if not path:
             raise click.UsageError(
-                "--fleet needs a filesystem PATH, e.g. holylfs06 --fleet kempner"
+                "--fleet needs the PATH holding the lab directories, "
+                "e.g. holylfs06/LABS --fleet kempner"
             )
         root = path if path.startswith("/") else f"{site.path_prefix()}/{path}"
         targets = storage.fleet_targets(root, fleet_keyword)
@@ -101,21 +112,42 @@ def _report_table(path: str | None, fleet_keyword: str | None, user: str | None)
         sort_by_usage = False
 
     rows = []
+    problems = []
+    read = 0
     for target_path, target_group in targets:
-        code, out, _ = process.probe(
+        code, out, err = process.probe(
             storage.quota_cmd(target_path, group=target_group or None), timeout=_QUOTA_TIMEOUT_S
         )
-        if code == 124:
-            rows.append((target_path, "timeout", "-", "-", "-"))
+        parsed = storage.parse_quota_row(out) if code == 0 else None
+        if parsed:
+            read += 1
+            rows.append((target_path, *parsed))
             continue
-        parsed = storage.parse_quota_row(out)
-        rows.append((target_path, *parsed) if parsed else (target_path, "n/a", "-", "-", "-"))
+        rows.append((target_path, _failure(code), "-", "-", "-"))
+        problems.append(f"{target_path}: {err.strip() or out.strip() or f'exited {code}'}")
 
     if sort_by_usage:
-        rows.sort(key=lambda row: storage.percent_value(row[3]), reverse=True)
+        rows.sort(
+            key=lambda row: (storage.percent_value(row[3]), storage.used_bytes(row[1])),
+            reverse=True,
+        )
     else:
         rows.sort(key=lambda row: row[0])
-    click.echo(f"{'STORAGE':<46} {'USED':>9} {'QUOTA':>9} {'DISK%':>7} {'FILES%':>7}")
+    width = max(46, *(len(row[0]) for row in rows))
+    click.echo(f"{'STORAGE':<{width}} {'USED':>9} {'QUOTA':>9} {'DISK%':>7} {'FILES%':>7}")
     for target_path, used, quota_value, disk, files in rows:
-        click.echo(f"{target_path:<46} {used:>9} {quota_value:>9} {disk:>7} {files:>7}")
+        click.echo(f"{target_path:<{width}} {used:>9} {quota_value:>9} {disk:>7} {files:>7}")
     click.echo("DISK% and FILES% are usage against the group quota.")
+    for problem in problems:
+        click.echo(problem, err=True)
+    if not read:
+        raise click.ClickException(f"no quota could be read for any of the {len(rows)} target(s)")
+
+
+def _failure(code: int) -> str:
+    """Return the cell text for a target whose quota could not be read."""
+    if code == 124:
+        return "timeout"
+    if code == 127:
+        return "no tool"
+    return "n/a" if code == 0 else "error"

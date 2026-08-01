@@ -2464,7 +2464,15 @@ def test_storage_quota_fleet_sorts_by_usage(monkeypatch):
 def test_storage_quota_fleet_needs_path():
     result = CliRunner().invoke(main, ["storage", "quota", "--fleet", "kempner"])
     assert result.exit_code == 2
-    assert "filesystem PATH" in result.output
+    assert "holylfs06/LABS --fleet kempner" in result.output
+
+
+def test_storage_quota_all_rejects_conflicting_arguments():
+    """--all reports your own labs, so a PATH or --group would be silently ignored."""
+    for extra in (["netscratch"], ["-g", "kempner_lab"], ["--fleet", "kempner"]):
+        result = CliRunner().invoke(main, ["storage", "quota", "--all", *extra])
+        assert result.exit_code == 2, extra
+        assert "--all reports your own lab directories" in result.output
 
 
 def test_storage_quota_no_args_errors():
@@ -2480,8 +2488,22 @@ def test_storage_quota_all_timeout_row(monkeypatch):
     )
     monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (124, "", ""))
     result = CliRunner().invoke(main, ["storage", "quota", "--all"])
-    assert result.exit_code == 0
+    assert result.exit_code != 0
     assert "timeout" in result.output
+    assert "no quota could be read" in result.output
+
+
+def test_storage_quota_all_reports_a_failure_rather_than_n_a(monkeypatch):
+    """A permission denial is not the same as a filesystem the tool does not track."""
+    monkeypatch.setattr(storage, "user_groups", lambda u: ["other_lab"])
+    monkeypatch.setattr(storage, "lab_targets", lambda g, r, **k: [("/n/x/other_lab", "other_lab")])
+    monkeypatch.setattr(
+        process, "probe", lambda cmd, timeout=None: (1, "", "lfs quota: Permission denied")
+    )
+    result = CliRunner().invoke(main, ["storage", "quota", "--all"])
+    assert result.exit_code != 0
+    assert "error" in result.output
+    assert "Permission denied" in result.output
 
 
 def _ib_topo(quality):

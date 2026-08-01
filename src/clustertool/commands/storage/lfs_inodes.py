@@ -14,8 +14,9 @@ from clustertool.grouping import ToolCommand, keywords
 def lfs_inodes(path: str) -> None:
     """Show inode capacity and usage for a Lustre filesystem (via lfs df -i).
 
-    PATH must be on a Lustre filesystem (for example /n/holylfs06 or
-    /n/holystore01). A bare name like 'holylfs06' becomes '/n/holylfs06'.
+    PATH must be on a Lustre filesystem. A bare name is completed with
+    [storage].path_prefix from the site config, so 'holylfs06' becomes
+    '/n/holylfs06' with the packaged Kempner profile.
 
     \b
     Use cases:
@@ -23,7 +24,7 @@ def lfs_inodes(path: str) -> None:
 
     \b
     Inputs:
-      PATH  A Lustre path, or a bare name that becomes /n/<name>.
+      PATH  A Lustre path, or a bare name the site prefix completes.
     """
     target = path if path.startswith("/") else f"{site.path_prefix()}/{path}"
     if not os.path.exists(target):

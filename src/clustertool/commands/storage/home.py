@@ -15,7 +15,13 @@ from clustertool.storage import humanize_bytes, parse_du_top
     "-s", "--scan", is_flag=True, help="Also scan home and list its largest subdirectories."
 )
 @click.option(
-    "-n", "--top", "top_n", type=int, default=10, show_default=True, help="Directories to list."
+    "-n",
+    "--top",
+    "top_n",
+    type=click.IntRange(min=1),
+    default=10,
+    show_default=True,
+    help="Directories to list.",
 )
 @click.option("--ncdu", is_flag=True, help="Launch the interactive ncdu explorer on home instead.")
 def home(scan: bool, top_n: int, ncdu: bool) -> None:

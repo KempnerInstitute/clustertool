@@ -103,3 +103,39 @@ def test_user_groups(monkeypatch):
 
     monkeypatch.setattr(process, "run", lambda cmd: "kempner_dev kempner_shared\n")
     assert storage.user_groups("alice") == ["kempner_dev", "kempner_shared"]
+
+
+def test_parse_quota_row_takes_the_record_with_the_most_usage():
+    """The tool prints a block per record; the unused one must not win by order."""
+    out = (
+        "Disk quotas for grp mallet_lab (gid 402716):\n"
+        "Filesystem\tused\tquota\tfiles\tquota\n"
+        "/n/holylabs\t0.0B\t4.0Ti\t3\t10000000\n"
+        "Disk quotas for grp mallet_lab (gid 402716):\n"
+        "Filesystem\tused\tquota\tfiles\tquota\n"
+        "/n/holylabs\t42.0Ti\t100.0Ti\t3225130\t100000000\n"
+    )
+    assert storage.parse_quota_row(out) == ("42.0Ti", "100.0Ti", "42%", "3%")
+
+
+def test_parse_quota_row_rejoins_a_wrapped_mount_point():
+    """lfs quota puts a long mount point on its own line, leaving the numbers below."""
+    out = (
+        "     Filesystem    used   quota   limit   grace   files   quota   limit   grace\n"
+        "/n/holylfs06/LABS\n"
+        "                 45.27T     75T     75T       - 16117322  55574528 55574528       -\n"
+    )
+    assert storage.parse_quota_row(out) == ("45.27T", "75T", "60%", "29%")
+
+
+def test_to_bytes_handles_lower_case_and_large_units():
+    assert storage._to_bytes("20k") == 20 * 1024
+    assert storage._to_bytes("1.5t") == 1.5 * 1024**4
+    assert storage._to_bytes("1.0Ei") == 1024**6
+    assert storage._to_bytes("2.0Y") == 2 * 1024**8
+
+
+def test_parse_quota_row_unreadable_file_count_is_not_zero_percent():
+    """A suffixed count must read as unknown, not as no files used."""
+    out = "/n/netscratch 1.0Ti 50.0Ti 3099k 100000000\n"
+    assert storage.parse_quota_row(out) == ("1.0Ti", "50.0Ti", "2%", "-")
