@@ -29,6 +29,9 @@ jobs:
       - name: Sync dependencies
         run: uv sync --frozen
 
+      - name: Show the interpreter
+        run: uv run python -VV
+
       - name: Lint
         run: uv run ruff check .
 
