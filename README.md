@@ -28,23 +28,17 @@ inputs.
 ## How it works
 
 ```mermaid
-flowchart TB
-    you["<b>you</b><br/>clustertool gpu usage"]
-    cli["<b>clustertool</b><br/>75 commands: 7 groups plus 3 top-level<br/>no daemon, no database, no stored state"]
-    cfg["<b>site config</b> (TOML)<br/>partitions · per-GPU limits · QoS · account naming<br/>tool names · storage roots · disabled commands"]
-    out["<b>your terminal</b><br/>tables, verdicts, exit codes"]
-
-    subgraph host["tools your cluster already runs"]
-        direction LR
-        slurm["<b>Slurm</b><br/>squeue · sinfo · sacct<br/>sacctmgr · sshare · scontrol"]
-        wrappers["<b>site wrappers</b><br/>showq · spart · lsload<br/>stotal · quota"]
-        fsys["<b>filesystem</b><br/>lfs · getent"]
-    end
-
-    you --> cli
-    cfg -. "supplies every site-specific value" .-> cli
+flowchart LR
+    you["you"] --> cli["clustertool<br/>no daemon, no state"]
+    cfg["site config"] -. "site values" .-> cli
     cli --> host
-    host --> out
+    subgraph host["your cluster's own tools"]
+        direction TB
+        slurm["Slurm"]
+        wrap["site wrappers"]
+        fs["lfs · getent"]
+    end
+    host --> out["your terminal"]
 ```
 
 Nothing runs as a service and nothing is cached: each command shells out to the
