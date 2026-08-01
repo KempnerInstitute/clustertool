@@ -62,6 +62,8 @@ def retire(
         re.compile(account_regex)
     except re.error as exc:
         raise click.ClickException(f"invalid --account-regex: {exc}") from exc
+    if partition != "all" and not qoslib.partition_exists(partition, cluster=cluster):
+        raise click.ClickException(f"no such partition: {partition}")
     if not qoslib.qos_exists(qos_name):
         click.echo(f"QoS {qos_name} does not exist; nothing to do.")
         return

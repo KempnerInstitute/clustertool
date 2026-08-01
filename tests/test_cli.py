@@ -1914,6 +1914,7 @@ def test_diag_gpu_health_from_xml_directory_exits_3(tmp_path):
 
 def test_qos_holders(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     rows = [("alice", "kempner_dev", "kempner_h100"), ("bob", "kempner_eng", "kempner_h100")]
     monkeypatch.setattr(qos, "holder_rows", lambda *a, **k: rows)
     result = CliRunner().invoke(main, ["qos", "holders", "kemp_gpu4"])
@@ -1924,6 +1925,7 @@ def test_qos_holders(monkeypatch):
 
 def test_qos_holders_by_partition(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     rows = [("alice", "kempner_dev", "kempner_h100"), ("bob", "kempner_dev", "kempner_h200")]
     monkeypatch.setattr(qos, "holder_rows", lambda *a, **k: rows)
     result = CliRunner().invoke(main, ["qos", "holders", "q", "--by", "partition"])
@@ -1933,6 +1935,7 @@ def test_qos_holders_by_partition(monkeypatch):
 
 def test_qos_holders_missing(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: False)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     result = CliRunner().invoke(main, ["qos", "holders", "ghost"])
     assert result.exit_code != 0
     assert "not defined" in result.output
@@ -1940,6 +1943,7 @@ def test_qos_holders_missing(monkeypatch):
 
 def test_qos_create_dry_run(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: False)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     ran = []
     monkeypatch.setattr(process, "probe", lambda cmd: ran.append(cmd) or (0, "", ""))
     result = CliRunner().invoke(main, ["qos", "create", "new_qos", "-g", "4", "-G", "8"])
@@ -1952,6 +1956,7 @@ def test_qos_create_dry_run(monkeypatch):
 
 def test_qos_create_execute(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     ran = []
     monkeypatch.setattr(process, "probe", lambda cmd: ran.append(cmd) or (0, "", ""))
     result = CliRunner().invoke(main, ["qos", "create", "kemp", "-g", "4", "--execute", "--yes"])
@@ -1968,6 +1973,7 @@ def test_qos_create_requires_a_limit():
 
 def test_qos_modify_missing(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: False)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     result = CliRunner().invoke(main, ["qos", "modify", "ghost", "-g", "4"])
     assert result.exit_code != 0
     assert "does not exist" in result.output
@@ -1975,6 +1981,7 @@ def test_qos_modify_missing(monkeypatch):
 
 def test_qos_modify_per_user_only(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     result = CliRunner().invoke(main, ["qos", "modify", "kemp", "-g", "4", "--per-user-only"])
     assert result.exit_code == 0
     assert "MaxTRESPU=gres/gpu=4" in result.output
@@ -1984,6 +1991,7 @@ def test_qos_modify_per_user_only(monkeypatch):
 
 def test_qos_delete_nonexistent(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: False)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     result = CliRunner().invoke(main, ["qos", "delete", "ghost"])
     assert result.exit_code == 0
     assert "nothing to do" in result.output
@@ -1991,15 +1999,67 @@ def test_qos_delete_nonexistent(monkeypatch):
 
 def test_qos_delete_held(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     monkeypatch.setattr(qos, "any_holders", lambda name: ["odyssey|kempner_dev|alice|kempner_h100"])
     result = CliRunner().invoke(main, ["qos", "delete", "kemp"])
     assert result.exit_code != 0
     assert "still held" in result.output
 
 
+def test_qos_revoke_refuses_an_unknown_partition(monkeypatch):
+    """A typo must not report success after revoking nothing from a real holder."""
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: False)
+    ran = []
+    monkeypatch.setattr(qos, "revoke_targets_plan", lambda *a, **k: ran.append(1) or [])
+    result = CliRunner().invoke(
+        main, ["qos", "revoke", "kemp", "-u", "alice", "-p", "kempner_h200_priorty"]
+    )
+    assert result.exit_code != 0
+    assert "no such partition: kempner_h200_priorty" in result.output
+    assert ran == []
+
+
+def test_qos_grant_refuses_an_unknown_partition(monkeypatch):
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: False)
+    result = CliRunner().invoke(main, ["qos", "grant", "kemp", "-u", "alice", "-p", "nope"])
+    assert result.exit_code != 0
+    assert "no such partition: nope" in result.output
+
+
+def test_qos_sync_refuses_an_unknown_partition(monkeypatch):
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: False)
+    result = CliRunner().invoke(main, ["qos", "sync", "kemp", "-a", "lab", "-p", "nope"])
+    assert result.exit_code != 0
+    assert "no such partition: nope" in result.output
+
+
+def test_qos_grant_rejects_a_comma_in_the_partition(monkeypatch):
+    """sacctmgr reads Partitions=A,B as a list, which would widen the change."""
+    result = CliRunner().invoke(main, ["qos", "grant", "kemp", "-u", "alice", "-p", "gpu_a,gpu_b"])
+    assert result.exit_code != 0
+    assert "cannot contain" in result.output
+
+
+def test_qos_sync_rejects_a_comma_in_the_account(monkeypatch):
+    result = CliRunner().invoke(main, ["qos", "sync", "kemp", "-a", "lab_a,lab_b", "-p", "gpu"])
+    assert result.exit_code != 0
+    assert "cannot contain" in result.output
+
+
+def test_qos_revoke_rejects_a_comma_in_the_partition(monkeypatch):
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    result = CliRunner().invoke(main, ["qos", "revoke", "kemp", "-u", "alice", "-p", "gpu_a,gpu_b"])
+    assert result.exit_code != 0
+    assert "cannot contain a comma" in result.output
+
+
 def test_qos_delete_refuses_while_jobs_carry_the_qos(monkeypatch):
     """A QoS with live jobs is still in force, whatever the associations say."""
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     monkeypatch.setattr(qos, "any_holders", lambda name: [])
     monkeypatch.setattr(qos, "partitions_referencing", lambda name, cluster=None: [])
     monkeypatch.setattr(qos, "jobs_using", lambda name, cluster=None: 11443)
@@ -2010,6 +2070,7 @@ def test_qos_delete_refuses_while_jobs_carry_the_qos(monkeypatch):
 
 def test_qos_retire_refuses_while_jobs_carry_the_qos(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     monkeypatch.setattr(qos, "partitions_referencing", lambda name, cluster=None: [])
     monkeypatch.setattr(qos, "jobs_using", lambda name, cluster=None: 24)
     result = CliRunner().invoke(main, ["qos", "retire", "kemp", "-p", "all", "-x", "-y"])
@@ -2019,6 +2080,7 @@ def test_qos_retire_refuses_while_jobs_carry_the_qos(monkeypatch):
 
 def test_qos_delete_dry_run(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     monkeypatch.setattr(qos, "any_holders", lambda name: [])
     monkeypatch.setattr(qos, "partitions_referencing", lambda name, cluster=None: [])
     monkeypatch.setattr(qos, "jobs_using", lambda name, cluster=None: 0)
@@ -2032,6 +2094,7 @@ def test_qos_delete_dry_run(monkeypatch):
 
 def test_qos_execute_non_tty_requires_yes(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     monkeypatch.setattr(qos, "any_holders", lambda name: [])
     monkeypatch.setattr(qos, "partitions_referencing", lambda name, cluster=None: [])
     monkeypatch.setattr(qos, "jobs_using", lambda name, cluster=None: 0)
@@ -2054,6 +2117,7 @@ def test_qos_create_rejects_unsafe_name(monkeypatch):
 
 def test_qos_create_execute_add_then_modify(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: False)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     ran = []
     monkeypatch.setattr(process, "probe", lambda cmd: ran.append(cmd) or (0, "", ""))
     result = CliRunner().invoke(main, ["qos", "create", "new_qos", "-g", "4", "--execute", "--yes"])
@@ -2066,6 +2130,7 @@ def test_qos_create_execute_add_then_modify(monkeypatch):
 
 def test_qos_modify_explicit_clear(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     result = CliRunner().invoke(main, ["qos", "modify", "kemp", "-g", "8", "-G", "-1"])
     assert result.exit_code == 0
     assert "MaxTRESPU=gres/gpu=8 GrpTRES=gres/gpu=-1" in result.output
@@ -2073,6 +2138,7 @@ def test_qos_modify_explicit_clear(monkeypatch):
 
 def test_qos_execute_stops_after_failure(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: False)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     ran = []
 
     def fake_probe(cmd):
@@ -2087,6 +2153,7 @@ def test_qos_execute_stops_after_failure(monkeypatch):
 
 def test_qos_execute_reports_failure(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     monkeypatch.setattr(qos, "any_holders", lambda name: [])
     monkeypatch.setattr(qos, "partitions_referencing", lambda name, cluster=None: [])
     monkeypatch.setattr(qos, "jobs_using", lambda name, cluster=None: 0)
@@ -2098,6 +2165,7 @@ def test_qos_execute_reports_failure(monkeypatch):
 
 def test_qos_grant_dry_run(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     monkeypatch.setattr(qos, "get_accounts", lambda user, **k: ["kempner_dev"])
     monkeypatch.setattr(
         qos,
@@ -2114,6 +2182,7 @@ def test_qos_grant_dry_run(monkeypatch):
 
 def test_qos_grant_missing_qos(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: False)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     result = CliRunner().invoke(main, ["qos", "grant", "ghost", "-u", "alice", "-p", "p"])
     assert result.exit_code != 0
     assert "not defined" in result.output
@@ -2121,6 +2190,7 @@ def test_qos_grant_missing_qos(monkeypatch):
 
 def test_qos_grant_missing_default_qos(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: name == "kemp")
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     result = CliRunner().invoke(
         main, ["qos", "grant", "kemp", "-u", "alice", "-p", "p", "-d", "ghost"]
     )
@@ -2130,6 +2200,7 @@ def test_qos_grant_missing_default_qos(monkeypatch):
 
 def test_qos_grant_skips_user_without_accounts(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     monkeypatch.setattr(qos, "get_accounts", lambda user, **k: [])
     result = CliRunner().invoke(main, ["qos", "grant", "kemp", "-u", "ghost", "-p", "p"])
     assert result.exit_code == 0
@@ -2139,6 +2210,7 @@ def test_qos_grant_skips_user_without_accounts(monkeypatch):
 
 def test_qos_revoke_all_must_be_alone(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     result = CliRunner().invoke(main, ["qos", "revoke", "kemp", "-u", "all,alice", "-p", "p"])
     assert result.exit_code == 2
     assert "all must be used on its own" in result.output
@@ -2146,6 +2218,7 @@ def test_qos_revoke_all_must_be_alone(monkeypatch):
 
 def test_qos_revoke_dry_run(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     monkeypatch.setattr(
         qos,
         "revoke_targets_plan",
@@ -2160,6 +2233,7 @@ def test_qos_revoke_dry_run(monkeypatch):
 
 def test_qos_retire_appends_delete(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     monkeypatch.setattr(qos, "partitions_referencing", lambda name, cluster=None: [])
     monkeypatch.setattr(qos, "jobs_using", lambda name, cluster=None: 0)
     monkeypatch.setattr(qos, "any_holders", lambda name: [])
@@ -2171,6 +2245,7 @@ def test_qos_retire_appends_delete(monkeypatch):
 
 def test_qos_retire_nonexistent(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: False)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     result = CliRunner().invoke(main, ["qos", "retire", "ghost", "-p", "p"])
     assert result.exit_code == 0
     assert "nothing to do" in result.output
@@ -2178,6 +2253,7 @@ def test_qos_retire_nonexistent(monkeypatch):
 
 def test_qos_sync_already_in_sync(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     monkeypatch.setattr(qos, "account_exists", lambda name, **k: True)
     monkeypatch.setattr(qos, "account_base_members", lambda account, **k: ["alice"])
     monkeypatch.setattr(qos, "holder_rows", lambda *a, **k: [("alice", "kempner_dev", "p")])
@@ -2188,6 +2264,7 @@ def test_qos_sync_already_in_sync(monkeypatch):
 
 def test_qos_sync_dry_run(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     monkeypatch.setattr(qos, "account_exists", lambda name, **k: True)
     monkeypatch.setattr(qos, "account_base_members", lambda account, **k: ["bob"])
     monkeypatch.setattr(qos, "holder_rows", lambda *a, **k: [("alice", "kempner_dev", "p")])
@@ -2204,6 +2281,7 @@ def test_qos_sync_dry_run(monkeypatch):
 
 def test_qos_grant_execute(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     monkeypatch.setattr(qos, "get_accounts", lambda user, **k: ["kempner_dev"])
     monkeypatch.setattr(qos, "grant_plan", lambda *a, **k: [["sacctmgr", "-i", "add", "user", "x"]])
     ran = []
@@ -2462,6 +2540,7 @@ def test_jobs_top_missing_job_errors(monkeypatch):
 def test_qos_delete_refuses_a_partition_referenced_qos(monkeypatch):
     """A QoS named in partition config holds real limits even with no association."""
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     monkeypatch.setattr(qos, "any_holders", lambda name: [])
     monkeypatch.setattr(
         qos, "partitions_referencing", lambda name, cluster=None: ["gpu", "gpu_big"]
@@ -2473,6 +2552,7 @@ def test_qos_delete_refuses_a_partition_referenced_qos(monkeypatch):
 
 def test_qos_retire_refuses_a_partition_referenced_qos(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     monkeypatch.setattr(qos, "partitions_referencing", lambda name, cluster=None: ["gpu"])
     result = CliRunner().invoke(main, ["qos", "retire", "base_caps", "-p", "all", "-x", "-y"])
     assert result.exit_code != 0
@@ -2482,6 +2562,7 @@ def test_qos_retire_refuses_a_partition_referenced_qos(monkeypatch):
 def test_qos_retire_refuses_when_holders_are_outside_the_sweep(monkeypatch):
     """Revoking nothing while holders remain must not still delete the QoS."""
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     monkeypatch.setattr(qos, "partitions_referencing", lambda name, cluster=None: [])
     monkeypatch.setattr(qos, "jobs_using", lambda name, cluster=None: 0)
     monkeypatch.setattr(qos, "revoke_targets_plan", lambda *a, **k: [])
@@ -2494,6 +2575,7 @@ def test_qos_retire_refuses_when_holders_are_outside_the_sweep(monkeypatch):
 def test_qos_retire_refuses_an_uncovered_holder_beside_a_covered_one(monkeypatch):
     """A sweep that revokes one holder must not delete a QoS another still holds."""
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     monkeypatch.setattr(qos, "partitions_referencing", lambda name, cluster=None: [])
     monkeypatch.setattr(qos, "jobs_using", lambda name, cluster=None: 0)
     monkeypatch.setattr(
@@ -2647,6 +2729,7 @@ def test_jobs_new_script_still_honors_an_override_without_config(monkeypatch):
 def test_qos_sync_refuses_when_no_base_members(monkeypatch):
     """An account read that finds nobody would otherwise revoke every holder."""
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     monkeypatch.setattr(qos, "account_exists", lambda name, **k: True)
     monkeypatch.setattr(qos, "account_base_members", lambda account, **k: [])
     result = CliRunner().invoke(
@@ -2659,6 +2742,7 @@ def test_qos_sync_refuses_when_no_base_members(monkeypatch):
 def test_qos_sync_can_revoke_a_lingering_holder(monkeypatch):
     """A holder whose base membership is gone must actually be revoked."""
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
     monkeypatch.setattr(qos, "account_exists", lambda name, **k: True)
     monkeypatch.setattr(qos, "account_base_members", lambda account, **k: ["alice"])
     monkeypatch.setattr(

@@ -9,6 +9,16 @@ from clustertool.commands.qos import _gate
 from clustertool.grouping import admin, keywords
 
 
+def _check_names(**values: str) -> None:
+    """Reject a name sacctmgr would read as a list, which would widen the change."""
+    for label, value in values.items():
+        if not qoslib.valid_name(value):
+            raise click.ClickException(
+                f"invalid --{label.replace('_', '-')} {value!r}: a name cannot contain "
+                "a comma or whitespace, which sacctmgr would read as a list"
+            )
+
+
 @admin
 @keywords("assign", "add", "priority", "give", "user")
 @click.command("grant")
@@ -46,7 +56,8 @@ def grant(
     regex, sets the default QoS, and strips the catch-all and partition-named
     QoS so the granted one takes effect. Missing associations are created. Dry
     run by default; re-run with --execute to apply, confirming unless --yes.
-    Operator or coordinator only.
+    Slurm operator, or a coordinator of the account; a site that sets
+    DisableCoordDBD in slurmdbd.conf restricts this to operators.
 
     \b
     Use cases:
@@ -64,12 +75,17 @@ def grant(
       -y, --yes           Skip the confirmation prompt.
     """
     default_qos = default_qos or qos_name
+    _check_names(partition=partition)
+    for user in qoslib.flatten_users(users):
+        _check_names(users=user)
     try:
         re.compile(account_regex)
     except re.error as exc:
         raise click.ClickException(f"invalid --account-regex: {exc}") from exc
     if not qoslib.qos_exists(qos_name):
         raise click.ClickException(f"QoS {qos_name} is not defined")
+    if not qoslib.partition_exists(partition, cluster=cluster):
+        raise click.ClickException(f"no such partition: {partition}")
     if default_qos != qos_name and not qoslib.qos_exists(default_qos):
         raise click.ClickException(f"default QoS {default_qos} is not defined")
     plan = []

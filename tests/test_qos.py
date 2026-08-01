@@ -103,6 +103,53 @@ def test_partitions_referencing_reads_hidden_partitions_on_the_site_cluster(monk
     assert seen["cmd"] == ["scontrol", "-a", "-M", "bigred", "show", "partition"]
 
 
+def test_partition_exists(monkeypatch):
+    monkeypatch.setattr(
+        qos.process, "probe", lambda cmd, timeout=None: (0, "PartitionName=gpu", "")
+    )
+    assert qos.partition_exists("gpu") is True
+
+
+def test_partition_exists_false_for_an_unknown_name(monkeypatch):
+    """scontrol writes 'not found' to stdout, not stderr."""
+    monkeypatch.setattr(
+        qos.process, "probe", lambda cmd, timeout=None: (1, "Partition nope not found\n", "")
+    )
+    assert qos.partition_exists("nope") is False
+
+
+def test_partition_exists_raises_when_the_lookup_itself_fails(monkeypatch):
+    """An unreachable controller must not be reported as a partition that does not exist."""
+    monkeypatch.setattr(
+        qos.process,
+        "probe",
+        lambda cmd, timeout=None: (1, "", "Unable to contact slurm controller"),
+    )
+    with pytest.raises(qos.CommandError):
+        qos.partition_exists("gpu")
+
+
+def test_grant_plan_keeps_the_qos_it_sets_as_the_default(monkeypatch):
+    """Stripping the catch-all must not remove the QoS just installed as the default."""
+    monkeypatch.setattr(qos, "read_assoc", lambda *a, **k: ("normal,other", "other"))
+    monkeypatch.setattr(qos, "_strip_names", lambda partition: ["normal", partition])
+    plan = qos.grant_plan("alice", "lab", "gpu", "kemp", "normal", "odyssey")
+    specs = [cmd[-1] for cmd in plan]
+    assert "QOS+=kemp" in specs
+    assert "DefaultQOS=normal" in specs
+    assert not [spec for spec in specs if spec.startswith("QOS-=")]
+
+
+def test_grant_plan_still_strips_the_catch_all_for_the_usual_default(monkeypatch):
+    monkeypatch.setattr(qos, "read_assoc", lambda *a, **k: ("normal,other", "other"))
+    monkeypatch.setattr(qos, "_strip_names", lambda partition: ["normal", partition])
+    plan = qos.grant_plan("alice", "lab", "gpu", "kemp", "kemp", "odyssey")
+    specs = [cmd[-1] for cmd in plan]
+    assert "QOS+=kemp" in specs
+    assert "DefaultQOS=kemp" in specs
+    assert "QOS-=normal" in specs
+
+
 def test_jobs_using_counts_exact_matches(monkeypatch):
     monkeypatch.setattr(
         qos.process, "probe", lambda cmd, timeout=None: (0, "normal\nKEMP\nnormal\nkemp_x\n", "")

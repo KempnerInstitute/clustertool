@@ -118,6 +118,24 @@ def partitions_referencing(qos_name: str, cluster: str | None = None) -> list[st
     return sorted(set(found))
 
 
+def partition_exists(name: str, cluster: str | None = None) -> bool:
+    """Return True if the partition is configured on the cluster.
+
+    slurmdbd holds no record of a cluster's partitions, so it accepts any
+    partition name in an association: a typo makes a grant create an association
+    no job can use, and makes a revoke match nothing while reporting success.
+    Raises if the partition cannot be looked up at all, so a controller that is
+    unreachable is not reported as a partition that does not exist.
+    """
+    cmd = ["scontrol", "-a", "-M", _cluster(cluster), "show", "partition", name]
+    code, out, err = process.probe(cmd)
+    if code == 0:
+        return True
+    if "not found" in (out + err).lower():
+        return False
+    raise CommandError(f"could not look up partition {name}: {err.strip() or code}")
+
+
 def jobs_using(qos_name: str, cluster: str | None = None) -> int:
     """Return how many queued or running jobs carry the QoS.
 
@@ -300,7 +318,8 @@ def grant_plan(
         plan.append(
             ["sacctmgr", "-i", "modify", "user", *where, "set", f"DefaultQOS={default_qos}"]
         )
-    strip = [name for name in _strip_names(partition) if name != qos_name and name in current_list]
+    keep = (qos_name, default_qos)
+    strip = [name for name in _strip_names(partition) if name not in keep and name in current_list]
     if strip:
         plan.append(["sacctmgr", "-i", "modify", "user", *where, "set", f"QOS-={','.join(strip)}"])
     return plan

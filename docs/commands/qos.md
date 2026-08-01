@@ -79,9 +79,11 @@ per-user caps remain. Errors if the QoS does not exist (use `qos create`).
 Delete a QoS definition, refusing while it is still referenced (via `sacctmgr`).
 Slurm or system admin only.
 
-Dry run by default. Refuses if any association still lists the QoS, or if the
-QoS is named in a partition's configuration, where it applies limits without any
-association mentioning it. A QoS that does not exist is a no-op.
+Dry run by default. Refuses while the QoS is still in force: if any association
+on any cluster still lists it, if a partition's `QoS`, `AllowQos`, or `DenyQos`
+setting names it (where it applies limits without any association mentioning it),
+or if any queued or running job carries it. A QoS that does not exist is a
+no-op.
 
 **Use cases**
 - Retire a QoS definition that is no longer assigned to anyone.
@@ -94,7 +96,8 @@ association mentioning it. A QoS that does not exist is a no-op.
 ## `qos grant QOS_NAME -u USERS -p PART [-d DEFAULT] [-c CLUSTER] [-r REGEX] [-x] [-y]`
 
 Grant a priority QoS to users across their matching accounts on a partition (via
-`sacctmgr`). Operator or a coordinator of the account only.
+`sacctmgr`). Slurm operator, or a coordinator of the account; a site that sets
+`DisableCoordDBD` in `slurmdbd.conf` restricts this to operators.
 
 For each user, adds the QoS to every association whose account matches the regex,
 sets the default QoS, and strips the catch-all and partition-named QoS so the
@@ -119,7 +122,8 @@ coordinator of the account only.
 
 Removes the QoS from each matching association, moving the default off it first
 when needed and deleting the association if the QoS was its only entry. Pass
-`all` for `--users` or `--partition` to act on every current holder. Dry run by
+`all` for `--users` or `--partition` to act on every current holder. An unknown
+partition name is refused rather than silently matching nothing. Dry run by
 default.
 
 **Use cases**
@@ -139,11 +143,16 @@ default.
 Remove a QoS from all its holders on a partition, then delete it (via
 `sacctmgr`). Slurm or system admin only, because it deletes the definition.
 
-Revokes the QoS from every holder, then deletes the QoS definition. Refuses up
-front if the QoS is named in any partition's configuration, or if an association
-still holds it that this sweep would not revoke, such as an account-level one or
-one on another partition. The delete runs only after every revoke in the plan
-succeeded. Dry run by default.
+Revokes the QoS from every holder, then deletes the QoS definition. Where the QoS
+is an association's only one, the revoke deletes that association outright rather
+than editing it, which drops its recorded usage.
+
+Refuses up front if the QoS is named in any partition's configuration, if any
+queued or running job carries it, or if any association still holding it would
+not be revoked by this sweep, such as an account-level one, one with no
+partition, or one on another cluster; it lists the ones it would leave behind.
+The delete runs only after every revoke in the plan succeeded. Dry run by
+default.
 
 **Use cases**
 - Fully decommission a priority QoS in one step.
@@ -158,11 +167,16 @@ succeeded. Dry run by default.
 ## `qos sync QOS_NAME -a ACCOUNT -p PART [-c CLUSTER] [-x] [-y]`
 
 Reconcile a QoS's holders to an account's current membership (via `sacctmgr`).
-Operator or a coordinator of the account only.
+Slurm operator, or a coordinator of the account; a site that sets
+`DisableCoordDBD` in `slurmdbd.conf` restricts this to operators.
 
 Grants the QoS to account members who lack it and revokes it from holders no
-longer in the account, on the given partition. Idempotent and cron-friendly. Dry
-run by default.
+longer in the account, on the given partition. Membership is the account's base
+association, so a user whose partition association lingers after their membership
+was removed is revoked. Granting works exactly as `qos grant` does, so it also
+makes the QoS the association's default and strips the site's catch-all and the
+partition-named QoS: a member who had chosen a different default gets it
+overwritten on every run. Idempotent and cron-friendly. Dry run by default.
 
 **Use cases**
 - Keep a lab's priority QoS aligned with its Slurm account membership.

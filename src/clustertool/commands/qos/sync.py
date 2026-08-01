@@ -9,6 +9,16 @@ from clustertool.commands.qos import _gate
 from clustertool.grouping import admin, keywords
 
 
+def _check_names(**values: str) -> None:
+    """Reject a name sacctmgr would read as a list, which would widen the change."""
+    for label, value in values.items():
+        if not qoslib.valid_name(value):
+            raise click.ClickException(
+                f"invalid --{label.replace('_', '-')} {value!r}: a name cannot contain "
+                "a comma or whitespace, which sacctmgr would read as a list"
+            )
+
+
 @admin
 @keywords("reconcile", "membership", "align", "priority", "account")
 @click.command("sync")
@@ -31,9 +41,14 @@ def sync(
     Grants the QoS to account members who lack it and revokes it from holders no
     longer in the account, on the given partition. Membership is the account's
     base association, so a user whose partition association lingers after their
-    membership was removed is revoked. Idempotent and cron-friendly.
+    membership was removed is revoked. Granting works exactly as 'qos grant'
+    does, so it also makes the QoS the association's default and strips the
+    site's catch-all and the partition-named QoS: a member who had chosen a
+    different default gets it overwritten on every run. Idempotent and
+    cron-friendly.
     Dry run by default; re-run with --execute to apply, confirming unless --yes.
-    Operator or coordinator only.
+    Slurm operator, or a coordinator of the account; a site that sets
+    DisableCoordDBD in slurmdbd.conf restricts this to operators.
 
     \b
     Use cases:
@@ -48,8 +63,11 @@ def sync(
       -x, --execute    Apply the change instead of previewing it.
       -y, --yes        Skip the confirmation prompt.
     """
+    _check_names(partition=partition, account=account)
     if not qoslib.qos_exists(qos_name):
         raise click.ClickException(f"QoS {qos_name} is not defined")
+    if not qoslib.partition_exists(partition, cluster=cluster):
+        raise click.ClickException(f"no such partition: {partition}")
     if not qoslib.account_exists(account, cluster=cluster):
         raise click.ClickException(f"account {account} has no associations on this cluster")
     members = set(qoslib.account_base_members(account, cluster=cluster))
