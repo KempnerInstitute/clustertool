@@ -1267,21 +1267,44 @@ def _gpu_node(name, partitions, gpu_tot, gpu_free, available=True):
 
 def test_gpu_util(monkeypatch):
     monkeypatch.setattr(slurm, "node_capacity", lambda: [_gpu_node("n1", ["kempner_h100"], 8, 4)])
+    monkeypatch.setattr(slurm, "gpus_allocated_in", lambda p: 4)
     result = CliRunner().invoke(main, ["gpu", "util", "kempner_h100"])
     assert result.exit_code == 0
     assert "kempner_h100" in result.output
     assert "50.0%" in result.output
 
 
+def test_gpu_util_scopes_used_to_the_partition(monkeypatch):
+    """A neighbor's jobs occupy the hardware but are not this partition's usage."""
+    monkeypatch.setattr(slurm, "node_capacity", lambda: [_gpu_node("n1", ["kempner"], 8, 1)])
+    monkeypatch.setattr(slurm, "gpus_allocated_in", lambda p: 2)
+    result = CliRunner().invoke(main, ["gpu", "util", "kempner"])
+    assert result.exit_code == 0
+    row = next(line for line in result.output.splitlines() if line.startswith("kempner"))
+    total, unavail, used, other, free, util = row.split()[1:]
+    assert (total, unavail, used, other, free) == ("8", "0", "2", "5", "1")
+    assert util == "25.0%"
+
+
+def test_gpu_util_accepts_the_partition_as_an_option(monkeypatch):
+    monkeypatch.setattr(slurm, "node_capacity", lambda: [_gpu_node("n1", ["kempner_h100"], 8, 4)])
+    monkeypatch.setattr(slurm, "gpus_allocated_in", lambda p: 4)
+    result = CliRunner().invoke(main, ["gpu", "util", "-p", "kempner_h100"])
+    assert result.exit_code == 0
+    assert "kempner_h100" in result.output
+
+
 def test_gpu_util_counts_a_shared_node_once(monkeypatch):
     """sinfo -N emits a row per (node, partition); the totals must not double count."""
     shared = _gpu_node("n1", ["kempner_h100", "kempner_requeue"], 8, 2)
     monkeypatch.setattr(slurm, "node_capacity", lambda: [shared])
+    monkeypatch.setattr(slurm, "gpus_allocated_in", lambda p: 3)
     result = CliRunner().invoke(main, ["gpu", "util", "kempner_h100", "kempner_requeue"])
     assert result.exit_code == 0
     rows = [line.split() for line in result.output.splitlines()[1:] if line.strip()]
     assert [row[1] for row in rows] == ["8", "8"]
-    assert [row[3] for row in rows] == ["6", "6"]
+    assert [row[3] for row in rows] == ["3", "3"]
+    assert [row[4] for row in rows] == ["3", "3"]
 
 
 def test_gpu_util_percent_cannot_exceed_100(monkeypatch):
@@ -1291,6 +1314,7 @@ def test_gpu_util_percent_cannot_exceed_100(monkeypatch):
         "node_capacity",
         lambda: [_gpu_node("n1", ["gpu"], 8, 0, available=False)],
     )
+    monkeypatch.setattr(slurm, "gpus_allocated_in", lambda p: 8)
     result = CliRunner().invoke(main, ["gpu", "util", "gpu"])
     assert result.exit_code == 0
     assert "100.0%" in result.output

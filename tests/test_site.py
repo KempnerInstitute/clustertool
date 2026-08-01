@@ -90,7 +90,7 @@ def test_commands_honor_a_different_site(monkeypatch):
     monkeypatch.setattr(
         slurm,
         "partition_gpu_util",
-        lambda partition, nodes=None: (10, 0, 5, 5, 50.0),
+        lambda partition, nodes=None: (10, 0, 5, 0, 5, 50.0),
     )
     monkeypatch.setattr(
         slurm,

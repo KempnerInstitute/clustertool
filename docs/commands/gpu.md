@@ -19,26 +19,30 @@ usage that does not count toward the cap.
 **Inputs**
 - `ACCOUNT`: Slurm account name (e.g. `kempner_sham_lab`). Omit for all labs.
 
-## `gpu util [PARTITION...]`
+## `gpu util [PARTITION...] [-p PARTITION]`
 
-Show GPU occupancy per partition (via one `scontrol` pass): total, unavailable,
-used, free, and percent.
+Show GPU occupancy per partition: total, unavailable, used, other, free, and
+percent.
 
-Every column is measured on the partition's nodes. `UNAVAIL` is the GPUs on nodes
-that cannot take a new job (down, drained, reserved, in maintenance, completing,
-failing, powered down, not responding, or registered with invalid resources).
-`USED` is the GPUs Slurm has allocated on those nodes, and `FREE` the unallocated
-ones on nodes that can still take work, so `USED` plus `FREE` need not reach
-`TOTAL`. Where partitions share nodes, as a requeue or priority partition does
-with a base partition, `USED` counts the neighbors' jobs too, because a job on a
-shared node occupies the same GPU either way. `UTIL` is used over total. With no
-PARTITION, reports the site base partitions.
+`USED` is the GPUs held by jobs submitted to that partition. `TOTAL`, `UNAVAIL`
+and `FREE` describe the partition's nodes, read in one `scontrol` pass: the GPUs
+those nodes have, those on nodes that cannot take a new job (down, drained,
+reserved, in maintenance, completing, failing, powered down, not responding, or
+registered with invalid resources), and those still unallocated on nodes that can.
+
+`OTHER` is what jobs from partitions sharing the same nodes hold, which is why
+`USED` plus `FREE` need not reach `TOTAL`. On a cluster where a requeue or
+priority partition overlaps a base partition, that column is where the rest of the
+hardware went. `UTIL` is used over total.
+
+With no PARTITION, reports the site base partitions.
 
 **Use cases**
 - See how full each GPU partition is right now.
 
 **Inputs**
 - `PARTITION...`: One or more partitions (default: the site base partitions).
+- `-p, --partition`: Same, as an option rather than an argument (repeatable).
 
 ## `gpu status`
 

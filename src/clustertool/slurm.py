@@ -48,29 +48,40 @@ def _gres_gpus(text: str) -> int:
     return sum(int(count) for count in _GRES_GPU_RE.findall(text or ""))
 
 
+def gpus_allocated_in(partition: str) -> int:
+    """Return the GPUs held by running jobs submitted to a partition.
+
+    Reads each job's allocation rather than its request, so a job that asked with
+    --gpus, or that Slurm gave a whole node, counts what it actually holds.
+    """
+    out = _run(["squeue", "-h", "-t", "R", "-p", partition, "-O", "tres-alloc:512"])
+    return sum(parse_gpu_count(line) for line in out.splitlines())
+
+
 def partition_gpu_util(
     partition: str, nodes: list[dict] | None = None
-) -> tuple[int, int, int, int, float]:
-    """Return (total, unavailable, used, free, percent) GPUs on a partition's nodes.
+) -> tuple[int, int, int, int, int, float]:
+    """Return (total, unavailable, used, other, free, percent) GPUs for a partition.
 
-    Every figure is measured per node from one scontrol pass, so they describe the
-    same population: total is the GPUs the partition's nodes have, unavailable is
-    those on nodes that cannot take a new job, used is those Slurm has allocated,
-    and free is the unallocated GPUs on nodes that can still take work. Percent is
-    used over total, so it is the occupancy of the hardware and cannot exceed 100
-    even while a drained node still runs the jobs it had. Used counts every job on
-    those nodes, whichever partition it was submitted to, because a job on a
-    shared node occupies the same GPU either way. Pass nodes to reuse a
+    Total, unavailable and free describe the partition's nodes, read from one
+    scontrol pass: the GPUs those nodes have, those on nodes that cannot take a new
+    job, and those still unallocated on nodes that can.
+
+    Used is the GPUs held by jobs submitted to this partition. Other is what jobs
+    from partitions sharing the same nodes hold, which is why used plus free need
+    not reach total. Percent is used over total. Pass nodes to reuse a
     node_capacity() result.
     """
     rows = [row for row in (nodes if nodes is not None else node_capacity()) if row["gpu_tot"]]
     rows = [row for row in rows if partition in row["partitions"]]
     total = sum(row["gpu_tot"] for row in rows)
     unavailable = sum(row["gpu_tot"] for row in rows if not row["available"])
-    used = sum(row["gpu_tot"] - row["gpu_free"] for row in rows)
+    allocated = sum(row["gpu_tot"] - row["gpu_free"] for row in rows)
     free = sum(row["gpu_free"] for row in rows if row["available"])
+    used = min(gpus_allocated_in(partition), allocated)
+    other = max(allocated - used, 0)
     percent = (100.0 * used / total) if total else 0.0
-    return total, unavailable, used, free, percent
+    return total, unavailable, used, other, free, percent
 
 
 _RESUMABLE_STATES = ("drain", "down", "fail", "reboot")
