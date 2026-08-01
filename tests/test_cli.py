@@ -1997,10 +1997,31 @@ def test_qos_delete_held(monkeypatch):
     assert "still held" in result.output
 
 
+def test_qos_delete_refuses_while_jobs_carry_the_qos(monkeypatch):
+    """A QoS with live jobs is still in force, whatever the associations say."""
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "any_holders", lambda name: [])
+    monkeypatch.setattr(qos, "partitions_referencing", lambda name, cluster=None: [])
+    monkeypatch.setattr(qos, "jobs_using", lambda name, cluster=None: 11443)
+    result = CliRunner().invoke(main, ["qos", "delete", "kemp", "-x", "-y"])
+    assert result.exit_code != 0
+    assert "11443 queued or running job(s)" in result.output
+
+
+def test_qos_retire_refuses_while_jobs_carry_the_qos(monkeypatch):
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partitions_referencing", lambda name, cluster=None: [])
+    monkeypatch.setattr(qos, "jobs_using", lambda name, cluster=None: 24)
+    result = CliRunner().invoke(main, ["qos", "retire", "kemp", "-p", "all", "-x", "-y"])
+    assert result.exit_code != 0
+    assert "24 queued or running job(s)" in result.output
+
+
 def test_qos_delete_dry_run(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
     monkeypatch.setattr(qos, "any_holders", lambda name: [])
-    monkeypatch.setattr(qos, "partitions_referencing", lambda name: [])
+    monkeypatch.setattr(qos, "partitions_referencing", lambda name, cluster=None: [])
+    monkeypatch.setattr(qos, "jobs_using", lambda name, cluster=None: 0)
     ran = []
     monkeypatch.setattr(process, "probe", lambda cmd: ran.append(cmd) or (0, "", ""))
     result = CliRunner().invoke(main, ["qos", "delete", "kemp"])
@@ -2012,7 +2033,8 @@ def test_qos_delete_dry_run(monkeypatch):
 def test_qos_execute_non_tty_requires_yes(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
     monkeypatch.setattr(qos, "any_holders", lambda name: [])
-    monkeypatch.setattr(qos, "partitions_referencing", lambda name: [])
+    monkeypatch.setattr(qos, "partitions_referencing", lambda name, cluster=None: [])
+    monkeypatch.setattr(qos, "jobs_using", lambda name, cluster=None: 0)
     ran = []
     monkeypatch.setattr(process, "probe", lambda cmd: ran.append(cmd) or (0, "", ""))
     result = CliRunner().invoke(main, ["qos", "delete", "kemp", "--execute"], input="y\n")
@@ -2066,7 +2088,8 @@ def test_qos_execute_stops_after_failure(monkeypatch):
 def test_qos_execute_reports_failure(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
     monkeypatch.setattr(qos, "any_holders", lambda name: [])
-    monkeypatch.setattr(qos, "partitions_referencing", lambda name: [])
+    monkeypatch.setattr(qos, "partitions_referencing", lambda name, cluster=None: [])
+    monkeypatch.setattr(qos, "jobs_using", lambda name, cluster=None: 0)
     monkeypatch.setattr(process, "probe", lambda cmd: (1, "", "sacctmgr: boom"))
     result = CliRunner().invoke(main, ["qos", "delete", "kemp", "--execute", "--yes"])
     assert result.exit_code == 1
@@ -2137,7 +2160,8 @@ def test_qos_revoke_dry_run(monkeypatch):
 
 def test_qos_retire_appends_delete(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
-    monkeypatch.setattr(qos, "partitions_referencing", lambda name: [])
+    monkeypatch.setattr(qos, "partitions_referencing", lambda name, cluster=None: [])
+    monkeypatch.setattr(qos, "jobs_using", lambda name, cluster=None: 0)
     monkeypatch.setattr(qos, "any_holders", lambda name: [])
     monkeypatch.setattr(qos, "revoke_targets_plan", lambda *a, **k: [])
     result = CliRunner().invoke(main, ["qos", "retire", "kemp", "-p", "kempner_h100"])
@@ -2439,7 +2463,9 @@ def test_qos_delete_refuses_a_partition_referenced_qos(monkeypatch):
     """A QoS named in partition config holds real limits even with no association."""
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
     monkeypatch.setattr(qos, "any_holders", lambda name: [])
-    monkeypatch.setattr(qos, "partitions_referencing", lambda name: ["gpu", "gpu_big"])
+    monkeypatch.setattr(
+        qos, "partitions_referencing", lambda name, cluster=None: ["gpu", "gpu_big"]
+    )
     result = CliRunner().invoke(main, ["qos", "delete", "base_caps", "--execute", "--yes"])
     assert result.exit_code != 0
     assert "gpu, gpu_big" in result.output
@@ -2447,7 +2473,7 @@ def test_qos_delete_refuses_a_partition_referenced_qos(monkeypatch):
 
 def test_qos_retire_refuses_a_partition_referenced_qos(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
-    monkeypatch.setattr(qos, "partitions_referencing", lambda name: ["gpu"])
+    monkeypatch.setattr(qos, "partitions_referencing", lambda name, cluster=None: ["gpu"])
     result = CliRunner().invoke(main, ["qos", "retire", "base_caps", "-p", "all", "-x", "-y"])
     assert result.exit_code != 0
     assert "gpu" in result.output
@@ -2456,12 +2482,48 @@ def test_qos_retire_refuses_a_partition_referenced_qos(monkeypatch):
 def test_qos_retire_refuses_when_holders_are_outside_the_sweep(monkeypatch):
     """Revoking nothing while holders remain must not still delete the QoS."""
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
-    monkeypatch.setattr(qos, "partitions_referencing", lambda name: [])
+    monkeypatch.setattr(qos, "partitions_referencing", lambda name, cluster=None: [])
+    monkeypatch.setattr(qos, "jobs_using", lambda name, cluster=None: 0)
     monkeypatch.setattr(qos, "revoke_targets_plan", lambda *a, **k: [])
     monkeypatch.setattr(qos, "any_holders", lambda name: ["odyssey|lab|bob|"])
     result = CliRunner().invoke(main, ["qos", "retire", "kemp", "-p", "kempner_h100", "-x", "-y"])
     assert result.exit_code != 0
-    assert "does not cover" in result.output
+    assert "would not revoke" in result.output
+
+
+def test_qos_retire_refuses_an_uncovered_holder_beside_a_covered_one(monkeypatch):
+    """A sweep that revokes one holder must not delete a QoS another still holds."""
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partitions_referencing", lambda name, cluster=None: [])
+    monkeypatch.setattr(qos, "jobs_using", lambda name, cluster=None: 0)
+    monkeypatch.setattr(
+        qos,
+        "revoke_targets_plan",
+        lambda *a, **k: [
+            [
+                "sacctmgr",
+                "-i",
+                "modify",
+                "user",
+                "where",
+                "user=bob",
+                "account=lab",
+                "partition=kempner_h100",
+                "cluster=odyssey",
+                "set",
+                "QOS-=kemp",
+            ]
+        ],
+    )
+    monkeypatch.setattr(
+        qos,
+        "any_holders",
+        lambda name: ["odyssey|lab|bob|", "odyssey|lab|bob|kempner_h100"],
+    )
+    result = CliRunner().invoke(main, ["qos", "retire", "kemp", "-p", "all", "-x", "-y"])
+    assert result.exit_code != 0
+    assert "odyssey|lab|bob|" in result.output
+    assert "delete qos kemp" not in result.output
 
 
 def test_gpu_usage_without_a_cap_omits_the_denominator(monkeypatch):

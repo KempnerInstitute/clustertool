@@ -51,6 +51,5 @@ def resume(nodes: tuple[str, ...], partition: str | None, yes: bool) -> None:
         )
     if not yes:
         click.confirm(f"Resume {len(targets)} node(s): {nodelist}?", abort=True)
-    code = process.stream(["scontrol", "update", f"NodeName={nodelist}", "State=RESUME"])
-    if code:
-        raise SystemExit(code)
+    if process.stream(["scontrol", "update", f"NodeName={nodelist}", "State=RESUME"]):
+        raise click.ClickException(f"failed to resume {nodelist}")

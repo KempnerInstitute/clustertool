@@ -17,8 +17,10 @@ def delete(qos_name: str, execute: bool, yes: bool) -> None:
     """Delete a QoS definition, refusing while it is still referenced (via sacctmgr).
 
     Dry run by default: prints the sacctmgr command and changes nothing. Re-run
-    with --execute to apply, confirming unless --yes. Refuses if any association
-    still lists the QoS; remove it from those associations first. Slurm or system admin only.
+    with --execute to apply, confirming unless --yes. Refuses while the QoS is
+    still in force: if any association on any cluster lists it, if any partition's
+    QoS, AllowQos, or DenyQos setting names it, or if any queued or running job
+    carries it. Clear those first. Slurm or system admin only.
 
     \b
     Use cases:
@@ -45,6 +47,12 @@ def delete(qos_name: str, execute: bool, yes: bool) -> None:
             f"QoS {qos_name} is configured on partition(s) {', '.join(partitions)}; "
             "deleting it would drop the limits those partitions apply. Remove it "
             "from the partition configuration first"
+        )
+    live = qoslib.jobs_using(qos_name)
+    if live:
+        raise click.ClickException(
+            f"QoS {qos_name} is carried by {live} queued or running job(s); "
+            "let them finish or cancel them first"
         )
     plan = [["sacctmgr", "-i", "delete", "qos", qos_name]]
     if _gate.apply(plan, execute, yes, f"Delete QoS {qos_name}?"):

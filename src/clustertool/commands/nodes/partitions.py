@@ -24,9 +24,8 @@ def partitions(name_filter: str | None) -> None:
       -f, --filter  Only show rows containing this text (the header is kept).
     """
     if not name_filter:
-        code = process.stream([site.tool("partitions")])
-        if code:
-            raise SystemExit(code)
+        if process.stream([site.tool("partitions")]):
+            raise click.ClickException(f"'{site.tool('partitions')}' failed")
         return
     lines = process.run([site.tool("partitions")]).splitlines()
     if lines:

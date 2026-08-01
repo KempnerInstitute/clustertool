@@ -30,6 +30,5 @@ def down(partition: str | None) -> None:
     cmd = ["sinfo", "-R"]
     if partition:
         cmd += ["-p", partition]
-    code = process.stream(cmd)
-    if code:
-        raise SystemExit(code)
+    if process.stream(cmd):
+        raise click.ClickException("'sinfo -R' failed")

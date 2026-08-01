@@ -6,6 +6,7 @@ from clustertool import completion, slurm
 from clustertool.grouping import keywords
 
 _SHAPES = (1, 2, 4)
+_FALLBACK_SHAPE = (8, 65536)
 
 
 @keywords("fragmentation", "fit", "capacity", "schedulable", "free")
@@ -18,24 +19,28 @@ _SHAPES = (1, 2, 4)
 )
 @click.option(
     "--cpus-per-gpu",
-    type=int,
-    default=8,
-    show_default=True,
+    type=click.IntRange(min=1),
+    default=None,
     help="CPUs per GPU in the hypothetical job shape.",
 )
 @click.option(
     "--mem-per-gpu",
-    type=int,
-    default=65536,
-    show_default=True,
+    type=click.IntRange(min=1),
+    default=None,
     help="Memory per GPU in MB in the hypothetical job shape.",
 )
-def frag(partition: str | None, cpus_per_gpu: int, mem_per_gpu: int) -> None:
+def frag(partition: str | None, cpus_per_gpu: int | None, mem_per_gpu: int | None) -> None:
     """Show free GPU shards per partition and how many N-GPU jobs could start now.
 
     Reads one scontrol pass. Nodes in down, drain, or maint states are excluded.
     For each partition it prints the free-GPU distribution (0/1/2/3/4+ per node)
     and how many 1-, 2-, and 4-GPU jobs of the given shape could start right now.
+
+    With --partition, the job shape defaults to that partition's per-GPU CPU and
+    memory policy from [partitions.limits] in the site config, so the fit counts
+    describe a job that partition would actually accept. Across partitions, or for
+    a partition with no configured ratio, it falls back to 8 CPU and 65536 MB per
+    GPU. Either value can be overridden. The header states the shape in force.
 
     \b
     Use cases:
@@ -45,11 +50,15 @@ def frag(partition: str | None, cpus_per_gpu: int, mem_per_gpu: int) -> None:
     \b
     Inputs:
       -p, --partition  Limit to one partition.
-      --cpus-per-gpu   CPUs per GPU in the job shape (default 8).
-      --mem-per-gpu    Memory per GPU in MB in the job shape (default 65536).
+      --cpus-per-gpu   CPUs per GPU in the job shape.
+      --mem-per-gpu    Memory per GPU in MB in the job shape.
     """
-    if cpus_per_gpu <= 0 or mem_per_gpu <= 0:
-        raise click.ClickException("--cpus-per-gpu and --mem-per-gpu must be positive")
+    limits = slurm.PARTITION_LIMITS.get(partition) if partition else None
+    from_policy = limits is not None and cpus_per_gpu is None and mem_per_gpu is None
+    if cpus_per_gpu is None:
+        cpus_per_gpu = limits[0] if limits else _FALLBACK_SHAPE[0]
+    if mem_per_gpu is None:
+        mem_per_gpu = limits[1] if limits else _FALLBACK_SHAPE[1]
 
     nodes = slurm.node_capacity()
     if partition:
@@ -78,9 +87,10 @@ def frag(partition: str | None, cpus_per_gpu: int, mem_per_gpu: int) -> None:
                 stats["fit"][shape] += max(0, fits)
 
     unavailable = [n for n in nodes if not n["available"]]
+    source = f", the {partition} per-GPU policy" if from_policy else ""
     click.echo(
         f"Free GPU shards and N-GPU-job fit  "
-        f"(job shape: {cpus_per_gpu} CPU + {mem_per_gpu} MB per GPU)"
+        f"(job shape: {cpus_per_gpu} CPU + {mem_per_gpu} MB per GPU{source})"
     )
     click.echo()
     click.echo(

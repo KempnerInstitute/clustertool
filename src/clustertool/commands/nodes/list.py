@@ -18,6 +18,10 @@ from clustertool.grouping import keywords
 def list_nodes(partitions: tuple[str, ...]) -> None:
     """List node names and states for one or more partitions.
 
+    States are Slurm's own short codes: idle is free, mix is partly allocated,
+    alloc is full, resv is held by a reservation, drain and drng take no new work,
+    and down is offline. A trailing * means the node is not responding.
+
     \b
     Use cases:
       - See which nodes make up a partition.
@@ -35,6 +39,7 @@ def list_nodes(partitions: tuple[str, ...]) -> None:
             click.echo()
             continue
         for node, state in rows:
-            click.echo(f"  {node:<20} {state}")
+            note = "  (not responding)" if state.endswith("*") else ""
+            click.echo(f"  {node:<20} {state}{note}")
         click.echo(f"  ({len(rows)} node(s))")
         click.echo()

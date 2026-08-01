@@ -6,14 +6,27 @@ from clustertool import qos
 
 
 def test_qos_exists_exact_match(monkeypatch):
-    monkeypatch.setattr(qos, "_run", lambda cmd: "kemp_gpu4\n")
+    monkeypatch.setattr(qos.process, "probe", lambda cmd, timeout=None: (0, "kemp_gpu4\n", ""))
     assert qos.qos_exists("kemp_gpu4") is True
     assert qos.qos_exists("kemp") is False
 
 
 def test_qos_exists_absent(monkeypatch):
-    monkeypatch.setattr(qos, "_run", lambda cmd: "\n")
+    monkeypatch.setattr(qos.process, "probe", lambda cmd, timeout=None: (0, "\n", ""))
     assert qos.qos_exists("nope") is False
+
+
+def test_qos_exists_ignores_case(monkeypatch):
+    """sacctmgr treats QoS names case-insensitively, so a case variant is the same QoS."""
+    monkeypatch.setattr(qos.process, "probe", lambda cmd, timeout=None: (0, "kemp_gpu4\n", ""))
+    assert qos.qos_exists("KEMP_GPU4") is True
+
+
+def test_qos_exists_raises_when_the_query_fails(monkeypatch):
+    """A failed read must not be reported as 'does not exist; nothing to do'."""
+    monkeypatch.setattr(qos.process, "probe", lambda cmd, timeout=None: (1, "", "slurmdbd down"))
+    with pytest.raises(qos.CommandError):
+        qos.qos_exists("kemp_gpu4")
 
 
 def test_holder_rows_filters(monkeypatch):
@@ -76,6 +89,98 @@ def test_partitions_referencing_finds_default_and_allowed(monkeypatch):
     monkeypatch.setattr(qos.process, "probe", lambda cmd, timeout=None: (0, out, ""))
     assert qos.partitions_referencing("base_caps") == ["cpu", "gpu"]
     assert qos.partitions_referencing("absent") == []
+
+
+def test_partitions_referencing_reads_hidden_partitions_on_the_site_cluster(monkeypatch):
+    seen = {}
+
+    def fake_probe(cmd, timeout=None):
+        seen["cmd"] = cmd
+        return 0, "PartitionName=secret QoS=base_caps State=UP\n", ""
+
+    monkeypatch.setattr(qos.process, "probe", fake_probe)
+    assert qos.partitions_referencing("BASE_CAPS", cluster="bigred") == ["secret"]
+    assert seen["cmd"] == ["scontrol", "-a", "-M", "bigred", "show", "partition"]
+
+
+def test_jobs_using_counts_exact_matches(monkeypatch):
+    monkeypatch.setattr(
+        qos.process, "probe", lambda cmd, timeout=None: (0, "normal\nKEMP\nnormal\nkemp_x\n", "")
+    )
+    assert qos.jobs_using("normal") == 2
+    assert qos.jobs_using("kemp") == 1
+    assert qos.jobs_using("absent") == 0
+
+
+def test_jobs_using_raises_when_the_query_fails(monkeypatch):
+    """An empty result is permission to delete, so a failed read must not look empty."""
+    monkeypatch.setattr(qos.process, "probe", lambda cmd, timeout=None: (1, "", "down"))
+    with pytest.raises(qos.CommandError):
+        qos.jobs_using("normal")
+
+
+def test_uncovered_holders_flags_a_holder_the_plan_would_not_revoke(monkeypatch):
+    """The base association survives a partition-scoped sweep, so the QoS stays in force."""
+    monkeypatch.setattr(
+        qos,
+        "any_holders",
+        lambda name: [
+            "odyssey|kempner_dev|nkhoshnevis|",
+            "odyssey|kempner_dev|nkhoshnevis|kempner_h200_priority",
+        ],
+    )
+    plan = [
+        [
+            "sacctmgr",
+            "-i",
+            "modify",
+            "user",
+            "where",
+            "user=nkhoshnevis",
+            "account=kempner_dev",
+            "partition=kempner_h200_priority",
+            "cluster=odyssey",
+            "set",
+            "QOS-=h200_benchmarking",
+        ]
+    ]
+    assert qos.uncovered_holders("h200_benchmarking", plan) == ["odyssey|kempner_dev|nkhoshnevis|"]
+
+
+def test_uncovered_holders_empty_when_the_plan_covers_everyone(monkeypatch):
+    monkeypatch.setattr(qos, "any_holders", lambda name: ["odyssey|kempner_dev|alice|kempner_h100"])
+    plan = [
+        [
+            "sacctmgr",
+            "-i",
+            "delete",
+            "user",
+            "where",
+            "cluster=odyssey",
+            "name=alice",
+            "account=kempner_dev",
+            "partition=kempner_h100",
+        ]
+    ]
+    assert qos.uncovered_holders("kemp", plan) == []
+
+
+def test_uncovered_holders_flags_another_cluster(monkeypatch):
+    monkeypatch.setattr(qos, "any_holders", lambda name: ["bigred|kempner_dev|alice|kempner_h100"])
+    plan = [
+        [
+            "sacctmgr",
+            "-i",
+            "delete",
+            "user",
+            "where",
+            "cluster=odyssey",
+            "name=alice",
+            "account=kempner_dev",
+            "partition=kempner_h100",
+        ]
+    ]
+    assert qos.uncovered_holders("kemp", plan) == ["bigred|kempner_dev|alice|kempner_h100"]
 
 
 def test_build_limit_specs_all():

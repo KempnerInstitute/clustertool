@@ -24,9 +24,8 @@ def load(name_filter: str | None) -> None:
       -f, --filter  Only show rows containing this text (the header is kept).
     """
     if not name_filter:
-        code = process.stream([site.tool("node_load")])
-        if code:
-            raise SystemExit(code)
+        if process.stream([site.tool("node_load")]):
+            raise click.ClickException(f"'{site.tool('node_load')}' failed")
         return
     lines = process.run([site.tool("node_load")]).splitlines()
     if lines:

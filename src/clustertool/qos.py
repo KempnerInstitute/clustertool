@@ -34,8 +34,16 @@ def _show(*args: str) -> list[str]:
 
 
 def qos_exists(name: str) -> bool:
-    """Return True if a QoS with exactly this name is defined."""
-    return name in _show("qos", name, "format=Name")
+    """Return True if a QoS with this name is defined.
+
+    sacctmgr treats QoS names case-insensitively, so a name differing only in case
+    is the same QoS. Raises if the query fails, so an unreachable accounting
+    database is never read as 'not defined'.
+    """
+    code, out, err = process.probe(["sacctmgr", "-n", "-P", "show", "qos", name, "format=Name"])
+    if code != 0:
+        raise CommandError(f"could not check whether QoS {name} exists: {err.strip() or code}")
+    return any(line.strip().lower() == name.lower() for line in out.splitlines())
 
 
 def account_exists(name: str, cluster: str | None = None) -> bool:
@@ -86,21 +94,82 @@ def any_holders(qos_name: str) -> list[str]:
     return [line for line in out.splitlines() if line]
 
 
-def partitions_referencing(qos_name: str) -> list[str]:
-    """Return partitions whose QoS or AllowQos setting names the QoS."""
-    code, out, err = process.probe(["scontrol", "show", "partition"])
+def partitions_referencing(qos_name: str, cluster: str | None = None) -> list[str]:
+    """Return partitions whose QoS or AllowQos setting names the QoS.
+
+    Reads the site's Slurm cluster unless another is given, and includes hidden
+    and group-restricted partitions, which a plain 'scontrol show partition'
+    leaves out. Names are matched case-insensitively, as Slurm treats them.
+    """
+    cmd = ["scontrol", "-a", "-M", _cluster(cluster), "show", "partition"]
+    code, out, err = process.probe(cmd)
     if code != 0:
         raise CommandError(f"could not read partitions: {err.strip() or code}")
+    wanted = qos_name.lower()
     found = []
     name = None
     for token in out.split():
         key, _, value = token.partition("=")
         if key == "PartitionName":
             name = value
-        elif key in ("QoS", "AllowQos") and name:
-            if qos_name in [v.strip() for v in value.split(",")]:
+        elif key in ("QoS", "AllowQos", "DenyQos") and name:
+            if wanted in [v.strip().lower() for v in value.split(",")]:
                 found.append(name)
     return sorted(set(found))
+
+
+def jobs_using(qos_name: str, cluster: str | None = None) -> int:
+    """Return how many queued or running jobs carry the QoS.
+
+    Deleting a QoS that live jobs still reference leaves them pointing at a
+    definition that is gone. Raises if the query fails, so an unreachable
+    controller is never read as 'no jobs'.
+    """
+    code, out, err = process.probe(["squeue", "-h", "-M", _cluster(cluster), "-o", "%q"])
+    if code != 0:
+        raise CommandError(f"could not check jobs using QoS {qos_name}: {err.strip() or code}")
+    wanted = qos_name.lower()
+    return sum(1 for field in out.split() if field.lower() == wanted)
+
+
+def _plan_targets(plan: list[list[str]]) -> set[tuple[str, str, str, str]]:
+    """Return the (cluster, account, user, partition) associations a revoke plan clears."""
+    keys = {"cluster", "account", "partition", "user", "name"}
+    targets = set()
+    for cmd in plan:
+        fields: dict[str, str] = {}
+        for token in cmd:
+            key, sep, value = token.partition("=")
+            if sep and key in keys:
+                fields["user" if key == "name" else key] = value
+        if "user" in fields and "account" in fields:
+            targets.add(
+                (
+                    fields.get("cluster", ""),
+                    fields["account"],
+                    fields["user"],
+                    fields.get("partition", ""),
+                )
+            )
+    return targets
+
+
+def uncovered_holders(qos_name: str, plan: list[list[str]]) -> list[str]:
+    """Return the associations holding a QoS that a revoke plan would not clear.
+
+    Rows are the raw Cluster|Account|User|Partition lines from any_holders. An
+    empty result means the plan covers every holder on every cluster, so deleting
+    the QoS afterwards removes nothing still in force. Account-level holders
+    (empty User) and holders with no partition are never covered by a
+    partition-scoped sweep, so they always come back here.
+    """
+    covered = _plan_targets(plan)
+    uncovered = []
+    for line in any_holders(qos_name):
+        parts = [field.strip() for field in line.split("|")]
+        if len(parts) != 4 or tuple(parts) not in covered:
+            uncovered.append(line)
+    return uncovered
 
 
 def flatten_users(values: tuple[str, ...]) -> list[str]:
