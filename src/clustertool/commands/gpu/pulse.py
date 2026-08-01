@@ -20,18 +20,26 @@ def _split_args(args: tuple[str, ...]) -> tuple[str | None, str | None, list[str
     forward: list[str] = []
     items = iter(args)
     for arg in items:
-        if arg == "--node":
-            node = next(items, None)
+        if arg in ("--node", "--job"):
+            value = next(items, None)
+            if value is None or value.startswith("-"):
+                raise click.UsageError(f"{arg} needs a value")
+            if arg == "--node":
+                node = value
+            else:
+                job = value
         elif arg.startswith("--node="):
             node = arg.split("=", 1)[1]
-        elif arg == "--job":
-            job = next(items, None)
         elif arg.startswith("--job="):
             job = arg.split("=", 1)[1]
         elif arg == "--dry-run":
             dry_run = True
         else:
             forward.append(arg)
+    if node is not None and not node:
+        raise click.UsageError("--node needs a value")
+    if job is not None and not job:
+        raise click.UsageError("--job needs a value")
     return node, job, forward, dry_run
 
 
@@ -81,10 +89,7 @@ def pulse(args: tuple[str, ...]) -> None:
         node = nodes[0]
 
     if not node:
-        code = process.stream([sys.executable, "-m", "kempnerpulse", *forward])
-        if code:
-            raise SystemExit(code)
-        return
+        raise SystemExit(process.stream([sys.executable, "-m", "kempnerpulse", *forward]))
 
     venv = site.pulse_remote_venv()
     if not venv:
@@ -104,6 +109,4 @@ def pulse(args: tuple[str, ...]) -> None:
     if dry_run:
         click.echo(" ".join(ssh_cmd))
         return
-    code = process.stream(ssh_cmd)
-    if code:
-        raise SystemExit(code)
+    raise SystemExit(process.stream(ssh_cmd))

@@ -3372,3 +3372,23 @@ def test_jobs_new_sets_one_task_per_node():
     )
     assert result.exit_code == 0
     assert "#SBATCH --ntasks-per-node=1" in result.output
+
+
+def test_gpu_pulse_node_needs_a_value(monkeypatch):
+    """--node swallowed the next flag as a hostname; --job silently ran locally."""
+    calls = _capture_stream(monkeypatch)
+    for args in (["--node", "--dry-run"], ["--job"], ["--node"]):
+        result = CliRunner().invoke(main, ["gpu", "pulse", *args])
+        assert result.exit_code != 0, args
+        assert "needs a value" in result.output
+    assert calls == []
+
+
+def test_gpu_pulse_forwards_unknown_args(monkeypatch):
+    from clustertool.commands.gpu.pulse import _split_args
+
+    node, job, forward, dry_run = _split_args(("--node", "n1", "--once", "--gpus", "0,1"))
+    assert node == "n1"
+    assert job is None
+    assert forward == ["--once", "--gpus", "0,1"]
+    assert dry_run is False
