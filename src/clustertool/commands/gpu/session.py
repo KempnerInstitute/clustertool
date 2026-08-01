@@ -12,9 +12,8 @@ from clustertool.grouping import keywords
 def _jupyter_command(port: int) -> list[str]:
     """Return an srun command that launches Jupyter Lab on the allocated node.
 
-    srun is required: salloc runs a command it is given on the submitting host,
-    so a bare command would start the notebook on the login node while the GPU
-    sat idle. Binding to the node's own hostname keeps it off other interfaces.
+    salloc runs a given command on the submitting host, so srun is what places it
+    on the allocation. The server binds to the node's own hostname.
     """
     user = os.environ.get("USER", "")
     login_host = socket.gethostname()
@@ -79,7 +78,7 @@ def session(
 
     \b
     Inputs:
-      GPU_TYPE         One of a100, h100, h200, rtx.
+      GPU_TYPE         A GPU type your site defines under [gpu_types].
       -A, --account    Fairshare account to charge (required).
       -t, --time       Time limit D-HH:MM (default 0-01:00).
       --jupyter        Launch Jupyter Lab on the node and print the SSH tunnel.

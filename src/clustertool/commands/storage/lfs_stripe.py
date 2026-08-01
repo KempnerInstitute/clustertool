@@ -17,8 +17,7 @@ def lfs_stripe(path: str, count: int | None, yes: bool) -> None:
     """Show or set Lustre striping for a path (via lfs).
 
     Without --count, print the layout of PATH itself and not of anything inside
-    it (lfs getstripe -d), because walking a large tree costs one metadata
-    request per file. With
+    it (lfs getstripe -d). With
     --count, set the stripe count for newly created files under PATH
     (lfs setstripe); existing files are not restriped. Use 8 to 16 for large
     multi-GB or TB files. Setting a count changes the default for everyone who

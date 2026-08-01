@@ -86,11 +86,7 @@ def _one_lab(account: str) -> None:
 
 
 def _suggest_prefixed(account: str) -> None:
-    """Point at the lab account when a bare name was given and found nothing.
-
-    A center can run an account alongside a prefixed one, so a report with no
-    usage anywhere is often the wrong name rather than an idle lab.
-    """
+    """Print a pointer to the prefixed lab account, if one exists."""
     prefix = site.lab_account_prefix()
     if not prefix or account.startswith(prefix):
         return

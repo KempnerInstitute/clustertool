@@ -29,7 +29,9 @@ def sync(
     """Reconcile a QoS's holders to an account's current membership (via sacctmgr).
 
     Grants the QoS to account members who lack it and revokes it from holders no
-    longer in the account, on the given partition. Idempotent and cron-friendly.
+    longer in the account, on the given partition. Membership is the account's
+    base association, so a user whose partition association lingers after their
+    membership was removed is revoked. Idempotent and cron-friendly.
     Dry run by default; re-run with --execute to apply, confirming unless --yes.
     Operator or coordinator only.
 
@@ -50,7 +52,12 @@ def sync(
         raise click.ClickException(f"QoS {qos_name} is not defined")
     if not qoslib.account_exists(account, cluster=cluster):
         raise click.ClickException(f"account {account} has no associations on this cluster")
-    members = set(qoslib.account_members(account, cluster=cluster))
+    members = set(qoslib.account_base_members(account, cluster=cluster))
+    if not members:
+        raise click.ClickException(
+            f"account {account} has no base associations, so every holder would be "
+            "revoked. Refusing rather than stripping access on a partial read"
+        )
     account_regex = f"^{re.escape(account)}$"
     holders = {
         row[0]

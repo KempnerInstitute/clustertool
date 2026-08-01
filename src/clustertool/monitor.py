@@ -62,8 +62,8 @@ def _colorize(
 ) -> str:
     """Wrap a value in a green/yellow/red color by threshold.
 
-    Pass idle_is_bad for a metric you want to be high, such as GPU utilization,
-    where a low reading means the allocation is going to waste.
+    Set idle_is_bad for a metric that should be high, such as GPU utilization,
+    which inverts the scale.
     """
     try:
         num = float(str(value).rstrip("%"))

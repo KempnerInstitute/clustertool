@@ -123,9 +123,18 @@ def test_get_accounts_filters(monkeypatch):
     assert qos.get_accounts("alice", account_regex="^kempner_") == ["kempner_dev", "kempner_eng"]
 
 
-def test_account_members(monkeypatch):
-    monkeypatch.setattr(qos, "_run", lambda cmd: "bob\nalice\nbob\n\n")
-    assert qos.account_members("kempner_dev") == ["alice", "bob"]
+def test_account_base_members_keeps_only_the_base_association(monkeypatch):
+    """A partition-scoped row is not membership, or nothing could ever be revoked."""
+    out = "bob|\nalice|\nbob|kempner_h100\ncarol|kempner_h100\n|\n"
+    monkeypatch.setattr(qos.process, "probe", lambda cmd, timeout=None: (0, out, ""))
+    assert qos.account_base_members("kempner_dev") == ["alice", "bob"]
+
+
+def test_account_base_members_raises_when_the_query_fails(monkeypatch):
+    """An empty read must not look like an empty account: sync would revoke all."""
+    monkeypatch.setattr(qos.process, "probe", lambda cmd, timeout=None: (1, "", "dbd down"))
+    with pytest.raises(qos.CommandError):
+        qos.account_base_members("kempner_dev")
 
 
 def test_account_exists(monkeypatch):

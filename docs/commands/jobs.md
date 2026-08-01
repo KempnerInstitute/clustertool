@@ -319,7 +319,7 @@ Slurm to apply its own defaults. Prints the script by default; `-o` saves it and
 - Submit a single-node or multi-node GPU job in one step.
 
 **Inputs**
-- `--gpu-type`: One of `a100`, `h100`, `h200`, `rtx` (prompted if omitted).
+- `--gpu-type`: A GPU type your site defines under `[gpu_types]` (prompted if omitted).
 - `-A, --account`: Fairshare account (prompted if omitted).
 - `--gpus`: GPUs per node (default 1).
 - `--nodes`: Number of nodes (default 1).

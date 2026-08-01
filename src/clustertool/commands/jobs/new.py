@@ -21,7 +21,7 @@ def _build_script(
     """Return an sbatch script for a GPU job, sized to the per-GPU limits.
 
     A partition with no configured ratio and no override gets no cpus-per-task or
-    mem line, leaving Slurm to apply that partition's own defaults.
+    mem line.
     """
     partition = slurm.GPU_TYPE_PARTITION[gpu_type.lower()]
     default_cpu, default_mem = slurm.PARTITION_LIMITS.get(partition, (None, None))
@@ -54,7 +54,7 @@ def _build_script(
 @click.option(
     "--gpu-type",
     type=click.Choice(list(slurm.GPU_TYPE_PARTITION)),
-    prompt=True,
+    prompt="GPU type",
     help="GPU type (selects the partition and per-GPU CPU and memory).",
 )
 @click.option(
@@ -88,9 +88,12 @@ def new(
 ) -> None:
     """Build a GPU sbatch script, then print, save, or submit it.
 
+    This writes a GPU job: it always requests a GPU and targets a GPU partition.
     Prompts for the GPU type and account if not given, sizes CPUs and memory to
     the partition's enforced per-GPU limits, and writes a correct sbatch header.
-    Prints the script by default; use -o to save it or --submit to submit it.
+    A partition with no configured ratio and no override gets no cpus-per-task or
+    mem line, leaving Slurm to apply its own defaults. Prints the script by
+    default; use -o to save it or --submit to submit it.
 
     \b
     Use cases:
@@ -99,7 +102,8 @@ def new(
 
     \b
     Inputs:
-      --gpu-type       One of a100, h100, h200, rtx (prompted if omitted).
+      --gpu-type       A GPU type your site defines under [gpu_types]; the usage
+                       line above lists the valid values (prompted if omitted).
       -A, --account    Fairshare account (prompted if omitted).
       --gpus           GPUs per node (default 1).
       --nodes          Number of nodes (default 1).

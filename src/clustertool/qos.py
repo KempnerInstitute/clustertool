@@ -75,11 +75,8 @@ def holder_rows(
 def any_holders(qos_name: str) -> list[str]:
     """Return every association (user- or account-level, any cluster) that lists the QoS.
 
-    A non-empty result means the QoS is still referenced and must not be
-    deleted. Rows are the raw Cluster|Account|User|Partition lines.
-
-    Reads through probe so a failed query raises instead of returning nothing:
-    an empty result is what callers treat as permission to delete.
+    A non-empty result means the QoS is still referenced. Rows are the raw
+    Cluster|Account|User|Partition lines. Raises if the query fails.
     """
     cmd = ["sacctmgr", "-n", "-P", "show", "assoc", "where", f"qos={qos_name}"]
     cmd.append("format=Cluster,Account,User,Partition")
@@ -90,12 +87,7 @@ def any_holders(qos_name: str) -> list[str]:
 
 
 def partitions_referencing(qos_name: str) -> list[str]:
-    """Return partitions whose configuration names the QoS.
-
-    A partition can carry a QoS as its default (QoS=) or in its allowed set
-    (AllowQos=) without any association mentioning it, so an association query
-    alone will report such a QoS as unused.
-    """
+    """Return partitions whose QoS or AllowQos setting names the QoS."""
     code, out, err = process.probe(["scontrol", "show", "partition"])
     if code != 0:
         raise CommandError(f"could not read partitions: {err.strip() or code}")
@@ -135,15 +127,30 @@ def get_accounts(user: str, cluster: str | None = None, account_regex: str = "^"
     return sorted(accounts)
 
 
-def account_members(account: str, cluster: str | None = None) -> list[str]:
-    """Return the sorted distinct users with an association in an account."""
-    users = {
-        line.strip()
-        for line in _show(
-            "assoc", "where", f"account={account}", f"cluster={_cluster(cluster)}", "format=User"
-        )
-        if line.strip()
-    }
+def account_base_members(account: str, cluster: str | None = None) -> list[str]:
+    """Return the users holding the account's base association, sorted.
+
+    The base association is the one with no partition. Raises if the query fails.
+    """
+    cmd = [
+        "sacctmgr",
+        "-n",
+        "-P",
+        "show",
+        "assoc",
+        "where",
+        f"account={account}",
+        f"cluster={_cluster(cluster)}",
+        "format=User,Partition",
+    ]
+    code, out, err = process.probe(cmd)
+    if code != 0:
+        raise CommandError(f"could not read members of {account}: {err.strip() or code}")
+    users = set()
+    for line in out.splitlines():
+        parts = line.split("|")
+        if len(parts) == 2 and parts[0].strip() and not parts[1].strip():
+            users.add(parts[0].strip())
     return sorted(users)
 
 

@@ -1,16 +1,14 @@
 """Console-script entry point.
 
-Importing the command tree reads the site config, because a few commands build
-their choices from it at decoration time. A broken config therefore fails during
-import, before click can turn it into a clean message, so the import happens here
-behind a guard.
+Importing the command tree reads the site config, so an unusable config fails at
+import. The import happens behind a guard that reports it as a CLI error.
 """
 
 from clustertool.site import ConfigError
 
 
 def _load_main():
-    """Import and return the CLI group, reading the site config as a side effect."""
+    """Import and return the CLI group."""
     from clustertool.cli import main
 
     return main

@@ -75,9 +75,7 @@ def partition_gpu_util(partition: str) -> tuple[int, int, int, int, float]:
 def drained_nodes(partition: str) -> list[tuple[str, str, str]]:
     """Return (name, state, reason) for the drained or draining nodes in a partition.
 
-    A trailing star on the state means the node is not responding. Those are
-    reported with everything else so a caller can show the operator what a sweep
-    would touch, rather than resuming a broken node blind.
+    A trailing star on the state marks a node that is not responding.
     """
     result = []
     out = _run(["sinfo", "-h", "-N", "-o", "%N|%T|%E", "-p", partition])
@@ -89,13 +87,10 @@ def drained_nodes(partition: str) -> list[tuple[str, str, str]]:
 
 
 def account_cap() -> int | None:
-    """Return the per-account base GPU cap, or None when there is no GPU cap.
+    """Return the per-account GPU cap from the base QoS, or None if there is none.
 
-    Reads MaxTRESPA on the site's base QoS. Only a gres/gpu entry counts: an
-    unrelated limit such as cpu=100 is not a GPU cap, and reporting it as one
-    would put a fabricated denominator next to every account. When the QoS names
-    no GPU cap, the configured default is used if a site set one, and otherwise
-    there is no cap to report.
+    Reads the gres/gpu entry of MaxTRESPA on the site's base QoS, falling back to
+    the configured default cap when that entry is absent and the default is set.
     """
     out = _run(["sacctmgr", "-nP", "show", "qos", site.base_qos(), "format=MaxTRESPA"])
     gpus = parse_gpu_count(out)
@@ -106,12 +101,7 @@ def account_cap() -> int | None:
 
 
 def account_exists(account: str) -> bool:
-    """Return True if the Slurm account exists.
-
-    sacctmgr resolves an account name without regard to case, so the reply can
-    differ from what was asked for. Comparing exactly would then report a real
-    account as missing.
-    """
+    """Return True if the Slurm account exists, matching the name case-insensitively."""
     out = _run(["sacctmgr", "-nP", "show", "account", account, "format=Account"])
     names = {line.strip().lower() for line in out.splitlines() if line.strip()}
     return account.strip().lower() in names
@@ -176,9 +166,8 @@ def _status_bucket(state: str) -> str:
 def gpu_node_status() -> list[tuple[str, dict[str, int]]]:
     """Return [(gpu_type, {bucket: count})] for the site requeue partition.
 
-    Each node in the requeue partition (which spans every GPU node) is
-    mapped to a GPU type from its features and a status bucket from its state.
-    Types come back in a fixed order, omitting any with no nodes.
+    Each node is mapped to a GPU type from its features and a status bucket from
+    its state. Types come back in a fixed order, omitting any with no nodes.
     """
     out = _run(["sinfo", "-h", "-N", "-p", site.requeue_partition(), "-o", "%N|%t|%f"])
     counts: dict[str, dict[str, int]] = {}
@@ -456,8 +445,6 @@ def job_output_tail(jobid: str, lines: int = 200) -> str:
         return ""
 
 
-# A node is only schedulable if none of these appear in its state. RESERVED,
-# PLANNED and COMPLETING nodes have free resources that a new job cannot use.
 _BAD_NODE_STATES = (
     "DOWN",
     "DRAIN",

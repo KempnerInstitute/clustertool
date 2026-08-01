@@ -80,9 +80,7 @@ def parse_quota_row(output: str) -> tuple[str, str, str, str] | None:
     first data row (a line for a filesystem path). Returns None when none is
     present.
 
-    The Lustre shape carries a soft quota and a hard limit. A site that sets only
-    the hard limit leaves the soft one at 0, so the soft column alone would report
-    no quota for a filesystem that is about to refuse writes. The effective limit
+    The Lustre shape carries a soft quota and a hard limit. The effective limit
     is the soft quota when it is set, and the hard limit otherwise.
     """
     for line in output.splitlines():

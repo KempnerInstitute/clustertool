@@ -2142,7 +2142,7 @@ def test_qos_retire_nonexistent(monkeypatch):
 def test_qos_sync_already_in_sync(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
     monkeypatch.setattr(qos, "account_exists", lambda name, **k: True)
-    monkeypatch.setattr(qos, "account_members", lambda account, **k: ["alice"])
+    monkeypatch.setattr(qos, "account_base_members", lambda account, **k: ["alice"])
     monkeypatch.setattr(qos, "holder_rows", lambda *a, **k: [("alice", "kempner_dev", "p")])
     result = CliRunner().invoke(main, ["qos", "sync", "kemp", "-a", "kempner_dev", "-p", "p"])
     assert result.exit_code == 0
@@ -2152,7 +2152,7 @@ def test_qos_sync_already_in_sync(monkeypatch):
 def test_qos_sync_dry_run(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
     monkeypatch.setattr(qos, "account_exists", lambda name, **k: True)
-    monkeypatch.setattr(qos, "account_members", lambda account, **k: ["bob"])
+    monkeypatch.setattr(qos, "account_base_members", lambda account, **k: ["bob"])
     monkeypatch.setattr(qos, "holder_rows", lambda *a, **k: [("alice", "kempner_dev", "p")])
     monkeypatch.setattr(
         qos, "grant_plan", lambda *a, **k: [["sacctmgr", "-i", "add", "user", "bob"]]
@@ -2567,3 +2567,31 @@ def test_jobs_new_script_still_honors_an_override_without_config(monkeypatch):
     script = _build_script("a100", 2, 1, "0-01:00", "acct", "job", 8, 50000)
     assert "--cpus-per-task=16" in script
     assert "--mem=100000" in script
+
+
+def test_qos_sync_refuses_when_no_base_members(monkeypatch):
+    """An account read that finds nobody would otherwise revoke every holder."""
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "account_exists", lambda name, **k: True)
+    monkeypatch.setattr(qos, "account_base_members", lambda account, **k: [])
+    result = CliRunner().invoke(
+        main, ["qos", "sync", "kemp", "-a", "lab", "-p", "kempner_h100", "-x", "-y"]
+    )
+    assert result.exit_code != 0
+    assert "every holder would be revoked" in result.output
+
+
+def test_qos_sync_can_revoke_a_lingering_holder(monkeypatch):
+    """A holder whose base membership is gone must actually be revoked."""
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "account_exists", lambda name, **k: True)
+    monkeypatch.setattr(qos, "account_base_members", lambda account, **k: ["alice"])
+    monkeypatch.setattr(
+        qos, "holder_rows", lambda *a, **k: [("alice", "lab", "p"), ("stale", "lab", "p")]
+    )
+    monkeypatch.setattr(qos, "grant_plan", lambda *a, **k: [])
+    monkeypatch.setattr(qos, "revoke_plan", lambda u, *a, **k: [["sacctmgr", "revoke", u]])
+    result = CliRunner().invoke(main, ["qos", "sync", "kemp", "-a", "lab", "-p", "p"])
+    assert result.exit_code == 0
+    assert "revoke stale" in result.output
+    assert "revoke alice" not in result.output

@@ -132,3 +132,36 @@ def test_entry_runs_the_cli_when_the_config_loads(monkeypatch):
     monkeypatch.setattr(entry, "_load_main", lambda: lambda: called.append(1))
     entry.run()
     assert called == [1]
+
+
+def test_gpu_types_replace_rather_than_merge(tmp_path):
+    """A site inventory must not keep the packaged entries it did not name."""
+    cfg = tmp_path / "site.toml"
+    cfg.write_text('[gpu_types]\nv100 = "gpu"\n')
+    merged = site.load_file(cfg)
+    assert merged["gpu_types"] == {"v100": "gpu"}
+
+
+def test_partition_limits_replace_rather_than_merge(tmp_path):
+    cfg = tmp_path / "site.toml"
+    cfg.write_text("[partitions.limits.gpu]\ncpus_per_gpu = 8\nmem_per_gpu_mb = 100000\n")
+    merged = site.load_file(cfg)
+    assert list(merged["partitions"]["limits"]) == ["gpu"]
+
+
+def test_settings_tables_still_merge(tmp_path):
+    """Overriding one tool must leave the others at their packaged values."""
+    cfg = tmp_path / "site.toml"
+    cfg.write_text('[tools]\nqueue = "myqueue"\n')
+    merged = site.load_file(cfg)
+    assert merged["tools"]["queue"] == "myqueue"
+    assert merged["tools"]["partitions"] == "spart"
+    assert merged["tools"]["quota"] == "quota"
+
+
+def test_unnamed_inventory_keeps_the_packaged_default(tmp_path):
+    """A site that says nothing about gpu_types still gets the packaged profile."""
+    cfg = tmp_path / "site.toml"
+    cfg.write_text('[site]\nname = "Example"\n')
+    merged = site.load_file(cfg)
+    assert "h100" in merged["gpu_types"]

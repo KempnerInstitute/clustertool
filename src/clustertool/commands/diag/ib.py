@@ -41,10 +41,9 @@ def ib(partitions: tuple[str, ...], parallel: int) -> None:
     'ip link show' reports an ib[0-9] interface in state DOWN. Unreachable hosts
     are skipped.
 
-    Needs ssh to every node in the partition, not just the ones running your
-    jobs. Where node login is gated on having an allocation, as pam_slurm_adopt
-    does, only staff can reach the whole partition and an ordinary user sees
-    every host skipped.
+    Needs ssh to every node in the partition, not only the ones running your
+    jobs. Where node login requires an allocation on that node, as
+    pam_slurm_adopt enforces, an ordinary user sees every host skipped.
 
     \b
     Use cases:

@@ -53,9 +53,8 @@ memory support at the per-GPU ratio your site enforces for that partition, from
 shows raw free GPUs unless `--cpus-per-gpu` / `--mem-per-gpu` are given. Run
 `nodes partitions` to see the configured ratios.
 
-Only nodes the scheduler can actually place work on are listed. A drained, down
-or reserved node keeps its free GPUs but cannot take a new job, so counting it
-would send you somewhere nothing can start.
+Only schedulable nodes are listed. A drained, down or reserved node keeps its
+free GPUs but cannot take a new job.
 
 **Use cases**
 - Find where you can actually place a GPU job.
@@ -97,7 +96,7 @@ override or add flags (salloc uses the last value): for example
 - Grab one GPU for interactive development or debugging.
 
 **Inputs**
-- `GPU_TYPE`: One of `a100`, `h100`, `h200`, `rtx`.
+- `GPU_TYPE`: A GPU type your site defines under `[gpu_types]`.
 - `-A, --account`: Fairshare account to charge (required).
 - `-t, --time`: Time limit D-HH:MM (default 0-01:00).
 - `--jupyter`: Launch Jupyter Lab on the node and print the SSH tunnel to reach it.
@@ -111,10 +110,9 @@ Live GPU/CPU/memory/InfiniBand monitor for a partition's nodes.
 Refreshes a colored per-node table in place until Ctrl+C. Requires passwordless
 ssh to the nodes, which must expose `nvidia-smi`.
 
-That means ssh to every node in the partition, not just the ones running your
-jobs. Where node login is gated on having an allocation, as `pam_slurm_adopt`
-does, only staff can reach the whole partition. To watch your own job instead,
-use `gpu monitor-job JOBID`.
+That means ssh to every node in the partition, not only the ones running your
+jobs. Where node login requires an allocation on that node, as `pam_slurm_adopt`
+enforces, use `gpu monitor-job JOBID` instead.
 
 **Use cases**
 - Watch utilization across a partition during a large run.

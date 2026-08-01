@@ -33,12 +33,23 @@ def _packaged_default() -> dict:
     return tomllib.loads(text)
 
 
-def _deep_merge(base: dict, override: dict) -> dict:
-    """Return a recursive merge of override onto base, mutating neither."""
+_REPLACED_TABLES = (("gpu_types",), ("partitions", "limits"))
+
+
+def _deep_merge(base: dict, override: dict, path: tuple[str, ...] = ()) -> dict:
+    """Return a recursive merge of override onto base, mutating neither.
+
+    Tables listed in _REPLACED_TABLES are replaced outright when the override
+    defines them; every other table merges key by key.
+    """
     result = dict(base)
     for key, value in override.items():
+        here = path + (key,)
         if isinstance(value, dict) and isinstance(result.get(key), dict):
-            result[key] = _deep_merge(result[key], value)
+            if here in _REPLACED_TABLES:
+                result[key] = dict(value)
+            else:
+                result[key] = _deep_merge(result[key], value, here)
         else:
             result[key] = value
     return result
@@ -51,8 +62,7 @@ class ConfigError(Exception):
 def _discover() -> Path | None:
     """Return the first existing site config file, or None for the default.
 
-    A path given in the environment is an explicit request, so a missing file
-    there is an error rather than a silent fall back to the packaged default.
+    A path given in the environment must exist; a missing one is an error.
     """
     env = os.environ.get(ENV_VAR)
     if env:
