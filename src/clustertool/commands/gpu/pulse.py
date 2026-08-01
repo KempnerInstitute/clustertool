@@ -1,5 +1,6 @@
 """gpu pulse command."""
 
+import os
 import shlex
 import sys
 
@@ -72,10 +73,12 @@ def pulse(args: tuple[str, ...]) -> None:
     kempnerpulse's options; --node, --job and --dry-run below are this wrapper's
     own and are documented here and in docs/commands/gpu.md.
 
-    Run it on a GPU node, or launch it on a remote node with --node NODE (or
-    --job JOBID to target a running job's first node): this tool ssh's in and
-    runs kempnerpulse from the site's shared install. --dry-run prints the ssh
-    command instead of running it.
+    Run it on a GPU node, or launch it on a remote node with --node NODE (or --job
+    JOBID to target a running job's first node): this tool ssh's in and runs
+    kempnerpulse from the site's shared install. --dry-run prints the ssh command
+    instead of running it. --job accepts only your own job. --node names any node,
+    but where node login requires an allocation there, as pam_slurm_adopt
+    enforces, the ssh is refused unless you hold one.
 
     \b
     Most useful:
@@ -88,6 +91,13 @@ def pulse(args: tuple[str, ...]) -> None:
     """
     node, job, forward, dry_run = _split_args(args)
     if job and not node:
+        owner = slurm.job_owner(job)
+        me = os.environ.get("USER", "")
+        if owner and me and owner != me:
+            raise click.ClickException(
+                f"job {job} belongs to {owner}, not you. Node login is gated on having "
+                "an allocation there, so the ssh would be refused"
+            )
         nodes = slurm.job_nodes(job)
         if not nodes:
             raise click.ClickException(f"job {job} has no running nodes")

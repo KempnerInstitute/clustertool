@@ -324,6 +324,7 @@ def build_result(parsed, nvlink_by_gpu, host=None, timestamp=None):
         gpus_out.append(
             {
                 "index": gpu["index"],
+                "minor_number": gpu["minor_number"],
                 "name": gpu["name"],
                 "serial": gpu["serial"],
                 "verdict": worst(tier for tier, _ in checks.values()),

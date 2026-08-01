@@ -481,3 +481,13 @@ def test_nvlink_errors_are_attributed_to_the_right_gpu():
     parsed = gh.parse_smi_xml(xml)["gpus"]
     assert [g["index"] for g in parsed] == [0, 1]
     assert [g["minor_number"] for g in parsed] == [1, 0]
+
+
+def test_nvlink_errors_land_on_the_nvidia_smi_index():
+    """parse_nvlink keys on the nvidia-smi index, which is the <gpu> element order."""
+    xml = "<nvidia_smi_log>" + _gpu(index=1) + _gpu(index=0) + "</nvidia_smi_log>"
+    result = gh.build_result(gh.parse_smi_xml(xml), gh.parse_nvlink(_nvlink(gpu0_link1_crc=42)))
+    first, second = result["gpus"]
+    assert (first["index"], first["minor_number"]) == (0, 1)
+    assert "crc_errors=42" in first["checks"]["nvlink"]["detail"]
+    assert second["checks"]["nvlink"]["detail"] == ""

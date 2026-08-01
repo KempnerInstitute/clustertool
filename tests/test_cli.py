@@ -3616,3 +3616,15 @@ def test_ib_counters_clean_window(tmp_path):
     result = CliRunner().invoke(main, ["diag", "ib-counters", before, after])
     assert result.exit_code == 0
     assert "OK: no error-class counter growth" in result.output
+
+
+def test_gpu_pulse_job_refuses_another_users_job(monkeypatch):
+    """--job reaches a node by ssh, so it must be scoped like monitor-job and nvtop."""
+    monkeypatch.setenv("USER", "alice")
+    monkeypatch.setattr(slurm, "job_owner", lambda j: "bob")
+    ran = []
+    monkeypatch.setattr(slurm, "job_nodes", lambda j: ran.append(j) or ["n1"])
+    result = CliRunner().invoke(main, ["gpu", "pulse", "--job", "123", "--dry-run"])
+    assert result.exit_code != 0
+    assert "belongs to bob, not you" in result.output
+    assert ran == []

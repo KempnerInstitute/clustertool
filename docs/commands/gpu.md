@@ -209,6 +209,8 @@ In the live view, type `:focus <id>`, `:plot`, or `:job` to switch views, and `:
 
 **Inputs**
 - `--node NODE`: ssh to NODE and run the dashboard there.
-- `--job JOBID`: run it on the first node of a running job.
+- `--job JOBID`: run it on the first node of one of your own running jobs.
+  Where node login requires an allocation, as `pam_slurm_adopt` enforces,
+  `--node` reaches a node only if you hold one there.
 - `--dry-run`: with `--node`/`--job`, print the ssh command instead of running it.
 - `[ARG]...`: any kempnerpulse arguments (`--backend`, `--source`, `--poll`, `--focus-gpu`, `--gpus`, `--once`, `--export`, the weight presets, ...), forwarded verbatim.
