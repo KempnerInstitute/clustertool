@@ -189,7 +189,16 @@ def _gpu_type_from_features(features: str) -> str:
 
 
 def _status_bucket(state: str) -> str:
-    """Map a Slurm node state code (flags stripped) to a status bucket."""
+    """Map a Slurm node state code to a status bucket.
+
+    Per man sinfo the trailing flags carry meaning of their own: $ is a
+    maintenance reservation and ~ is powered off, so neither can be stripped and
+    bucketed by the base code alone.
+    """
+    if "$" in state:
+        return "resv"
+    if "~" in state or "%" in state or "!" in state:
+        return "down"
     match = re.match(r"[a-z]+", state.lower())
     base = match.group() if match else ""
     if base.startswith(("idle", "plnd", "plan")):
@@ -406,6 +415,26 @@ def user_fullnames(usernames: list[str]) -> dict[str, str]:
         if len(fields) > 4:
             names[fields[0]] = fields[4].replace(" ", "_")
     return names
+
+
+def job_exists(jobid: str) -> bool:
+    """Return True if Slurm knows the job id, queued or running."""
+    code, _, _ = process.probe(["squeue", "-j", jobid, "-h", "-O", "jobid:32"])
+    return code == 0
+
+
+def job_state_counts(user: str, pending_only: bool = False) -> dict[str, int]:
+    """Return {state: count} for a user's queued and running jobs."""
+    cmd = ["squeue", "-h", "-u", user, "-O", "state:32"]
+    if pending_only:
+        cmd += ["-t", "PENDING"]
+    code, out, _ = process.probe(cmd)
+    if code != 0:
+        return {}
+    counts: dict[str, int] = {}
+    for line in out.split():
+        counts[line] = counts.get(line, 0) + 1
+    return counts
 
 
 def job_owner(jobid: str) -> str:

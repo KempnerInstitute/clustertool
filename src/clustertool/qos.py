@@ -144,6 +144,20 @@ def show_assoc_rows(user: str, account: str, cluster: str | None = None) -> list
     return [line for line in out.splitlines() if line.strip()]
 
 
+def cluster_exists(name: str) -> bool:
+    """Return True if slurmdbd knows the cluster.
+
+    sacctmgr answers a query scoped to an unknown cluster with an empty result and
+    exit 0, so without this a mistyped -c reads as 'nothing holds it'.
+    """
+    code, out, err = process.probe(
+        ["sacctmgr", "-n", "-P", "show", "cluster", name, "format=Cluster"]
+    )
+    if code != 0:
+        raise CommandError(f"could not check cluster {name}: {err.strip() or code}")
+    return any(line.strip().lower() == name.lower() for line in out.splitlines())
+
+
 def partition_exists(name: str, cluster: str | None = None) -> bool:
     """Return True if the partition is configured on the cluster.
 

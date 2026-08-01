@@ -1,10 +1,10 @@
 """jobs cancel command."""
 
-import os
+import getpass
 
 import click
 
-from clustertool import completion, process
+from clustertool import completion, process, slurm
 from clustertool.grouping import keywords
 
 
@@ -40,16 +40,24 @@ def cancel(jobids: tuple[str, ...], all_jobs: bool, pending: bool, yes: bool) ->
     if all_jobs and pending:
         raise click.UsageError("Give --all or --pending, not both.")
     if jobids:
+        unknown = [jid for jid in jobids if not slurm.job_exists(jid)]
+        if unknown:
+            raise click.ClickException(
+                f"no such job: {', '.join(unknown)}. scancel treats an unknown id as "
+                "nothing to do, so this would have exited cleanly having cancelled nothing"
+            )
         cmd = ["scancel", *jobids]
     elif all_jobs or pending:
-        owner = os.environ.get("USER", "")
-        if not owner:
-            raise click.ClickException(
-                "cannot tell whose jobs to cancel: $USER is not set. Name the JOBIDs instead"
-            )
+        owner = getpass.getuser()
         scope = "pending jobs" if pending else "jobs"
+        counts = slurm.job_state_counts(owner, pending_only=pending)
+        if not counts:
+            click.echo(f"You have no {scope} to cancel.")
+            return
+        total = sum(counts.values())
+        breakdown = ", ".join(f"{n} {state.lower()}" for state, n in sorted(counts.items()))
         if not yes:
-            click.confirm(f"Cancel every one of your {scope}?", abort=True)
+            click.confirm(f"Cancel all {total} of your {scope} ({breakdown})?", abort=True)
         cmd = ["scancel", "-u", owner]
         if pending:
             cmd += ["-t", "PENDING"]

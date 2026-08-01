@@ -71,9 +71,14 @@ total priority and its fairshare, age, and other contributions.
 ## `jobs violators PARTITION [--cpus-per-gpu N] [--mem-per-gpu MB]`
 
 List running jobs requesting more CPU or memory per GPU than the norm (via
-`squeue` and `scontrol`). Norms default to the partition's enforced per-GPU
-policy; pass `--cpus-per-gpu` / `--mem-per-gpu` for partitions without a known
-policy. Jobs with no GPUs are not evaluated.
+`scontrol`). Norms default to the per-GPU policy your site sets under
+`[partitions.limits]`, which nothing in Slurm enforces; pass `--cpus-per-gpu` /
+`--mem-per-gpu` for partitions without one. Jobs with no GPUs are not evaluated.
+
+Memory is in MiB throughout, which is what Slurm reports. A job written as
+`--mem=360G` asks for 368640 MiB, so it exceeds a norm of 360000 by 2 percent;
+the `OVER` column gives the ratio so a rounding difference does not read like a
+real over-request.
 
 **Use cases**
 - Find jobs hoarding CPU or memory relative to their GPU count.
@@ -311,7 +316,8 @@ queue and run again from the start.
 
 ## `jobs submit [ARG]...`
 
-Submit a batch job (passthrough to `sbatch`). All arguments are forwarded to
+Submit a batch job (passthrough to `sbatch`). `--help` is forwarded too, so it
+prints sbatch's help rather than this page. All arguments are forwarded to
 `sbatch` unchanged, so a script path, `--wrap`, `--array`, `--dependency`, and
 mail flags all work. Run `sbatch --help` for the full list.
 
@@ -327,7 +333,9 @@ mail flags all work. Run `sbatch --help` for the full list.
 
 Build a GPU sbatch script and print, save, or submit it. Prompts for the
 GPU type and account if not given, sizes CPUs and memory to the partition's
-enforced per-GPU limits, and writes a correct sbatch header. A partition with no
+per-GPU policy your site sets under `[partitions.limits]`, and writes a correct
+sbatch header. It writes GPU jobs only: it always requests a GPU and targets a
+GPU partition. A partition with no
 configured ratio and no override gets no `cpus-per-task` or `mem` line, leaving
 Slurm to apply its own defaults. Prints the script by default; `-o` saves it and
 `--submit` submits it.

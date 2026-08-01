@@ -131,6 +131,11 @@ def new(
                        already exists.
       --submit         Submit the script with sbatch.
     """
+    if not slurm.GPU_TYPE_PARTITION:
+        raise click.ClickException(
+            "no GPU types are configured for this site; set [gpu_types] in your site "
+            "config (see docs/configuration.md). This command writes GPU jobs only"
+        )
     partition = slurm.GPU_TYPE_PARTITION[gpu_type.lower()]
     if not slurm.PARTITION_LIMITS.get(partition) and cpus_per_gpu is None and mem_per_gpu is None:
         click.echo(

@@ -51,10 +51,10 @@ def create(
         raise click.ClickException(
             f"invalid QoS name {qos_name!r}: use letters, digits, and . _ - only"
         )
-    plan = []
-    if not qoslib.qos_exists(qos_name):
-        plan.append(["sacctmgr", "-i", "add", "qos", qos_name])
-    plan.append(["sacctmgr", "-i", "modify", "qos", qos_name, "set", *specs])
+    if qoslib.qos_exists(qos_name):
+        plan = [["sacctmgr", "-i", "modify", "qos", qos_name, "set", *specs]]
+    else:
+        plan = [["sacctmgr", "-i", "add", "qos", qos_name, *specs]]
     summary = f"Create or update QoS {qos_name} with {len(specs)} limit(s)?"
     if _gate.apply(plan, execute, yes, summary):
         raise SystemExit(1)

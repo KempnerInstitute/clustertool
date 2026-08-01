@@ -1,5 +1,6 @@
 """Tests for the CLI commands."""
 
+import getpass
 import json
 import os
 import re
@@ -737,7 +738,20 @@ def test_jobs_history(monkeypatch):
     assert "-X" in calls[0]
 
 
+def _cancel_stubs(monkeypatch, counts=None, exists=True):
+    monkeypatch.setattr(slurm, "job_exists", lambda j: exists)
+    monkeypatch.setattr(
+        slurm,
+        "job_state_counts",
+        lambda u, pending_only=False: (
+            counts if counts is not None else {"RUNNING": 3, "PENDING": 1}
+        ),
+    )
+    monkeypatch.setattr(getpass, "getuser", lambda: "alice")
+
+
 def test_jobs_cancel_ids(monkeypatch):
+    _cancel_stubs(monkeypatch)
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "cancel", "111", "222"])
     assert result.exit_code == 0
@@ -745,7 +759,7 @@ def test_jobs_cancel_ids(monkeypatch):
 
 
 def test_jobs_cancel_all(monkeypatch):
-    monkeypatch.setenv("USER", "alice")
+    _cancel_stubs(monkeypatch)
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "cancel", "--all", "-y"])
     assert result.exit_code == 0
@@ -753,7 +767,7 @@ def test_jobs_cancel_all(monkeypatch):
 
 
 def test_jobs_cancel_pending(monkeypatch):
-    monkeypatch.setenv("USER", "alice")
+    _cancel_stubs(monkeypatch, counts={"PENDING": 1})
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "cancel", "--pending", "-y"])
     assert result.exit_code == 0
@@ -761,7 +775,7 @@ def test_jobs_cancel_pending(monkeypatch):
 
 
 def test_jobs_cancel_all_prompts(monkeypatch):
-    monkeypatch.setenv("USER", "alice")
+    _cancel_stubs(monkeypatch)
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "cancel", "--all"], input="y\n")
     assert result.exit_code == 0
@@ -769,24 +783,43 @@ def test_jobs_cancel_all_prompts(monkeypatch):
 
 
 def test_jobs_cancel_all_abort_cancels_nothing(monkeypatch):
-    monkeypatch.setenv("USER", "alice")
+    _cancel_stubs(monkeypatch)
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "cancel", "--all"], input="n\n")
     assert result.exit_code != 0
     assert calls == []
 
 
-def test_jobs_cancel_all_needs_a_resolvable_user(monkeypatch):
-    """scancel -u '' errors after the prompt; catch it before asking."""
-    monkeypatch.setenv("USER", "")
+def test_jobs_cancel_all_states_the_blast_radius(monkeypatch):
+    """The prompt asked to cancel everything without saying what everything was."""
+    _cancel_stubs(monkeypatch)
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "cancel", "--all"], input="n\n")
+    assert "Cancel all 4 of your jobs (1 pending, 3 running)?" in result.output
+    assert calls == []
+
+
+def test_jobs_cancel_all_with_nothing_to_cancel(monkeypatch):
+    _cancel_stubs(monkeypatch, counts={})
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "cancel", "--all", "-y"])
+    assert result.exit_code == 0
+    assert "no jobs to cancel" in result.output
+    assert calls == []
+
+
+def test_jobs_cancel_refuses_an_unknown_job(monkeypatch):
+    """scancel exits 0 for an unknown id, so a typo cancelled nothing and said nothing."""
+    _cancel_stubs(monkeypatch, exists=False)
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "cancel", "99999997"])
     assert result.exit_code != 0
-    assert "$USER is not set" in result.output
+    assert "no such job: 99999997" in result.output
     assert calls == []
 
 
 def test_jobs_cancel_rejects_conflicting_scopes(monkeypatch):
+    _cancel_stubs(monkeypatch)
     calls = _capture_stream(monkeypatch)
     for args in (["--all", "--pending"], ["111", "--all"], ["111", "--pending"]):
         result = CliRunner().invoke(main, ["jobs", "cancel", *args, "-y"])
@@ -796,6 +829,7 @@ def test_jobs_cancel_rejects_conflicting_scopes(monkeypatch):
 
 
 def test_jobs_cancel_ids_do_not_prompt(monkeypatch):
+    _cancel_stubs(monkeypatch)
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "cancel", "333"])
     assert result.exit_code == 0
@@ -803,6 +837,7 @@ def test_jobs_cancel_ids_do_not_prompt(monkeypatch):
 
 
 def test_jobs_cancel_none_errors(monkeypatch):
+    _cancel_stubs(monkeypatch)
     _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "cancel"])
     assert result.exit_code != 0
@@ -2617,7 +2652,7 @@ def test_qos_create_dry_run(monkeypatch):
     result = CliRunner().invoke(main, ["qos", "create", "new_qos", "-g", "4", "-G", "8"])
     assert result.exit_code == 0
     assert "[DRY ] sacctmgr -i add qos new_qos" in result.output
-    assert "modify qos new_qos set MaxTRESPU=gres/gpu=4 GrpTRES=gres/gpu=8" in result.output
+    assert "add qos new_qos MaxTRESPU=gres/gpu=4 GrpTRES=gres/gpu=8" in result.output
     assert "Dry run" in result.output
     assert ran == []
 
@@ -2791,8 +2826,7 @@ def test_qos_create_execute_add_then_modify(monkeypatch):
     result = CliRunner().invoke(main, ["qos", "create", "new_qos", "-g", "4", "--execute", "--yes"])
     assert result.exit_code == 0
     assert ran == [
-        ["sacctmgr", "-i", "add", "qos", "new_qos"],
-        ["sacctmgr", "-i", "modify", "qos", "new_qos", "set", "MaxTRESPU=gres/gpu=4"],
+        ["sacctmgr", "-i", "add", "qos", "new_qos", "MaxTRESPU=gres/gpu=4"],
     ]
 
 
@@ -2835,7 +2869,7 @@ def test_qos_execute_stops_after_failure(monkeypatch):
     monkeypatch.setattr(process, "probe", fake_probe)
     result = CliRunner().invoke(main, ["qos", "create", "new_qos", "-g", "4", "--execute", "--yes"])
     assert result.exit_code == 1
-    assert ran == [["sacctmgr", "-i", "add", "qos", "new_qos"]]
+    assert ran == [["sacctmgr", "-i", "add", "qos", "new_qos", "MaxTRESPU=gres/gpu=4"]]
 
 
 def test_qos_execute_reports_failure(monkeypatch):

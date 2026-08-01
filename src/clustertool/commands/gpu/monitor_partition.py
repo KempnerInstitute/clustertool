@@ -2,7 +2,7 @@
 
 import click
 
-from clustertool import completion, monitor, slurm
+from clustertool import completion, monitor, qos, slurm
 from clustertool.grouping import admin, keywords
 
 
@@ -35,7 +35,15 @@ def monitor_partition(partition: str, interval: int, prefix: str) -> None:
       --interval  Refresh interval in seconds (default 5).
       --filter    Only include nodes whose name starts with this prefix.
     """
-    hosts = [name for name, _ in slurm.partition_nodes(partition) if name.startswith(prefix)]
+    nodes = [name for name, _ in slurm.partition_nodes(partition)]
+    if not nodes:
+        if not qos.partition_exists(partition):
+            raise click.ClickException(f"partition '{partition}' does not exist")
+        raise click.ClickException(f"partition '{partition}' has no nodes")
+    hosts = [name for name in nodes if name.startswith(prefix)]
     if not hosts:
-        raise click.ClickException(f"no nodes matched in partition '{partition}'")
+        raise click.ClickException(
+            f"no node in partition '{partition}' starts with '{prefix}' "
+            f"({len(nodes)} node(s) before the filter)"
+        )
     monitor.run_monitor(f"GPU/CPU/MEM/NET Monitor for Partition: {partition}", hosts, interval)

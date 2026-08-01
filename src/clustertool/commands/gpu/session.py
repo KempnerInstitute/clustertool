@@ -61,19 +61,21 @@ def session(
     """Start an interactive single-GPU session on a base partition (via salloc).
 
     GPU_TYPE selects the base partition, and the session requests one GPU plus
-    the CPU and memory that partition enforces per GPU. Drops you into a shell
-    on the node; exit it (or let the time limit lapse) to release the
+    the CPU and memory your site allots per GPU on that partition. Where the site
+    sets use_interactive_step in LaunchParameters, as this cluster does, salloc
+    puts the shell on the allocated node; otherwise it runs on the submitting
+    host. Exit the shell, or let the time limit lapse, to release the
     allocation. With --jupyter it runs Jupyter Lab on the allocated node through
     srun instead, bound to that node, and prints the SSH tunnel to reach it from
     your laptop.
 
     Extra arguments are forwarded to salloc after these defaults, so you can
     override or add any salloc flag (salloc uses the last value), for example
-    'gpu session a100 -A LAB --mem=500000' or '... -J devshell'.
+    'gpu session TYPE -A LAB --mem=500000' or '... -J devshell'.
 
     The GPU types listed above are the ones your site defines under [gpu_types],
     each mapped to a partition whose per-GPU CPU and memory come from
-    [partitions.limits]. Run 'nodes partitions' to see that mapping. When a
+    [partitions.limits], which 'gpu avail PARTITION' states in force. When a
     partition has no configured ratio, no CPU or memory request is made and
     Slurm applies that partition's own defaults.
 

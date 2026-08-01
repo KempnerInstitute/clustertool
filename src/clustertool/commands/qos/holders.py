@@ -49,6 +49,8 @@ def holders(
       -r, --account-regex Only accounts matching this regex (default: all).
       --by                all rows, or distinct user or partition.
     """
+    if cluster and not qoslib.cluster_exists(cluster):
+        raise click.ClickException(f"no such cluster: {cluster}")
     if not qoslib.qos_exists(qos_name):
         raise click.ClickException(f"QoS {qos_name} is not defined")
     if partition and not qoslib.partition_exists(partition, cluster=cluster):

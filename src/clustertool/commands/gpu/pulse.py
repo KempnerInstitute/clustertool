@@ -40,6 +40,10 @@ def _split_args(args: tuple[str, ...]) -> tuple[str | None, str | None, list[str
         raise click.UsageError("--node needs a value")
     if job is not None and not job:
         raise click.UsageError("--job needs a value")
+    if node and job:
+        raise click.UsageError("give --node or --job, not both")
+    if dry_run and not (node or job):
+        raise click.UsageError("--dry-run prints the remote command, so it needs --node or --job")
     return node, job, forward, dry_run
 
 
@@ -63,9 +67,10 @@ def _remote_command(venv: str, args: list[str]) -> str:
 def pulse(args: tuple[str, ...]) -> None:
     """Live GPU utilization dashboard, via the bundled kempnerpulse tool.
 
-    All arguments are forwarded to kempnerpulse unchanged, so its full option
-    set is available. Run 'clustertool gpu pulse --help' for the complete list
-    (that help is produced by kempnerpulse itself).
+    All arguments are forwarded to kempnerpulse unchanged, so its full option set
+    is available. '--help' reaches kempnerpulse, not this wrapper, so it lists
+    kempnerpulse's options; --node, --job and --dry-run below are this wrapper's
+    own and are documented here and in docs/commands/gpu.md.
 
     Run it on a GPU node, or launch it on a remote node with --node NODE (or
     --job JOBID to target a running job's first node): this tool ssh's in and

@@ -79,7 +79,7 @@ job that fits before that one is due to start can run on it.
 - See spare CPU and memory alongside usable GPUs.
 
 **Inputs**
-- `PARTITION`: Slurm partition name (e.g. `kempner_h100`).
+- `PARTITION`: Slurm partition name.
 - `--cpus-per-gpu`: Cores per GPU (overrides the per-partition default).
 - `--mem-per-gpu`: Memory per GPU in MB (overrides the per-partition default).
 
@@ -87,7 +87,9 @@ job that fits before that one is due to start can run on it.
 
 Start an interactive single-GPU session on a base partition (via `salloc`).
 GPU_TYPE selects the partition, and the session requests one GPU plus the CPU and
-memory that partition enforces per GPU. Drops you into a shell on the node; exit
+memory your site allots per GPU on that partition. Where the site sets
+`use_interactive_step` in `LaunchParameters`, as this cluster does, salloc puts
+the shell on the allocated node; otherwise it runs on the submitting host. Exit
 it (or let the time limit lapse) to release the allocation.
 
 The GPU types come from `[gpu_types]` in the site config, each mapped to a
@@ -101,7 +103,7 @@ packaged Kempner profile that is:
 | `h200` | `kempner_h200` | 16 | 360000 MB |
 | `rtx` | `kempner_rtx` | 16 | 180000 MB |
 
-Run `nodes partitions` to see the mapping in force on your cluster. Memory is
+Run `gpu avail PARTITION` to see the ratio in force on your cluster. Memory is
 passed in MB (Slurm's default unit), so `--mem=360000`, not `360G`. When a
 partition has no configured ratio, no CPU or memory request is made and Slurm
 applies that partition's own defaults.
@@ -194,7 +196,7 @@ node.
 
 **Most useful**
 - `gpu pulse`: live fleet dashboard (dcgm backend, about 100 ms refresh).
-- `gpu pulse --node holygpu123`: run the dashboard on a remote GPU node.
+- `gpu pulse --node NODE`: run the dashboard on a remote GPU node.
 - `gpu pulse --job 1234567`: run it on a running job's node.
 - `gpu pulse --once`: render one snapshot and exit.
 - `gpu pulse --focus-gpu 0`: start focused on a single GPU.

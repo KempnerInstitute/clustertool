@@ -17,8 +17,10 @@ def submit(args: tuple[str, ...]) -> None:
 
     All arguments are forwarded to sbatch unchanged, so a script path, --wrap,
     array, dependency, and mail flags all work. Run 'sbatch --help' for the full
-    list. sbatch's own exit code is passed through, so this can stand in for
-    sbatch in a script.
+    list. sbatch's own exit code is passed through, so this can stand in for sbatch
+    in a script. '--help' is forwarded too, so it prints sbatch's help rather than
+    this text; 'clustertool jobs --help' and docs/commands/jobs.md are where the
+    wrapper's own description lives.
 
     \b
     Most useful:
