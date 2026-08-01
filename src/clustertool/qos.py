@@ -118,6 +118,32 @@ def partitions_referencing(qos_name: str, cluster: str | None = None) -> list[st
     return sorted(set(found))
 
 
+def show_assoc_rows(user: str, account: str, cluster: str | None = None) -> list[str]:
+    """Return the Partition|QOS rows for a user's associations in an account.
+
+    Raises if the query fails, so a write is never planned against a read that did
+    not happen.
+    """
+    cmd = [
+        "sacctmgr",
+        "-n",
+        "-P",
+        "show",
+        "assoc",
+        "where",
+        f"user={user}",
+        f"account={account}",
+        f"cluster={_cluster(cluster)}",
+        "format=Partition,QOS",
+    ]
+    code, out, err = process.probe(cmd)
+    if code != 0:
+        raise CommandError(
+            f"could not read {user}'s associations in {account}: {err.strip() or code}"
+        )
+    return [line for line in out.splitlines() if line.strip()]
+
+
 def partition_exists(name: str, cluster: str | None = None) -> bool:
     """Return True if the partition is configured on the cluster.
 

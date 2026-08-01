@@ -2,7 +2,8 @@
 
 import click
 
-from clustertool import completion, process
+from clustertool import completion, process, site
+from clustertool.commands.account import _write
 from clustertool.grouping import admin, keywords
 
 
@@ -11,12 +12,25 @@ from clustertool.grouping import admin, keywords
 @click.command("add-user")
 @click.argument("user")
 @click.argument("account", shell_complete=completion.complete_accounts)
-@click.option("--fairshare", default="parent", show_default=True, help="Fairshare value.")
+@click.option(
+    "--fairshare",
+    default=None,
+    help="Fairshare value (default: the site's grant_fairshare).",
+)
+@click.option("-c", "--cluster", default=None, help="Slurm cluster (default: the site cluster).")
 @click.option("-y", "--yes", is_flag=True, help="Skip the confirmation prompt.")
-def add_user(user: str, account: str, fairshare: str, yes: bool) -> None:
-    """Add a user to a fairshare account (via sacctmgr). Operator or coordinator only.
+def add_user(
+    user: str, account: str, fairshare: str | None, cluster: str | None, yes: bool
+) -> None:
+    """Add a user to a fairshare account (via sacctmgr).
 
-    Prompts for confirmation unless -y is given.
+    Creates the account's base association for the user. The fairshare value
+    defaults to [qos].grant_fairshare from the site config, the same value that
+    'qos grant' gives the associations it creates. Prompts for confirmation unless
+    -y.
+
+    Slurm operator, or a coordinator of the account; a site that sets
+    DisableCoordDBD in slurmdbd.conf restricts this to operators.
 
     \b
     Use cases:
@@ -24,23 +38,26 @@ def add_user(user: str, account: str, fairshare: str, yes: bool) -> None:
 
     \b
     Inputs:
-      USER         Username to add.
-      ACCOUNT      Slurm account to add them to.
-      --fairshare  Fairshare value (default parent).
-      -y, --yes    Skip the confirmation prompt.
+      USER           Username to add.
+      ACCOUNT        Slurm account to add them to.
+      --fairshare    Fairshare value (default: the site's grant_fairshare).
+      -c, --cluster  Slurm cluster (default: the site cluster).
+      -y, --yes      Skip the confirmation prompt.
     """
+    _write.check_names(user=user, account=account)
+    share = fairshare or site.qos_grant_fairshare()
+    _write.check_fairshare(share)
     if not yes:
-        click.confirm(f"Add user {user} to account {account} (fairshare={fairshare})?", abort=True)
-    code = process.stream(
-        [
-            "sacctmgr",
-            "-i",
-            "add",
-            "user",
-            f"name={user}",
-            f"account={account}",
-            f"fairshare={fairshare}",
-        ]
-    )
-    if code:
-        raise SystemExit(code)
+        click.confirm(f"Add user {user} to account {account} (fairshare={share})?", abort=True)
+    cmd = [
+        "sacctmgr",
+        "-i",
+        "add",
+        "user",
+        f"name={user}",
+        f"account={account}",
+        _write.cluster_scope(cluster),
+        f"fairshare={share}",
+    ]
+    if process.stream(cmd):
+        raise click.ClickException(f"failed to add {user} to {account}")

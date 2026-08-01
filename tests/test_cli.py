@@ -1282,8 +1282,42 @@ def test_account_add_user(monkeypatch):
         "user",
         "name=alice",
         "account=kempner_dev",
+        "cluster=odyssey",
         "fairshare=parent",
     ]
+
+
+def test_account_add_user_uses_the_site_fairshare(monkeypatch):
+    """[qos].grant_fairshare is the site's convention for a new association."""
+    monkeypatch.setattr(site, "qos_grant_fairshare", lambda: "1000")
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["account", "add-user", "alice", "kempner_dev", "-y"])
+    assert result.exit_code == 0
+    assert "fairshare=1000" in calls[0]
+
+
+def test_account_writes_reject_a_comma(monkeypatch):
+    """sacctmgr reads account=A,B as a list, so one call would hit both."""
+    calls = _capture_stream(monkeypatch)
+    for args in (
+        ["add-user", "alice", "kempner_dev,kempner_lab"],
+        ["remove-user", "a,b", "kempner_dev"],
+        ["set-fairshare", "alice", "kempner_dev,other", "50"],
+    ):
+        result = CliRunner().invoke(main, ["account", *args, "-y"])
+        assert result.exit_code != 0, args
+        assert "cannot contain a comma" in result.output
+    assert calls == []
+
+
+def test_account_set_fairshare_rejects_a_nonsense_share(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(
+        main, ["account", "set-fairshare", "alice", "kempner_dev", "nonsense", "-y"]
+    )
+    assert result.exit_code != 0
+    assert "integer number of raw shares" in result.output
+    assert calls == []
 
 
 def test_account_help_splits_user_and_admin():
@@ -1326,9 +1360,65 @@ def test_diag_help_sections_ib_as_admin():
 
 def test_account_remove_user(monkeypatch):
     calls = _capture_stream(monkeypatch)
+    monkeypatch.setattr(qos, "show_assoc_rows", lambda u, a, c=None: ["|normal"])
     result = CliRunner().invoke(main, ["account", "remove-user", "alice", "kempner_dev", "-y"])
     assert result.exit_code == 0
-    assert calls[0] == ["sacctmgr", "-i", "remove", "user", "alice", "account=kempner_dev"]
+    assert calls[0] == [
+        "sacctmgr",
+        "-i",
+        "remove",
+        "user",
+        "alice",
+        "account=kempner_dev",
+        "cluster=odyssey",
+    ]
+
+
+def test_account_remove_user_lists_every_association(monkeypatch):
+    """A user holds one association per partition, each with its own QoS."""
+    monkeypatch.setattr(
+        qos,
+        "show_assoc_rows",
+        lambda u, a, c=None: [
+            "|h200_benchmarking,normal",
+            "kempner_h200_priority|kemp_gpu16_id42",
+            "kempner_rtx_priority|kemp_mlcommons_rtx",
+        ],
+    )
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(
+        main, ["account", "remove-user", "alice", "kempner_dev"], input="n\n"
+    )
+    assert result.exit_code != 0
+    assert "Remove 3 association(s)?" in result.output
+    assert "kempner_h200_priority" in result.output
+    assert "kemp_mlcommons_rtx" in result.output
+    assert calls == []
+
+
+def test_account_remove_user_can_target_one_partition(monkeypatch):
+    monkeypatch.setattr(
+        qos,
+        "show_assoc_rows",
+        lambda u, a, c=None: ["|normal", "kempner_h200_priority|kemp_gpu16_id42"],
+    )
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(
+        main,
+        ["account", "remove-user", "alice", "kempner_dev", "-p", "kempner_h200_priority", "-y"],
+    )
+    assert result.exit_code == 0
+    assert calls[0][-1] == "partition=kempner_h200_priority"
+    assert "Remove 1 association(s)?" not in result.output
+
+
+def test_account_remove_user_with_no_association(monkeypatch):
+    monkeypatch.setattr(qos, "show_assoc_rows", lambda u, a, c=None: [])
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["account", "remove-user", "alice", "kempner_dev", "-y"])
+    assert result.exit_code != 0
+    assert "no association with account kempner_dev" in result.output
+    assert calls == []
 
 
 def test_account_set_fairshare(monkeypatch):
@@ -1345,6 +1435,7 @@ def test_account_set_fairshare(monkeypatch):
         "where",
         "name=alice",
         "account=kempner_dev",
+        "cluster=odyssey",
         "set",
         "fairshare=50",
     ]
