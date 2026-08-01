@@ -126,7 +126,7 @@ only running or recent jobs are in `scontrol`.
 
 ## `jobs script JOBID`
 
-Print the batch script a job was submitted with (via `sacct --batch`).
+Print the batch script a job was submitted with (via `sacct --batch-script`).
 
 **Use cases**
 - Recover or reproduce exactly how a job was submitted.

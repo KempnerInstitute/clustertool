@@ -1100,7 +1100,9 @@ def test_jobs_queue(monkeypatch):
 
 def test_jobs_log_paths(monkeypatch):
     monkeypatch.setattr(
-        process, "run", lambda cmd, input_text=None: "JobId=1 StdOut=/n/out.log StdErr=/n/err.log"
+        process,
+        "probe",
+        lambda cmd, timeout=None: (0, "JobId=1 StdOut=/n/out.log StdErr=/n/err.log", ""),
     )
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "log", "1"])
@@ -1109,8 +1111,42 @@ def test_jobs_log_paths(monkeypatch):
     assert not calls
 
 
+def test_jobs_log_array_master_names_an_element(monkeypatch):
+    """dict() over the matches kept only the last of an array's paths."""
+    out = (
+        "JobId=1_0 StdOut=/n/out_0.log StdErr=/n/err_0.log\n"
+        "JobId=1_1 StdOut=/n/out_1.log StdErr=/n/err_1.log\n"
+    )
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, out, ""))
+    result = CliRunner().invoke(main, ["jobs", "log", "1"])
+    assert result.exit_code != 0
+    assert "array with 2 elements" in result.output
+
+
+def test_jobs_log_unstarted_array(monkeypatch):
+    """Slurm leaves NO_VAL in the path until an element starts, so the file never exists."""
+    out = "JobId=1 StdOut=/n/job_1_4294967294.out"
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, out, ""))
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "log", "1", "-f"])
+    assert result.exit_code != 0
+    assert "have not started" in result.output
+    assert calls == []
+
+
+def test_jobs_log_unknown_job(monkeypatch):
+    monkeypatch.setattr(
+        process,
+        "probe",
+        lambda cmd, timeout=None: (1, "", "slurm_load_jobs error: Invalid job id specified"),
+    )
+    result = CliRunner().invoke(main, ["jobs", "log", "999999999"])
+    assert result.exit_code != 0
+    assert "not found" in result.output
+
+
 def test_jobs_log_follow(monkeypatch):
-    monkeypatch.setattr(process, "run", lambda cmd, input_text=None: "StdOut=/n/out.log")
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, "StdOut=/n/out.log", ""))
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "log", "1", "-f"])
     assert result.exit_code == 0
@@ -1118,17 +1154,51 @@ def test_jobs_log_follow(monkeypatch):
 
 
 def test_jobs_log_missing(monkeypatch):
-    monkeypatch.setattr(process, "run", lambda cmd, input_text=None: "JobId=1 JobState=RUNNING")
+    monkeypatch.setattr(
+        process, "probe", lambda cmd, timeout=None: (0, "JobId=1 JobState=RUNNING", "")
+    )
     result = CliRunner().invoke(main, ["jobs", "log", "1"])
     assert result.exit_code != 0
 
 
 def test_jobs_script(monkeypatch):
-    monkeypatch.setattr(slurm, "job_accounting", lambda j: {"state": "COMPLETED"})
-    calls = _capture_stream(monkeypatch)
+    monkeypatch.setattr(
+        process, "probe", lambda cmd, timeout=None: (0, "#!/bin/bash\n#SBATCH -c 4\n", "")
+    )
     result = CliRunner().invoke(main, ["jobs", "script", "123"])
     assert result.exit_code == 0
-    assert calls[0] == ["sacct", "-j", "123", "--batch"]
+    assert "#SBATCH -c 4" in result.output
+
+
+def test_jobs_script_falls_back_to_the_controller(monkeypatch):
+    """An array element that has not started has no accounting record yet."""
+    seen = []
+
+    def fake_probe(cmd, timeout=None):
+        seen.append(cmd[0])
+        if cmd[0] == "sacct":
+            return 0, "", ""
+        return 0, "#!/bin/bash\n#SBATCH -J pending\n", ""
+
+    monkeypatch.setattr(process, "probe", fake_probe)
+    result = CliRunner().invoke(main, ["jobs", "script", "123_0"])
+    assert result.exit_code == 0
+    assert "#SBATCH -J pending" in result.output
+    assert seen == ["sacct", "scontrol"]
+
+
+def test_jobs_script_treats_none_as_absent(monkeypatch):
+    """sacct prints NONE when the cluster does not store scripts."""
+
+    def fake_probe(cmd, timeout=None):
+        if cmd[0] == "sacct":
+            return 0, "NONE\n", ""
+        return 1, "", "Invalid job id specified"
+
+    monkeypatch.setattr(process, "probe", fake_probe)
+    result = CliRunner().invoke(main, ["jobs", "script", "123"])
+    assert result.exit_code != 0
+    assert "no batch script" in result.output
 
 
 def test_jobs_list_start(monkeypatch):
@@ -3023,11 +3093,12 @@ def test_jobs_priorities_unknown_partition_errors(monkeypatch):
 
 
 def test_jobs_script_missing_job_errors(monkeypatch):
-    monkeypatch.setattr(slurm, "job_accounting", lambda j: {})
-    calls = _capture_stream(monkeypatch)
+    monkeypatch.setattr(
+        process, "probe", lambda cmd, timeout=None: (1, "", "Invalid job id specified")
+    )
     result = CliRunner().invoke(main, ["jobs", "script", "999999999"])
     assert result.exit_code != 0
-    assert calls == []
+    assert "no batch script" in result.output
 
 
 def test_jobs_top_missing_job_errors(monkeypatch):
