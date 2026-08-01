@@ -1021,7 +1021,9 @@ def test_nodes_resume_explicit(monkeypatch):
 
 
 def test_nodes_resume_partition(monkeypatch):
-    monkeypatch.setattr(slurm, "drained_nodes", lambda p: ["n3", "n4"])
+    monkeypatch.setattr(
+        slurm, "drained_nodes", lambda p: [("n3", "drained", "GPU error"), ("n4", "draining", "")]
+    )
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["nodes", "resume", "-p", "kempner_requeue", "-y"])
     assert result.exit_code == 0
