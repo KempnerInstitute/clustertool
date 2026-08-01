@@ -1,5 +1,7 @@
 """storage lfs-inodes command."""
 
+import os
+
 import click
 
 from clustertool import process, site
@@ -24,6 +26,7 @@ def lfs_inodes(path: str) -> None:
       PATH  A Lustre path, or a bare name that becomes /n/<name>.
     """
     target = path if path.startswith("/") else f"{site.path_prefix()}/{path}"
-    code = process.stream(["lfs", "df", "-i", target])
-    if code:
-        raise SystemExit(code)
+    if not os.path.exists(target):
+        raise click.ClickException(f"path not found: {target}")
+    if process.stream(["lfs", "df", "-i", target]):
+        raise click.ClickException(f"'lfs df' failed for {target}; is it on a Lustre filesystem?")

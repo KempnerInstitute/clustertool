@@ -57,6 +57,20 @@ def test_parse_quota_row_none():
     assert storage.parse_quota_row("/short row\n") is None
 
 
+def test_parse_quota_row_ignores_a_df_table():
+    out = (
+        "command: df -h /n/home14/mmsh\n"
+        "Filesystem Size Used Avail Use% Mounted on\n"
+        "/dev/mapper/vg-home 1.8T 1.2T 500G 71% /home\n"
+    )
+    assert storage.parse_quota_row(out) is None
+
+
+def test_parse_quota_row_over_quota_asterisk():
+    out = "/n/holylfs06/LABS/kempner_dev 2.1T* 2T 2T none 500000 1000000 1000000 none\n"
+    assert storage.parse_quota_row(out) == ("2.1T*", "2T", "105%", "50%")
+
+
 def test_percent_value():
     assert storage.percent_value("90%") == 90.0
     assert storage.percent_value("-") == -1.0

@@ -802,36 +802,49 @@ def test_storage_scratch(monkeypatch):
     assert "90 days" in result.output
 
 
-def test_storage_lfs_stripe_get(monkeypatch):
+def test_storage_lfs_stripe_get(monkeypatch, tmp_path):
     calls = _capture_stream(monkeypatch)
-    result = CliRunner().invoke(main, ["storage", "lfs-stripe", "/n/holylfs06/x"])
+    result = CliRunner().invoke(main, ["storage", "lfs-stripe", str(tmp_path)])
     assert result.exit_code == 0
-    assert calls[0] == ["lfs", "getstripe", "-d", "/n/holylfs06/x"]
+    assert calls[0] == ["lfs", "getstripe", "-d", str(tmp_path)]
 
 
-def test_storage_lfs_stripe_set(monkeypatch):
+def test_storage_lfs_stripe_set(monkeypatch, tmp_path):
     calls = _capture_stream(monkeypatch)
-    result = CliRunner().invoke(main, ["storage", "lfs-stripe", "/n/holylfs06/x", "-c", "8", "-y"])
+    result = CliRunner().invoke(main, ["storage", "lfs-stripe", str(tmp_path), "-c", "8", "-y"])
     assert result.exit_code == 0
-    assert calls[0] == ["lfs", "setstripe", "-c", "8", "/n/holylfs06/x"]
+    assert calls[0] == ["lfs", "setstripe", "-c", "8", str(tmp_path)]
 
 
-def test_storage_lfs_stripe_set_prompts(monkeypatch):
+def test_storage_lfs_stripe_set_prompts(monkeypatch, tmp_path):
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(
-        main, ["storage", "lfs-stripe", "/n/holylfs06/x", "-c", "8"], input="y\n"
+        main, ["storage", "lfs-stripe", str(tmp_path), "-c", "8"], input="y\n"
     )
     assert result.exit_code == 0
-    assert calls[0] == ["lfs", "setstripe", "-c", "8", "/n/holylfs06/x"]
+    assert calls[0] == ["lfs", "setstripe", "-c", "8", str(tmp_path)]
 
 
-def test_storage_lfs_stripe_set_abort(monkeypatch):
+def test_storage_lfs_stripe_set_abort(monkeypatch, tmp_path):
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(
-        main, ["storage", "lfs-stripe", "/n/holylfs06/x", "-c", "8"], input="n\n"
+        main, ["storage", "lfs-stripe", str(tmp_path), "-c", "8"], input="n\n"
     )
     assert result.exit_code != 0
+    assert "Aborted" in result.output
     assert calls == []
+
+
+def test_storage_lfs_stripe_missing_path():
+    result = CliRunner().invoke(main, ["storage", "lfs-stripe", "/n/holylfs06/nope-does-not-exist"])
+    assert result.exit_code != 0
+    assert "path not found" in result.output
+
+
+def test_storage_lfs_inodes_missing_path():
+    result = CliRunner().invoke(main, ["storage", "lfs-inodes", "/n/nope-does-not-exist"])
+    assert result.exit_code != 0
+    assert "path not found" in result.output
 
 
 def test_gpu_session_a100(monkeypatch):

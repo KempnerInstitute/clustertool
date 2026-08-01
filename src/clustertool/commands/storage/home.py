@@ -39,12 +39,12 @@ def home(scan: bool, top_n: int, ncdu: bool) -> None:
     """
     home_dir = os.path.expanduser("~")
     if ncdu:
-        code = process.stream(["ncdu", home_dir])
-        if code:
-            raise SystemExit(code)
+        if process.stream(["ncdu", home_dir]):
+            raise click.ClickException(f"ncdu failed for {home_dir}")
         return
 
-    process.stream(["df", "-h", home_dir])
+    if process.stream(["df", "-h", home_dir]):
+        raise click.ClickException(f"'df' failed for {home_dir}")
     if not scan:
         return
     click.echo()

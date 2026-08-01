@@ -15,20 +15,22 @@ quota tool infers from the path. A bare name like `holylfs06` becomes
 
 With `--all`, PATH is optional and the command reports every lab directory you
 belong to (auto-detected from your Unix groups across the site's lab roots) as a
-`USED / QUOTA / DISK% / FILES%` table. With `--fleet LAB` and a filesystem PATH,
-it reports every `LAB*` directory on that filesystem, sorted by usage.
+`USED / QUOTA / DISK% / FILES%` table. With `--fleet LAB`, it reports every
+`LAB*` directory directly under PATH, sorted by usage. Lab directories usually
+sit in a subdirectory of the filesystem, so point `--fleet` at that parent rather
+than at the mount point: `/n/holylfs06/LABS`, not `/n/holylfs06`.
 
 **Use cases**
 - Lab quota on scratch: `storage quota netscratch -g kempner_dev`
 - Your lab dirs at a glance: `storage quota --all`
-- Fleet view of one filesystem: `storage quota holylfs06 --fleet kempner`
+- Fleet view of one root: `storage quota holylfs06/LABS --fleet kempner`
 
 **Inputs**
 - `PATH`: Filesystem path, or a bare name that becomes `/n/<name>`. Optional with `--all`.
 - `-g, --group`: Group/lab name for the lookup.
 - `-u, --user`: User for the lookup (also whose labs `--all` reports).
 - `-a, --all`: Report every lab directory you belong to as a table.
-- `--fleet LAB`: With a filesystem PATH, report every `LAB*` directory on it, by usage.
+- `--fleet LAB`: Report every `LAB*` directory directly under PATH, by usage.
 - `-v, --verbose`: Show the underlying quota command.
 
 ## `storage home [--scan] [--top N] [--ncdu]`
@@ -65,16 +67,18 @@ PATH. A bare name like `netscratch` becomes `/n/netscratch`.
 ## `storage scratch [PATH]`
 
 Show networked scratch usage and the purge policy (via the FASRC `quota` tool).
-Reports quota and usage for your netscratch path and reminds you that files on
-`/n/netscratch` are deleted after 90 days and are not backed up. PATH defaults
-to `$SCRATCH`, then `/n/netscratch`.
+Reports quota and usage for your scratch path, then restates the site's purge
+policy: how long files survive there, and that scratch is not backed up. The path
+and the purge age both come from `[storage]` in the site config, so a center with
+a 30-day scratch sees 30 days. PATH defaults to `$SCRATCH`, then the configured
+scratch path (`/n/netscratch` with the packaged Kempner profile).
 
 **Use cases**
-- Check how full your lab's netscratch allocation is.
-- Remember the 90-day auto-deletion before staging data there.
+- Check how full your lab's scratch allocation is.
+- Remember the auto-deletion age before staging data there.
 
 **Inputs**
-- `PATH`: Scratch path (default: `$SCRATCH`, else `/n/netscratch`).
+- `PATH`: Scratch path (default: `$SCRATCH`, else the site's scratch path).
 
 ## `storage lfs-stripe PATH [-c COUNT] [-y]`
 

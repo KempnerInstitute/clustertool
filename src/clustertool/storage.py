@@ -76,16 +76,19 @@ def _percent(value: float, cap: float, cap_text: str) -> str:
 def parse_quota_row(output: str) -> tuple[str, str, str, str] | None:
     """Parse FASRC quota output into (used, quota, disk_percent, files_percent).
 
-    Handles the 5-column NFS shape and the 9-column Lustre shape, reading the
-    first data row (a line for a filesystem path). Returns None when none is
-    present.
+    Reads the first data row, which is a line starting with a filesystem path in
+    either the 5-column VAST shape or the 9-column Lustre shape. Rows of any
+    other width are ignored, so the df table the quota tool prints for a
+    filesystem it does not track yields None rather than a misread quota.
 
     The Lustre shape carries a soft quota and a hard limit. The effective limit
     is the soft quota when it is set, and the hard limit otherwise.
     """
     for line in output.splitlines():
         fields = line.split()
-        if len(fields) < 5 or not fields[0].startswith("/"):
+        if not fields or not fields[0].startswith("/"):
+            continue
+        if len(fields) != 5 and len(fields) < 9:
             continue
         used = fields[1]
         if len(fields) >= 9:
