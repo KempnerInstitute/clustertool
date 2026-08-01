@@ -116,6 +116,11 @@ Show a job's stdout and stderr paths, or tail its output (via `scontrol`). With
 `--follow`, tails the stdout file live. Interactive jobs have no output file, and
 only running or recent jobs are in `scontrol`.
 
+A job array writes one file per element, so name an element (`12345_0`) rather
+than the array. Before any element starts, Slurm leaves the task id unfilled and
+the recorded path points at a file that will never exist; the command says so
+rather than tailing it.
+
 **Use cases**
 - Find where a job is writing its output.
 - Watch a running job's log in real time.
@@ -126,7 +131,13 @@ only running or recent jobs are in `scontrol`.
 
 ## `jobs script JOBID`
 
-Print the batch script a job was submitted with (via `sacct --batch-script`).
+Print the batch script a job was submitted with.
+
+Reads the accounting record first, which needs the cluster to store scripts
+(`AccountingStoreFlags=job_script` in `slurm.conf`), and falls back to asking the
+controller with `scontrol write batch_script`. The controller still holds the
+script for a queued or running job, including an array element that has not
+started and so has no accounting record yet.
 
 **Use cases**
 - Recover or reproduce exactly how a job was submitted.
