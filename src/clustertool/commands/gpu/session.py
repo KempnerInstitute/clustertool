@@ -10,16 +10,21 @@ from clustertool.grouping import keywords
 
 
 def _jupyter_command(port: int) -> list[str]:
-    """Return a bash command that prints an SSH tunnel and launches Jupyter Lab."""
+    """Return an srun command that launches Jupyter Lab on the allocated node.
+
+    srun is required: salloc runs a command it is given on the submitting host,
+    so a bare command would start the notebook on the login node while the GPU
+    sat idle. Binding to the node's own hostname keeps it off other interfaces.
+    """
     user = os.environ.get("USER", "")
     login_host = socket.gethostname()
     tunnel = f"ssh -N -L {port}:$(hostname):{port} {user}@{login_host}"
     inner = (
         f'echo "From your laptop, run: {tunnel}"; '
         f'echo "then open the http://127.0.0.1:{port}/ URL printed below"; '
-        f"exec jupyter lab --no-browser --ip=0.0.0.0 --port={port}"
+        f'exec jupyter lab --no-browser --ip="$(hostname)" --port={port}'
     )
-    return ["bash", "-c", inner]
+    return ["srun", "--pty", "bash", "-c", inner]
 
 
 @keywords("shell", "salloc", "srun", "notebook", "jupyter", "devshell")
@@ -53,8 +58,9 @@ def session(
     GPU_TYPE selects the base partition, and the session requests one GPU plus
     the CPU and memory that partition enforces per GPU. Drops you into a shell
     on the node; exit it (or let the time limit lapse) to release the
-    allocation. With --jupyter it launches Jupyter Lab on the node instead and
-    prints the SSH tunnel to reach it from your laptop.
+    allocation. With --jupyter it runs Jupyter Lab on the allocated node through
+    srun instead, bound to that node, and prints the SSH tunnel to reach it from
+    your laptop.
 
     Extra arguments are forwarded to salloc after these defaults, so you can
     override or add any salloc flag (salloc uses the last value), for example

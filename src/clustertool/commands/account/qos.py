@@ -22,7 +22,7 @@ _LONG_FORMAT = (
     "--long",
     "long_format",
     is_flag=True,
-    help="Show the full field set (GrpJobs, Flags, Preempt, UsageFactor, ...).",
+    help="Show the full field set (MaxJobsPU, MaxSubmitPU, Flags, Preempt, UsageFactor).",
 )
 def qos(name_filter: str | None, long_format: bool) -> None:
     """List QoS definitions and their limits (via sacctmgr).

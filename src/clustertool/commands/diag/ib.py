@@ -9,9 +9,7 @@ from clustertool.grouping import admin, keywords
 
 _SSH_OPTS = [
     "-o",
-    "StrictHostKeyChecking=no",
-    "-o",
-    "UserKnownHostsFile=/dev/null",
+    "StrictHostKeyChecking=accept-new",
     "-o",
     "LogLevel=ERROR",
     "-o",

@@ -44,19 +44,35 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return result
 
 
+class ConfigError(Exception):
+    """Raised when a site config file is named but cannot be used."""
+
+
 def _discover() -> Path | None:
-    """Return the first existing site config file, or None for the default."""
-    candidates = []
+    """Return the first existing site config file, or None for the default.
+
+    A path given in the environment is an explicit request, so a missing file
+    there is an error rather than a silent fall back to the packaged default.
+    """
     env = os.environ.get(ENV_VAR)
     if env:
-        candidates.append(Path(env))
-    candidates += [USER_PATH, SYSTEM_PATH]
-    return next((path for path in candidates if path.is_file()), None)
+        path = Path(env)
+        if not path.is_file():
+            raise ConfigError(f"{ENV_VAR} points at {env}, which is not a file")
+        return path
+    return next((path for path in (USER_PATH, SYSTEM_PATH) if path.is_file()), None)
 
 
 def load_file(path) -> dict:
     """Return the packaged default deep-merged with the config file at path."""
-    override = tomllib.loads(Path(path).read_text(encoding="utf-8"))
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except OSError as exc:
+        raise ConfigError(f"cannot read site config {path}: {exc}") from exc
+    try:
+        override = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as exc:
+        raise ConfigError(f"site config {path} is not valid TOML: {exc}") from exc
     return _deep_merge(_packaged_default(), override)
 
 

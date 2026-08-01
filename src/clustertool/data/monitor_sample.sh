@@ -17,15 +17,15 @@ declare -A rx1 tx1 rx2 tx2
 declare -a ib_rates=()
 for ib in "${ib_ifaces[@]}"; do
   if ip link show "$ib" &>/dev/null; then
-    rx1[$ib]=$(ethtool -S "$ib" 2>/dev/null | awk '/(^|[[:space:]])rx[^[:space:]]*bytes([[:space:]]|:)/ {sum+=$2} END{if (sum!="") print sum}')
-    tx1[$ib]=$(ethtool -S "$ib" 2>/dev/null | awk '/(^|[[:space:]])tx[^[:space:]]*bytes([[:space:]]|:)/ {sum+=$2} END{if (sum!="") print sum}')
+    rx1[$ib]=$(ethtool -S "$ib" 2>/dev/null | awk '$1=="rx_bytes:" {print $2}')
+    tx1[$ib]=$(ethtool -S "$ib" 2>/dev/null | awk '$1=="tx_bytes:" {print $2}')
   fi
 done
 sleep 1
 for ib in "${ib_ifaces[@]}"; do
   if [[ -n "${rx1[$ib]:-}" && -n "${tx1[$ib]:-}" ]]; then
-    rx2[$ib]=$(ethtool -S "$ib" 2>/dev/null | awk '/(^|[[:space:]])rx[^[:space:]]*bytes([[:space:]]|:)/ {sum+=$2} END{if (sum!="") print sum}')
-    tx2[$ib]=$(ethtool -S "$ib" 2>/dev/null | awk '/(^|[[:space:]])tx[^[:space:]]*bytes([[:space:]]|:)/ {sum+=$2} END{if (sum!="") print sum}')
+    rx2[$ib]=$(ethtool -S "$ib" 2>/dev/null | awk '$1=="rx_bytes:" {print $2}')
+    tx2[$ib]=$(ethtool -S "$ib" 2>/dev/null | awk '$1=="tx_bytes:" {print $2}')
     if [[ -n "${rx2[$ib]}" && -n "${tx2[$ib]}" ]]; then
       delta=$(( (rx2[$ib] - rx1[$ib]) + (tx2[$ib] - tx1[$ib]) ))
       (( delta < 0 )) && delta=0

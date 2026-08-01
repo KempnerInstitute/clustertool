@@ -18,6 +18,9 @@ from clustertool.grouping import ToolCommand, keywords
 def stats(jobids: tuple[str, ...]) -> None:
     """Show utilization for one or more jobs (via jobstats).
 
+    Reports named jobs one at a time. To sweep your recent jobs and rank them by
+    efficiency instead, use 'jobs scope'.
+
     \b
     Use cases:
       - Check a job's CPU, memory, and GPU utilization.

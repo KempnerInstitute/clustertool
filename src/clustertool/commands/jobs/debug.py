@@ -76,6 +76,7 @@ def debug(jobid: str) -> None:
     Reads the job's final state, exit code, time, and memory, scans the tail of
     its stdout for common error patterns, and prints a plain-English diagnosis
     with suggestions. Best for finished jobs; a running job may lack final data.
+    For a job that has not started yet, use 'jobs why' instead.
 
     \b
     Use cases:

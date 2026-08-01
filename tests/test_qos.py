@@ -1,5 +1,7 @@
 """Tests for the qos helper module."""
 
+import pytest
+
 from clustertool import qos
 
 
@@ -50,8 +52,30 @@ def test_holder_rows_partition_in_where(monkeypatch):
 
 
 def test_any_holders(monkeypatch):
-    monkeypatch.setattr(qos, "_run", lambda cmd: "odyssey|kempner_dev|alice|kempner_h100\n")
+    monkeypatch.setattr(
+        qos.process,
+        "probe",
+        lambda cmd, timeout=None: (0, "odyssey|kempner_dev|alice|kempner_h100\n", ""),
+    )
     assert qos.any_holders("q") == ["odyssey|kempner_dev|alice|kempner_h100"]
+
+
+def test_any_holders_raises_when_the_query_fails(monkeypatch):
+    """An empty result is permission to delete, so a failed read must not look empty."""
+    monkeypatch.setattr(qos.process, "probe", lambda cmd, timeout=None: (1, "", "slurmdbd down"))
+    with pytest.raises(qos.CommandError):
+        qos.any_holders("q")
+
+
+def test_partitions_referencing_finds_default_and_allowed(monkeypatch):
+    out = (
+        "PartitionName=gpu AllowQos=ALL QoS=base_caps State=UP\n"
+        "PartitionName=cpu AllowQos=other,base_caps State=UP\n"
+        "PartitionName=idle AllowQos=ALL State=UP\n"
+    )
+    monkeypatch.setattr(qos.process, "probe", lambda cmd, timeout=None: (0, out, ""))
+    assert qos.partitions_referencing("base_caps") == ["cpu", "gpu"]
+    assert qos.partitions_referencing("absent") == []
 
 
 def test_build_limit_specs_all():

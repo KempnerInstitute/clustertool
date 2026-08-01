@@ -35,11 +35,20 @@ def resume(nodes: tuple[str, ...], partition: str | None, yes: bool) -> None:
       -y, --yes        Skip the confirmation prompt.
     """
     targets = list(nodes)
-    if partition:
-        targets += slurm.drained_nodes(partition)
+    swept = slurm.drained_nodes(partition) if partition else []
+    targets += [name for name, _, _ in swept]
     if not targets:
         raise click.UsageError("Give one or more NODEs, or --partition.")
     nodelist = ",".join(targets)
+    if swept:
+        click.echo(f"Drained nodes in {partition}:")
+        for name, state, reason in swept:
+            note = " (not responding)" if state.endswith("*") else ""
+            click.echo(f"  {name:<20} {state:<12}{note}  {reason or '-'}")
+        click.echo(
+            "Resuming a node whose reason is unresolved puts it straight back "
+            "into service, where it can start failing jobs again."
+        )
     if not yes:
         click.confirm(f"Resume {len(targets)} node(s): {nodelist}?", abort=True)
     code = process.stream(["scontrol", "update", f"NodeName={nodelist}", "State=RESUME"])

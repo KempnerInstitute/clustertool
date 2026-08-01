@@ -1,9 +1,13 @@
 """Tests for the site configuration layer."""
 
+import pathlib
+import re
+import sys
+
 import pytest
 from click.testing import CliRunner
 
-from clustertool import site, slurm
+from clustertool import entry, site, slurm
 from clustertool.cli import main
 
 
@@ -92,3 +96,61 @@ def test_commands_honor_a_different_site(monkeypatch):
     assert result.exit_code == 0
     assert "alpha" in result.output
     assert "beta" in result.output
+
+
+def test_bad_toml_raises_config_error(tmp_path):
+    bad = tmp_path / "site.toml"
+    bad.write_text("not valid toml [[[\n")
+    with pytest.raises(site.ConfigError) as excinfo:
+        site.load_file(bad)
+    assert str(bad) in str(excinfo.value)
+
+
+def test_env_var_pointing_at_missing_file_is_an_error(tmp_path, monkeypatch):
+    monkeypatch.setenv(site.ENV_VAR, str(tmp_path / "absent.toml"))
+    with pytest.raises(site.ConfigError) as excinfo:
+        site.load()
+    assert site.ENV_VAR in str(excinfo.value)
+
+
+def test_unreadable_config_raises_config_error(tmp_path):
+    with pytest.raises(site.ConfigError):
+        site.load_file(tmp_path / "does-not-exist.toml")
+
+
+def test_entry_reports_config_error_without_traceback(tmp_path, monkeypatch):
+    bad = tmp_path / "site.toml"
+    bad.write_text("nope [[[\n")
+    monkeypatch.setenv(site.ENV_VAR, str(bad))
+    for name in [m for m in list(sys.modules) if m.startswith("clustertool.c")]:
+        monkeypatch.delitem(sys.modules, name, raising=False)
+    site._cache = None
+    with pytest.raises(SystemExit) as excinfo:
+        entry.run()
+    assert "not valid TOML" in str(excinfo.value)
+    site._cache = None
+
+
+def test_every_config_key_is_documented():
+    """Each key in the packaged default must appear in the config reference."""
+    root = pathlib.Path(__file__).resolve().parents[1]
+    doc = (root / "docs" / "configuration.md").read_text()
+    referenced = set(re.findall(r"`([a-z_]+)`", doc))
+
+    def leaves(table, prefix=""):
+        for key, value in table.items():
+            path = f"{prefix}{key}"
+            if isinstance(value, dict):
+                yield from leaves(value, f"{path}.")
+            else:
+                yield path
+
+    # [gpu_types] and [partitions.limits] are keyed by site-chosen names, so the
+    # table is documented rather than each entry.
+    by_site_name = ("gpu_types.", "partitions.limits.")
+    undocumented = [
+        path
+        for path in leaves(site._packaged_default())
+        if not path.startswith(by_site_name) and path.split(".")[-1] not in referenced
+    ]
+    assert undocumented == []

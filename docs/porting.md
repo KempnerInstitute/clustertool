@@ -45,10 +45,20 @@ keys you set change; the rest keep the packaged defaults. A minimal example:
     [gpu_types]
     a100 = "gpu"
 
+    [accounts]
+    roster_partition = "gpu"
+    lab_prefix = "lab_"
+
     [storage]
     path_prefix = "/scratch"
     scratch = "/scratch/tmp"
     scratch_purge_days = 30
+
+If you plan to use the admin `qos` commands, set the cluster they write to as
+well, because the default is the Kempner cluster name:
+
+    [qos]
+    cluster = "your-cluster-name"
 
 ## 3. Map or drop the site tools
 

@@ -25,6 +25,7 @@ lands, so `--help` never shows an empty group.
 | `nodes` | Node, partition, and reservation status |
 | `storage` | Filesystem quotas, usage, and striping |
 | `diag` | Diagnostics and benchmarks |
+| `qos` | QoS holders, and admin provisioning and assignment |
 
 ## Style rules
 

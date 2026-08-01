@@ -8,6 +8,7 @@ builder maps the tool's flags to sacctmgr TRES specs.
 import re
 
 from clustertool import process, site
+from clustertool.process import CommandError
 
 _run = process.run
 
@@ -76,8 +77,38 @@ def any_holders(qos_name: str) -> list[str]:
 
     A non-empty result means the QoS is still referenced and must not be
     deleted. Rows are the raw Cluster|Account|User|Partition lines.
+
+    Reads through probe so a failed query raises instead of returning nothing:
+    an empty result is what callers treat as permission to delete.
     """
-    return _show("assoc", "where", f"qos={qos_name}", "format=Cluster,Account,User,Partition")
+    cmd = ["sacctmgr", "-n", "-P", "show", "assoc", "where", f"qos={qos_name}"]
+    cmd.append("format=Cluster,Account,User,Partition")
+    code, out, err = process.probe(cmd)
+    if code != 0:
+        raise CommandError(f"could not check who holds QoS {qos_name}: {err.strip() or code}")
+    return [line for line in out.splitlines() if line]
+
+
+def partitions_referencing(qos_name: str) -> list[str]:
+    """Return partitions whose configuration names the QoS.
+
+    A partition can carry a QoS as its default (QoS=) or in its allowed set
+    (AllowQos=) without any association mentioning it, so an association query
+    alone will report such a QoS as unused.
+    """
+    code, out, err = process.probe(["scontrol", "show", "partition"])
+    if code != 0:
+        raise CommandError(f"could not read partitions: {err.strip() or code}")
+    found = []
+    name = None
+    for token in out.split():
+        key, _, value = token.partition("=")
+        if key == "PartitionName":
+            name = value
+        elif key in ("QoS", "AllowQos") and name:
+            if qos_name in [v.strip() for v in value.split(",")]:
+                found.append(name)
+    return sorted(set(found))
 
 
 def flatten_users(values: tuple[str, ...]) -> list[str]:

@@ -16,3 +16,10 @@ dist/
 .idea/
 .vscode/
 .DS_Store
+
+# Agent and working notes. These must stay ignored, not merely untracked:
+# hatchling builds the sdist from the working tree minus ignored paths, so an
+# unignored scratch file is published even though git never tracked it.
+.claude/
+bala-new-comments.md
+kempner-specific-commands.json

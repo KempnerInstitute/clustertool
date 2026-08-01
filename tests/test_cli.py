@@ -558,9 +558,9 @@ def test_storage_quota_user_full_path(monkeypatch):
     monkeypatch.setattr(
         process, "stream", lambda cmd, extra_env=None: captured.update(cmd=cmd) or 0
     )
-    result = CliRunner().invoke(main, ["storage", "quota", "/n/netscratch", "-u", "mmsh"])
+    result = CliRunner().invoke(main, ["storage", "quota", "/n/netscratch", "-u", "auser"])
     assert result.exit_code == 0
-    assert captured["cmd"] == ["quota", "-u", "mmsh", "/n/netscratch"]
+    assert captured["cmd"] == ["quota", "-u", "auser", "/n/netscratch"]
 
 
 def test_storage_quota_infer(monkeypatch):
@@ -652,7 +652,7 @@ def test_jobs_cancel_ids(monkeypatch):
 def test_jobs_cancel_all(monkeypatch):
     monkeypatch.setenv("USER", "alice")
     calls = _capture_stream(monkeypatch)
-    result = CliRunner().invoke(main, ["jobs", "cancel", "--all"])
+    result = CliRunner().invoke(main, ["jobs", "cancel", "--all", "-y"])
     assert result.exit_code == 0
     assert calls[0] == ["scancel", "-u", "alice"]
 
@@ -660,9 +660,32 @@ def test_jobs_cancel_all(monkeypatch):
 def test_jobs_cancel_pending(monkeypatch):
     monkeypatch.setenv("USER", "alice")
     calls = _capture_stream(monkeypatch)
-    result = CliRunner().invoke(main, ["jobs", "cancel", "--pending"])
+    result = CliRunner().invoke(main, ["jobs", "cancel", "--pending", "-y"])
     assert result.exit_code == 0
     assert calls[0] == ["scancel", "-u", "alice", "-t", "PENDING"]
+
+
+def test_jobs_cancel_all_prompts(monkeypatch):
+    monkeypatch.setenv("USER", "alice")
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "cancel", "--all"], input="y\n")
+    assert result.exit_code == 0
+    assert calls[0] == ["scancel", "-u", "alice"]
+
+
+def test_jobs_cancel_all_abort_cancels_nothing(monkeypatch):
+    monkeypatch.setenv("USER", "alice")
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "cancel", "--all"], input="n\n")
+    assert result.exit_code != 0
+    assert calls == []
+
+
+def test_jobs_cancel_ids_do_not_prompt(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "cancel", "333"])
+    assert result.exit_code == 0
+    assert calls[0] == ["scancel", "333"]
 
 
 def test_jobs_cancel_none_errors(monkeypatch):
@@ -783,7 +806,7 @@ def test_storage_lfs_stripe_get(monkeypatch):
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["storage", "lfs-stripe", "/n/holylfs06/x"])
     assert result.exit_code == 0
-    assert calls[0] == ["lfs", "getstripe", "/n/holylfs06/x"]
+    assert calls[0] == ["lfs", "getstripe", "-d", "/n/holylfs06/x"]
 
 
 def test_storage_lfs_stripe_set(monkeypatch):
@@ -887,6 +910,7 @@ def test_nodes_reservations(monkeypatch):
 
 
 def test_jobs_top(monkeypatch):
+    monkeypatch.setattr(slurm, "job_accounting", lambda j: {"state": "RUNNING"})
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "top", "123"])
     assert result.exit_code == 0
@@ -926,6 +950,7 @@ def test_jobs_log_missing(monkeypatch):
 
 
 def test_jobs_script(monkeypatch):
+    monkeypatch.setattr(slurm, "job_accounting", lambda j: {"state": "COMPLETED"})
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "script", "123"])
     assert result.exit_code == 0
@@ -976,6 +1001,7 @@ def test_jobs_setprio_alias(monkeypatch):
 
 
 def test_jobs_priorities(monkeypatch):
+    monkeypatch.setattr(slurm, "partition_nodes", lambda p: [("n1", "idle")])
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "priorities", "kempner_h100"])
     assert result.exit_code == 0
@@ -998,7 +1024,9 @@ def test_nodes_resume_explicit(monkeypatch):
 
 
 def test_nodes_resume_partition(monkeypatch):
-    monkeypatch.setattr(slurm, "drained_nodes", lambda p: ["n3", "n4"])
+    monkeypatch.setattr(
+        slurm, "drained_nodes", lambda p: [("n3", "drained", "GPU error"), ("n4", "draining", "")]
+    )
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["nodes", "resume", "-p", "kempner_requeue", "-y"])
     assert result.exit_code == 0
@@ -1947,6 +1975,7 @@ def test_qos_delete_held(monkeypatch):
 def test_qos_delete_dry_run(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
     monkeypatch.setattr(qos, "any_holders", lambda name: [])
+    monkeypatch.setattr(qos, "partitions_referencing", lambda name: [])
     ran = []
     monkeypatch.setattr(process, "probe", lambda cmd: ran.append(cmd) or (0, "", ""))
     result = CliRunner().invoke(main, ["qos", "delete", "kemp"])
@@ -1958,6 +1987,7 @@ def test_qos_delete_dry_run(monkeypatch):
 def test_qos_execute_non_tty_requires_yes(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
     monkeypatch.setattr(qos, "any_holders", lambda name: [])
+    monkeypatch.setattr(qos, "partitions_referencing", lambda name: [])
     ran = []
     monkeypatch.setattr(process, "probe", lambda cmd: ran.append(cmd) or (0, "", ""))
     result = CliRunner().invoke(main, ["qos", "delete", "kemp", "--execute"], input="y\n")
@@ -2011,6 +2041,7 @@ def test_qos_execute_stops_after_failure(monkeypatch):
 def test_qos_execute_reports_failure(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
     monkeypatch.setattr(qos, "any_holders", lambda name: [])
+    monkeypatch.setattr(qos, "partitions_referencing", lambda name: [])
     monkeypatch.setattr(process, "probe", lambda cmd: (1, "", "sacctmgr: boom"))
     result = CliRunner().invoke(main, ["qos", "delete", "kemp", "--execute", "--yes"])
     assert result.exit_code == 1
@@ -2081,6 +2112,8 @@ def test_qos_revoke_dry_run(monkeypatch):
 
 def test_qos_retire_appends_delete(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partitions_referencing", lambda name: [])
+    monkeypatch.setattr(qos, "any_holders", lambda name: [])
     monkeypatch.setattr(qos, "revoke_targets_plan", lambda *a, **k: [])
     result = CliRunner().invoke(main, ["qos", "retire", "kemp", "-p", "kempner_h100"])
     assert result.exit_code == 0
@@ -2342,3 +2375,65 @@ def test_diag_ib_verify_no_golden(tmp_path):
     )
     assert result.exit_code == 3
     assert "no golden" in result.output
+
+
+def test_jobs_why_missing_job_errors(monkeypatch):
+    monkeypatch.setattr(process, "run", lambda cmd, input_text=None: "")
+    _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "why", "999999999"])
+    assert result.exit_code != 0
+    assert "not in the queue" in result.output
+
+
+def test_jobs_priorities_unknown_partition_errors(monkeypatch):
+    monkeypatch.setattr(slurm, "partition_nodes", lambda p: [])
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "priorities", "nosuch"])
+    assert result.exit_code != 0
+    assert "does not exist" in result.output
+    assert calls == []
+
+
+def test_jobs_script_missing_job_errors(monkeypatch):
+    monkeypatch.setattr(slurm, "job_accounting", lambda j: {})
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "script", "999999999"])
+    assert result.exit_code != 0
+    assert calls == []
+
+
+def test_jobs_top_missing_job_errors(monkeypatch):
+    monkeypatch.setattr(slurm, "job_accounting", lambda j: {})
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "top", "999999999"])
+    assert result.exit_code != 0
+    assert calls == []
+
+
+def test_qos_delete_refuses_a_partition_referenced_qos(monkeypatch):
+    """A QoS named in partition config holds real limits even with no association."""
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "any_holders", lambda name: [])
+    monkeypatch.setattr(qos, "partitions_referencing", lambda name: ["gpu", "gpu_big"])
+    result = CliRunner().invoke(main, ["qos", "delete", "base_caps", "--execute", "--yes"])
+    assert result.exit_code != 0
+    assert "gpu, gpu_big" in result.output
+
+
+def test_qos_retire_refuses_a_partition_referenced_qos(monkeypatch):
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partitions_referencing", lambda name: ["gpu"])
+    result = CliRunner().invoke(main, ["qos", "retire", "base_caps", "-p", "all", "-x", "-y"])
+    assert result.exit_code != 0
+    assert "gpu" in result.output
+
+
+def test_qos_retire_refuses_when_holders_are_outside_the_sweep(monkeypatch):
+    """Revoking nothing while holders remain must not still delete the QoS."""
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partitions_referencing", lambda name: [])
+    monkeypatch.setattr(qos, "revoke_targets_plan", lambda *a, **k: [])
+    monkeypatch.setattr(qos, "any_holders", lambda name: ["odyssey|lab|bob|"])
+    result = CliRunner().invoke(main, ["qos", "retire", "kemp", "-p", "kempner_h100", "-x", "-y"])
+    assert result.exit_code != 0
+    assert "does not cover" in result.output

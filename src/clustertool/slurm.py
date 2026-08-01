@@ -73,13 +73,19 @@ def partition_gpu_util(partition: str) -> tuple[int, int, int, int, float]:
     return total, down, available, used, percent
 
 
-def drained_nodes(partition: str) -> list[str]:
-    """Return the names of drained or draining nodes in a partition."""
+def drained_nodes(partition: str) -> list[tuple[str, str, str]]:
+    """Return (name, state, reason) for the drained or draining nodes in a partition.
+
+    A trailing star on the state means the node is not responding. Those are
+    reported with everything else so a caller can show the operator what a sweep
+    would touch, rather than resuming a broken node blind.
+    """
     result = []
-    for line in _run(["sinfo", "-h", "-N", "-o", "%N %T", "-p", partition]).splitlines():
-        parts = line.split()
-        if len(parts) == 2 and "drain" in parts[1].lower():
-            result.append(parts[0])
+    out = _run(["sinfo", "-h", "-N", "-o", "%N|%T|%E", "-p", partition])
+    for line in out.splitlines():
+        parts = line.split("|")
+        if len(parts) == 3 and "drain" in parts[1].lower():
+            result.append((parts[0].strip(), parts[1].strip(), parts[2].strip()))
     return result
 
 
@@ -438,7 +444,20 @@ def job_output_tail(jobid: str, lines: int = 200) -> str:
         return ""
 
 
-_BAD_NODE_STATES = ("DOWN", "DRAIN", "MAINT", "NOT_RESPONDING")
+# A node is only schedulable if none of these appear in its state. RESERVED,
+# PLANNED and COMPLETING nodes have free resources that a new job cannot use.
+_BAD_NODE_STATES = (
+    "DOWN",
+    "DRAIN",
+    "MAINT",
+    "NOT_RESPONDING",
+    "RESERVED",
+    "PLANNED",
+    "COMPLETING",
+    "FAIL",
+    "POWER",
+    "INVAL",
+)
 
 
 def _node_kv(line: str) -> dict[str, str]:

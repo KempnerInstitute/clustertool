@@ -152,11 +152,11 @@ def test_partition_accounts(monkeypatch):
 
 
 def test_user_fullnames(monkeypatch):
-    out = "mmsh:*:1:2:Max Shad:/home:/bin/bash\nebatty:*:3:4:Eleanor Batty:/h:/bin/bash\n"
+    out = "auser:*:1:2:A User:/home:/bin/bash\nbuser:*:3:4:B Example User:/h:/bin/bash\n"
     monkeypatch.setattr(slurm, "_run", lambda cmd: out)
-    assert slurm.user_fullnames(["mmsh", "ebatty"]) == {
-        "mmsh": "Max_Shad",
-        "ebatty": "Eleanor_Batty",
+    assert slurm.user_fullnames(["auser", "buser"]) == {
+        "auser": "A_User",
+        "buser": "B_Example_User",
     }
 
 

@@ -225,11 +225,11 @@ users, and incident nodes.
 - `--since` / `--until`: Explicit window, `YYYY-mm-ddTHH:MM:SS`.
 - `-n, --top`: Rows to show per ranking (default 10).
 
-## `jobs cancel [JOBID...] [--all] [--pending]`
+## `jobs cancel [JOBID...] [--all] [--pending] [-y]`
 
-Cancel jobs (via `scancel`). Pass explicit ids, or use `--all` / `--pending` to
-cancel your own jobs in bulk. This is a direct wrapper: it cancels immediately,
-exactly as `scancel` does.
+Cancel jobs (via `scancel`). Naming job ids cancels them immediately, exactly as
+`scancel` does. The bulk forms `--all` and `--pending` act on every job you own
+rather than a list you named, so they prompt for confirmation unless `-y`.
 
 **Use cases**
 - Kill a specific job or list of jobs.
@@ -239,6 +239,7 @@ exactly as `scancel` does.
 - `JOBID...`: One or more job ids to cancel.
 - `--all`: Cancel every job you own.
 - `--pending`: Cancel only your pending jobs.
+- `-y, --yes`: Skip the confirmation prompt.
 
 ## `jobs set-priority JOBID PRIORITY [-y]`
 

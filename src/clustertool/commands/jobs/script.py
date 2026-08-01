@@ -2,7 +2,7 @@
 
 import click
 
-from clustertool import completion, process
+from clustertool import completion, process, slurm
 from clustertool.grouping import keywords
 
 
@@ -20,6 +20,8 @@ def script(jobid: str) -> None:
     Inputs:
       JOBID  A Slurm job id.
     """
+    if not slurm.job_accounting(jobid):
+        raise click.ClickException(f"No accounting record for job {jobid}.")
     code = process.stream(["sacct", "-j", jobid, "--batch"])
     if code:
         raise SystemExit(code)

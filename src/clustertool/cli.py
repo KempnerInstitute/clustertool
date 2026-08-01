@@ -5,7 +5,6 @@ from typing import ClassVar
 
 import click
 
-from clustertool import site
 from clustertool.commands.account import account
 from clustertool.commands.completion import completion
 from clustertool.commands.diag import diag
@@ -54,7 +53,7 @@ def _register_plugins(group: click.Group) -> None:
 @click.group(
     cls=ClusterToolGroup,
     context_settings={"help_option_names": ["-h", "--help"]},
-    help=f"{site.site_name()}: a single umbrella for cluster scripts.",
+    help="One umbrella CLI for a Slurm cluster: jobs, GPUs, nodes, storage, and health checks.",
 )
 @click.version_option(version=_version(), prog_name="clustertool")
 def main() -> None:

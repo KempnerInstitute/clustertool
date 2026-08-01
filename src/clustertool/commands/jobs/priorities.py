@@ -2,7 +2,7 @@
 
 import click
 
-from clustertool import completion, process
+from clustertool import completion, process, slurm
 from clustertool.grouping import keywords
 
 
@@ -23,6 +23,8 @@ def priorities(partition: str) -> None:
     Inputs:
       PARTITION  Slurm partition name (e.g. kempner_h100).
     """
+    if not slurm.partition_nodes(partition):
+        raise click.ClickException(f"partition '{partition}' does not exist, or has no nodes.")
     code = process.stream(["sprio", "-p", partition])
     if code:
         raise SystemExit(code)

@@ -14,6 +14,8 @@ def why(jobid: str) -> None:
 
     Prints the job state and pending reason (from squeue), then the priority
     factor breakdown (from sprio): fairshare, age, partition, QoS, and so on.
+    This is for a job that has not started yet. For one that already failed,
+    use 'jobs debug'.
 
     \b
     Use cases:
@@ -25,8 +27,12 @@ def why(jobid: str) -> None:
       JOBID  A Slurm job id.
     """
     reason = process.run(["squeue", "-j", jobid, "-h", "-o", "%T %r"]).strip()
-    if reason:
-        click.echo(f"State and reason: {reason}")
+    if not reason:
+        raise click.ClickException(
+            f"job {jobid} is not in the queue. It may have finished, in which case "
+            f"'jobs debug {jobid}' explains how it ended."
+        )
+    click.echo(f"State and reason: {reason}")
     code = process.stream(["sprio", "-j", jobid, "-l"])
     if code:
         raise SystemExit(code)
