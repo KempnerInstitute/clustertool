@@ -18,22 +18,31 @@ inputs.
 
 ## Requirements
 
-- [uv](https://docs.astral.sh/uv/) for environment and dependency management.
-- Run on a cluster login node. Commands shell out to the host's own tools:
-  Slurm (`squeue`, `sacct`, `sacctmgr`, `sinfo`, `sshare`, `sprio`, `sstat`,
-  `sdiag`, `scontrol`, `salloc`, `sbatch`, `scancel`, `srun`), the FASRC wrappers
-  (`spart`, `stotal`, `seff-account`, `showq`, `lsload`) and `quota` tool, `lfs`,
-  `jobstats`, and `getent`. A command only needs the tools it uses.
-- Some commands need more: the live monitors, `diag ib`, and `gpu pulse --node`
-  need passwordless `ssh` to nodes running `nvidia-smi`; `gpu nvtop` needs `tmux`
-  and `nvtop`;
-  `diag nvlink` needs `nvcc` and NCCL; `diag nccl` needs `torch`;
-  `storage home --ncdu` needs `ncdu`. `jobs scope` uses the bundled `jobscope`
-  tool (installed automatically); its GPU views also read a Prometheus endpoint,
-  auto-discovered from the cluster's jobstats install. `gpu pulse` uses the
-  bundled `kempnerpulse`; run it on a GPU node, where by default it reads GPU
-  counters via `dcgmi` (or a dcgm-exporter Prometheus endpoint with `--backend
-  prometheus`).
+**To install:** Python 3.10 or newer, plus one of [uv](https://docs.astral.sh/uv/)
+(used throughout this README), `pipx`, or `pip`.
+
+**To run:** a login node of a Slurm cluster. Nothing is computed locally. Every
+command shells out to the host's own tools and reports what that cluster says, so
+a command needs only the tools it actually calls:
+
+- **Slurm**, for most commands: `squeue`, `sacct`, `sacctmgr`, `sinfo`, `sshare`,
+  `sprio`, `sstat`, `sdiag`, `scontrol`, `salloc`, `sbatch`, `scancel`, `srun`.
+- **Site tools**, for the commands that wrap them. At the Kempner Institute these
+  are the FASRC wrappers `showq`, `spart`, `lsload`, `stotal` and `seff-account`,
+  plus `jobstats` and `quota`. A command whose tool is missing hides itself from
+  help instead of failing, and another site can point each one at its own
+  equivalent (see [Configuration](#configuration)). The Lustre and account
+  membership commands call `lfs` and `getent` directly.
+- **Extras**, for a handful of commands: passwordless `ssh` to compute nodes
+  running `nvidia-smi` (the live monitors, `diag ib`, `gpu pulse --node`), `tmux`
+  and `nvtop` (`gpu nvtop`), `nvcc` and NCCL (`diag nvlink`), `torch`
+  (`diag nccl`), and `ncdu` (`storage home --ncdu`).
+
+Two tools ship with clustertools and install automatically. `jobs scope` uses
+`jobscope`, whose GPU views also read a Prometheus endpoint discovered from the
+cluster's `jobstats` install. `gpu pulse` uses `kempnerpulse`; run it on a GPU
+node, where it reads counters through `dcgmi`, or from a dcgm-exporter Prometheus
+endpoint with `--backend prometheus`.
 
 ## Install
 
