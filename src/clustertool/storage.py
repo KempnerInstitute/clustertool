@@ -87,6 +87,19 @@ def _percent(value: float, cap: float, cap_text: str) -> str:
     return f"{100 * value / cap:.0f}%"
 
 
+_QUOTA_VALUE = re.compile(r"^(?:-|\*?[0-9.]+[KkMmGgTtPpEeZzYy]?i?\*?)$")
+"""A used, quota or limit cell. lfs marks a value that is over quota with a star."""
+
+
+def _is_quota_values(fields: list[str]) -> bool:
+    """Return True if the line holds a quota row's numbers rather than prose.
+
+    lfs prints notes of its own between rows, such as a default-quota message,
+    and joining one to a wrapped mount point would invent a row.
+    """
+    return bool(fields) and _QUOTA_VALUE.match(fields[0]) is not None
+
+
 def _data_rows(output: str) -> list[list[str]]:
     """Return the quota data rows, rejoining a filesystem name that wrapped its line.
 
@@ -99,10 +112,12 @@ def _data_rows(output: str) -> list[list[str]]:
         fields = line.split()
         if not fields:
             continue
-        if pending:
+        if pending and _is_quota_values(fields):
             rows.append([pending, *fields])
             pending = ""
-        elif len(fields) == 1 and fields[0].startswith("/"):
+            continue
+        pending = ""
+        if len(fields) == 1 and fields[0].startswith("/"):
             pending = fields[0]
         elif fields[0].startswith("/"):
             rows.append(fields)

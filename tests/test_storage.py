@@ -139,3 +139,23 @@ def test_parse_quota_row_unreadable_file_count_is_not_zero_percent():
     """A suffixed count must read as unknown, not as no files used."""
     out = "/n/netscratch 1.0Ti 50.0Ti 3099k 100000000\n"
     assert storage.parse_quota_row(out) == ("1.0Ti", "50.0Ti", "2%", "-")
+
+
+def test_data_rows_rejoins_a_wrapped_mount_point():
+    """lfs puts the mount point on its own line once it outgrows the column."""
+    out = "/n/very/long/path\n        45.31T 75T 75T - 16119595 55574528 55574528 -\n"
+    assert storage._data_rows(out) == [
+        ["/n/very/long/path", "45.31T", "75T", "75T", "-", "16119595", "55574528", "55574528", "-"]
+    ]
+
+
+def test_data_rows_does_not_join_a_note_to_a_wrapped_mount_point():
+    """lfs prints notes of its own between rows, and joining one would invent a row."""
+    out = "/n/very/long/path\nuid 1 is using default block quota setting\n"
+    assert storage._data_rows(out) == []
+
+
+def test_data_rows_keeps_a_value_marked_over_quota():
+    """lfs marks a value that is over its quota with a trailing star."""
+    out = "/n/very/long/path\n        45.31T* 75T 75T none 1 2 3 -\n"
+    assert storage._data_rows(out)[0][1] == "45.31T*"
