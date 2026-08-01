@@ -1,6 +1,7 @@
 """Tests for site tool configuration and auto-hiding of tool-backed commands."""
 
 import click
+import pytest
 from click.testing import CliRunner
 
 from clustertool import process, site
@@ -18,6 +19,7 @@ def test_tool_defaults():
     assert site.tool("quota") == "quota"
 
 
+@pytest.mark.real_site_tools
 def test_tool_available(monkeypatch):
     monkeypatch.setattr(site, "tool", lambda key: "sh")
     assert site.tool_available("queue") is True

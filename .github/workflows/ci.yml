@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: gate (python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: ${{ matrix.python-version }}
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Check formatting
+        run: uv run ruff format --check .
+
+      - name: Test
+        run: uv run pytest -q
+
+      - name: Check the CLI loads and every command resolves
+        run: |
+          uv run clustertool --version
+          uv run clustertool --help
+          uv run python - <<'PY'
+          import click
+          from clustertool.cli import main
+          count = 0
+          def walk(group, prefix=""):
+              global count
+              for name in sorted(group.commands):
+                  command = group.commands[name]
+                  if isinstance(command, click.Group):
+                      walk(command, f"{prefix}{name} ")
+                  else:
+                      assert command.get_short_help_str(80), f"{prefix}{name} has no help"
+                      count += 1
+          walk(main)
+          print(f"{count} commands resolved")
+          assert count >= 75, f"expected at least 75 commands, found {count}"
+          PY
+
+  build:
+    name: build the wheel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Build
+        run: uv build
+
+      - name: Check the bundled data payloads made it into the wheel
+        run: |
+          python3 -m zipfile -l dist/*.whl | tee /tmp/wheel.txt
+          for payload in monitor_sample.sh nccl_fsdp_test.py nvlink_saturate_forever.cu; do
+            grep -q "clustertool/data/$payload" /tmp/wheel.txt \
+              || { echo "missing from wheel: $payload"; exit 1; }
+          done
