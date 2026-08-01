@@ -56,7 +56,7 @@ names the host tool each command shells out to.
 | `jobs hold JOBID...` | user | scontrol | Prevent pending jobs from starting. |
 | `jobs release JOBID...` | user | scontrol | Release held jobs. |
 | `jobs requeue JOBID...` | user | scontrol | Cancel and re-queue jobs. |
-| `jobs set-priority JOBID PRIORITY` | admin | scontrol update | Set (pin) a job's scheduling priority (alias: setprio). |
+| `jobs set-priority JOBID PRIORITY [-y]` | admin | scontrol update | Set (pin) a job's scheduling priority (alias: setprio). |
 | `jobs submit [ARG...]` | user | sbatch | Submit a batch job (passthrough to sbatch). |
 | `jobs new` | user | sbatch | Build (and optionally submit) a GPU sbatch script. |
 
@@ -95,7 +95,7 @@ names the host tool each command shells out to.
 | `storage home` | user | df, du, ncdu | Home directory usage; largest subdirectories with `--scan`. |
 | `storage vast-usage PATH -g GROUP` | user | quota | Per-user usage for a group on a VAST filesystem. |
 | `storage scratch [PATH]` | user | quota | Netscratch usage and the 90-day purge reminder. |
-| `storage lfs-stripe PATH [-c N]` | user | lfs | Show or set Lustre striping. |
+| `storage lfs-stripe PATH [-c N] [-y]` | user | lfs | Show or set Lustre striping (setting prompts). |
 | `storage lfs-inodes PATH` | user | lfs | Inode capacity and usage for a Lustre filesystem. |
 
 ## diag

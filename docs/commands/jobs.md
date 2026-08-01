@@ -240,13 +240,13 @@ exactly as `scancel` does.
 - `--all`: Cancel every job you own.
 - `--pending`: Cancel only your pending jobs.
 
-## `jobs set-priority JOBID PRIORITY`
+## `jobs set-priority JOBID PRIORITY [-y]`
 
 Set a job's scheduling priority (via `scontrol update`). Operator only: set by an
 operator the priority is fixed, overriding fairshare until the job runs. A job's
 own owner can only lower it, and the multifactor plugin keeps recomputing the
-value, so raise `Nice` instead to deprioritize your own job. Also available as
-`jobs setprio`.
+value, so raise `Nice` instead to deprioritize your own job. Prompts for
+confirmation unless `-y`. Also available as `jobs setprio`.
 
 **Use cases**
 - Boost a specific job ahead of the queue.
@@ -254,6 +254,7 @@ value, so raise `Nice` instead to deprioritize your own job. Also available as
 **Inputs**
 - `JOBID`: A Slurm job id.
 - `PRIORITY`: The integer priority to set.
+- `-y, --yes`: Skip the confirmation prompt.
 
 ## `jobs hold JOBID...`
 
