@@ -2,7 +2,7 @@
 
 import click
 
-from clustertool import completion, slurm
+from clustertool import completion, site, slurm
 from clustertool.grouping import keywords
 
 
@@ -64,31 +64,49 @@ def _one_lab(account: str) -> None:
         f"Base partitions - COUNT toward the {cap}-GPU account cap" if cap else "Base partitions"
     )
     outside = "additive (outside the cap)" if cap else "additive"
-    _section(base_title, account, slurm.BASE_PARTITIONS, in_cap=True, cap=cap)
-    _section(
-        f"Priority partitions - {outside}",
-        account,
-        slurm.priority_partitions(),
-        in_cap=False,
-        cap=cap,
-    )
-    _section(
-        f"{slurm.REQUEUE_PARTITION} - {outside}",
-        account,
-        [slurm.REQUEUE_PARTITION],
-        in_cap=False,
-        cap=cap,
-    )
+    found = [
+        _section(base_title, account, slurm.BASE_PARTITIONS, in_cap=True, cap=cap),
+        _section(
+            f"Priority partitions - {outside}",
+            account,
+            slurm.priority_partitions(),
+            in_cap=False,
+            cap=cap,
+        ),
+        _section(
+            f"{slurm.REQUEUE_PARTITION} - {outside}",
+            account,
+            [slurm.REQUEUE_PARTITION],
+            in_cap=False,
+            cap=cap,
+        ),
+    ]
+    if not any(found):
+        _suggest_prefixed(account)
 
 
-def _section(title: str, account: str, partitions, in_cap: bool, cap: int | None) -> None:
-    """Print one usage section for an account on a set of partitions."""
+def _suggest_prefixed(account: str) -> None:
+    """Point at the lab account when a bare name was given and found nothing.
+
+    A center can run an account alongside a prefixed one, so a report with no
+    usage anywhere is often the wrong name rather than an idle lab.
+    """
+    prefix = site.lab_account_prefix()
+    if not prefix or account.startswith(prefix):
+        return
+    sibling = f"{prefix}{account}"
+    if slurm.account_exists(sibling):
+        click.echo(f"note: {sibling} also exists. Did you mean 'gpu usage {sibling}'?")
+
+
+def _section(title: str, account: str, partitions, in_cap: bool, cap: int | None) -> int:
+    """Print one usage section for an account, returning the GPUs it found."""
     rows = slurm.gpu_rows(account, partitions)
     click.echo(f"== {title} ==")
     if not rows:
         click.echo("  (no running GPU jobs)")
         click.echo()
-        return
+        return 0
 
     by_user: dict[str, int] = {}
     by_partition: dict[str, int] = {}
@@ -120,3 +138,4 @@ def _section(title: str, account: str, partitions, in_cap: bool, cap: int | None
     else:
         click.echo(f"  ACCOUNT TOTAL: {total} GPU  (additive)")
     click.echo()
+    return total

@@ -106,9 +106,15 @@ def account_cap() -> int | None:
 
 
 def account_exists(account: str) -> bool:
-    """Return True if the Slurm account exists."""
+    """Return True if the Slurm account exists.
+
+    sacctmgr resolves an account name without regard to case, so the reply can
+    differ from what was asked for. Comparing exactly would then report a real
+    account as missing.
+    """
     out = _run(["sacctmgr", "-nP", "show", "account", account, "format=Account"])
-    return out.strip() == account
+    names = {line.strip().lower() for line in out.splitlines() if line.strip()}
+    return account.strip().lower() in names
 
 
 def account_members(account: str) -> list[str]:

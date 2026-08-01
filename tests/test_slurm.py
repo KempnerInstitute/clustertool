@@ -267,3 +267,15 @@ def test_default_account(monkeypatch):
     assert slurm.default_account("alice") == "kempner_dev"
     monkeypatch.setattr(slurm, "_run", lambda cmd: "\n")
     assert slurm.default_account("alice") == ""
+
+
+def test_account_exists_is_case_insensitive(monkeypatch):
+    """sacctmgr resolves names without regard to case, so the reply may differ."""
+    monkeypatch.setattr(slurm, "_run", lambda cmd: "kempner_dev\n")
+    assert slurm.account_exists("Kempner_Dev") is True
+    assert slurm.account_exists("kempner_dev") is True
+
+
+def test_account_exists_rejects_an_unrelated_reply(monkeypatch):
+    monkeypatch.setattr(slurm, "_run", lambda cmd: "other_acct\n")
+    assert slurm.account_exists("kempner_dev") is False
