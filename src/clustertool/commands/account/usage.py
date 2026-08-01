@@ -22,11 +22,12 @@ from clustertool.grouping import keywords
     help="Show efficiency histograms (seff-account) instead of usage hours.",
 )
 def usage(account: str | None, days: int, user: str | None, efficiency: bool) -> None:
-    """Report cumulative CPU/GPU/TRES-hours for an account or user (via stotal).
+    """Report cumulative CPU/GPU/TRES-hours for an account or user (via the site usage tool).
 
     Sums usage over the last --days. With --efficiency, show the seff-account
     efficiency summary instead. With an ACCOUNT, report that account (querying
-    accounts you do not belong to needs operator rights); otherwise report you.
+    accounts you do not belong to needs AdminLevel=Admin, root/SlurmUser, or
+    coordinator of the account); otherwise report you.
 
     \b
     Use cases:

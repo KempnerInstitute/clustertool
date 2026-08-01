@@ -424,12 +424,31 @@ def test_revoke_targets_plan_expands_all(monkeypatch):
 
 
 def test_account_limits_widens_the_qos_column_past_its_default(monkeypatch):
-    """sacctmgr truncates a column silently, so a long QoS list would lose entries."""
+    """sacctmgr clips at the stated width and marks the cut, so the value is unusable."""
     limits_cmd = importlib.import_module("clustertool.commands.account.limits")
 
     long_list = ",".join(f"qos_number_{i}" for i in range(12))
-    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, long_list + "\n", ""))
+    row = f"acct|user|part|{long_list}|normal|gres/gpu=1|\n"
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, row, ""))
     assert f"QOS%-{len(long_list)}" in limits_cmd._format("user=x")
+
+
+def test_account_limits_widens_a_typed_gres_limit(monkeypatch):
+    """A GRES name this cluster tracks is 53 characters, past the 26 wide default."""
+    limits_cmd = importlib.import_module("clustertool.commands.account.limits")
+
+    tres = "gres/gpu:nvidia_rtx_pro_6000_blackwell_server_edition=8"
+    row = f"acct|user|part|normal|normal|{tres}|\n"
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, row, ""))
+    assert f"GrpTRES%-{len(tres)}" in limits_cmd._format("user=x")
+
+
+def test_account_limits_shows_the_default_qos(monkeypatch):
+    """Which of several QoS a job gets without --qos is not derivable from the list."""
+    limits_cmd = importlib.import_module("clustertool.commands.account.limits")
+
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, "", ""))
+    assert "DefaultQOS" in limits_cmd._format("user=x")
 
 
 def test_account_limits_keeps_its_default_width_for_short_lists(monkeypatch):
@@ -440,7 +459,7 @@ def test_account_limits_keeps_its_default_width_for_short_lists(monkeypatch):
 
 
 def test_account_limits_falls_back_when_the_probe_fails(monkeypatch):
-    """A failed sizing query must not narrow the column below its default."""
+    """A failed sizing query must not narrow a column below its default."""
     limits_cmd = importlib.import_module("clustertool.commands.account.limits")
 
     monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (1, "", "boom"))

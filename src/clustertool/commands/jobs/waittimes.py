@@ -80,7 +80,8 @@ def wait_times(
     \b
     Inputs:
       -u, --user       User to report (default: current user).
-      -A, --account    Report an account (others' need operator rights).
+      -A, --account    Report an account (others' need AdminLevel=Admin,
+                       root/SlurmUser, or coordinator of it).
       -p, --partition  Report a partition.
       -d, --days       Window length in days (default 7).
       --since/--until  Explicit window, YYYY-mm-ddTHH:MM:SS.

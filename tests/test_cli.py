@@ -1784,9 +1784,19 @@ def test_account_limits_needs_a_user(monkeypatch):
     """An empty user= filter makes sacctmgr dump every association on the cluster."""
     monkeypatch.setenv("USER", "")
     calls = _capture_stream(monkeypatch)
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, "", ""))
     result = CliRunner().invoke(main, ["account", "limits"])
+    assert result.exit_code == 0
+    assert calls[0][3] == f"user={pwd.getpwuid(os.getuid()).pw_name}"
+
+
+def test_account_limits_rejects_an_empty_user(monkeypatch):
+    """A blank -u would otherwise widen the query to every association."""
+    calls = _capture_stream(monkeypatch)
+    monkeypatch.setattr(slurm, "user_exists", lambda u: False)
+    result = CliRunner().invoke(main, ["account", "limits", "-u", ""])
     assert result.exit_code != 0
-    assert "no user to look up" in result.output
+    assert "no such user" in result.output
     assert calls == []
 
 
@@ -2302,6 +2312,7 @@ def test_jobs_violators_rejects_a_zero_norm_flag(monkeypatch):
 def test_jobs_violators_rejects_a_zero_norm_from_the_site_config(monkeypatch):
     """A flag range cannot guard the policy path, which supplies the same divisor."""
     monkeypatch.setattr(slurm, "running_jobs_reqtres", lambda p: [("201", "eve", 8, 1, 1000)])
+    monkeypatch.setattr(slurm, "partition_nodes", lambda p: [("n1", "idle")])
     monkeypatch.setattr(slurm, "PARTITION_LIMITS", {"broken": (0, 0)})
     result = CliRunner().invoke(main, ["jobs", "violators", "broken"])
     assert result.exit_code != 0
@@ -2310,6 +2321,7 @@ def test_jobs_violators_rejects_a_zero_norm_from_the_site_config(monkeypatch):
 
 def test_jobs_violators_override(monkeypatch):
     monkeypatch.setattr(slurm, "running_jobs_reqtres", lambda p: [("201", "eve", 100, 2, 10000)])
+    monkeypatch.setattr(slurm, "partition_nodes", lambda p: [("n1", "idle")])
     result = CliRunner().invoke(
         main, ["jobs", "violators", "custom", "--cpus-per-gpu", "40", "--mem-per-gpu", "100000"]
     )
@@ -4190,3 +4202,14 @@ def test_job_accounting_counts_array_elements_not_rows(monkeypatch):
     assert info["element_count"] == 4
     assert info["states"] == {"RUNNING": 2, "PENDING": 2}
     assert info["first_element"] == "7_0"
+
+
+def test_jobs_violators_checks_the_partition_even_when_both_norms_are_given(monkeypatch):
+    """The existence check sat inside the branch that only ran when norms were missing."""
+    monkeypatch.setattr(slurm, "partition_nodes", lambda p: [])
+    monkeypatch.setattr(slurm, "running_jobs_reqtres", lambda p: [])
+    result = CliRunner().invoke(
+        main, ["jobs", "violators", "nope", "--cpus-per-gpu", "4", "--mem-per-gpu", "1000"]
+    )
+    assert result.exit_code != 0
+    assert "does not exist" in result.output

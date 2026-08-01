@@ -26,7 +26,9 @@ def violators(partition: str, cpus_per_gpu: int | None, mem_per_gpu: int | None)
 
     Norms default to the per-partition policy your site sets under
     [partitions.limits]. For a partition with no configured policy, pass
-    --cpus-per-gpu and --mem-per-gpu. Jobs with no GPUs are not evaluated.
+    --cpus-per-gpu and --mem-per-gpu. Jobs with no GPUs are not evaluated. The
+    partition is checked first whether or not norms were given, so a typo is an
+    error rather than a partition where nothing is over the norm.
 
     Memory is in MiB throughout, which is what Slurm reports and what --mem takes
     by default, so --mem=360G and --mem=368640 are the same request. The OVER
@@ -48,6 +50,8 @@ def violators(partition: str, cpus_per_gpu: int | None, mem_per_gpu: int | None)
       --cpus-per-gpu  CPU-per-GPU norm (default: per-partition policy).
       --mem-per-gpu   Memory-per-GPU norm in MiB (default: per-partition policy).
     """
+    if not slurm.partition_nodes(partition):
+        raise click.ClickException(f"partition '{partition}' does not exist, or has no nodes")
     default = slurm.PARTITION_LIMITS.get(partition)
     if cpus_per_gpu is None:
         cpus_per_gpu = default[0] if default else None
@@ -62,8 +66,6 @@ def violators(partition: str, cpus_per_gpu: int | None, mem_per_gpu: int | None)
             "the site config, or pass --cpus-per-gpu and --mem-per-gpu"
         )
     if cpus_per_gpu is None or mem_per_gpu is None:
-        if not slurm.partition_nodes(partition):
-            raise click.ClickException(f"partition '{partition}' does not exist, or has no nodes")
         known = ", ".join(sorted(slurm.PARTITION_LIMITS)) or "(none)"
         raise click.ClickException(
             f"no per-GPU policy configured for partition '{partition}'; partitions "

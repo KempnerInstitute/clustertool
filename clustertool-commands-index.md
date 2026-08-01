@@ -40,19 +40,19 @@ names the host tool each command shells out to.
 
 | Command | Scope | Wraps | Description |
 | --- | --- | --- | --- |
-| `jobs list` | user | squeue | Your queued and running jobs (`-t`, `-p`, `-A`, `--start`). |
-| `jobs queue PARTITION` | user | showq | A partition's pending jobs in priority order. |
+| `jobs list [-u USER]` | user | squeue, scontrol, sacctmgr | Your queued and running jobs (`-u`, `-t`, `-p`, `-A`, `--start`). |
+| `jobs queue PARTITION` | user | showq | A partition's whole queue, waiting jobs in priority order. |
 | `jobs show JOBID...` | user | scontrol | Live detail for one or more jobs, including the pending reason. |
 | `jobs why JOBID` | user | squeue, sprio | Why a job is pending, plus its priority factor breakdown. |
 | `jobs debug JOBID` | user | sacct, scontrol | Diagnose why a finished job failed, with a suggested fix. |
 | `jobs top JOBID` | user | sstat | Live resource use of a running job's steps. |
 | `jobs stats JOBID...` | user | jobstats | Utilization for one or more jobs. |
 | `jobs scope [ARG...]` | user | jobscope | Completed-job efficiency plus DCGM profiling (bundled jobscope). |
-| `jobs history` | user | sacct | Your recent finished jobs (`-d`, `-u`). |
+| `jobs history` | user | sacct | Your recent jobs, running or finished (`-d`, `-u`). |
 | `jobs log JOBID [-f]` | user | scontrol, sacct, tail | Show, or tail, a job's stdout/stderr. |
-| `jobs script JOBID` | user | sacct | The batch script a job was submitted with. |
-| `jobs priorities PARTITION` | user | sprio | Priority factors for all pending jobs in a partition. |
-| `jobs violators PARTITION` | user | squeue, scontrol | Running jobs over the per-GPU CPU/memory norm. |
+| `jobs script JOBID` | user | sacct, scontrol | The batch script a job was submitted with. |
+| `jobs priorities PARTITION` | user | sprio, sinfo | Priority factors for the eligible pending jobs in a partition. |
+| `jobs violators PARTITION` | user | scontrol, sinfo | Running jobs over the per-GPU CPU/memory norm. |
 | `jobs wait-times` | user | sacct | Submit-to-start wait distributions by partition, QOS, GPU count. |
 | `jobs failures` | user | sacct | Window failure post-mortem: rate and top exit codes, users, nodes. |
 | `jobs cancel [JOBID...] [-y]` | user | scancel | Cancel jobs; `--all` and `--pending` prompt first. |

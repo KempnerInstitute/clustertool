@@ -65,7 +65,8 @@ accounts compare siblings rather than the whole list.
 
 Report cumulative CPU/GPU/TRES-hours for an account or user over the last
 `--days` (via `stotal`). With `--efficiency`, show the `seff-account` efficiency
-summary instead. Querying accounts you do not belong to needs operator rights.
+summary instead. Querying accounts you do not belong to needs `AdminLevel=Admin`,
+root/SlurmUser, or coordinator of the account.
 
 **Use cases**
 - See how many GPU-hours a lab or member used this month.

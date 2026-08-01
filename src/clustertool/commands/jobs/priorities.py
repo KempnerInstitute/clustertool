@@ -12,7 +12,7 @@ from clustertool.grouping import keywords
 def priorities(partition: str) -> None:
     """Show priority factors for pending jobs in a partition (via sprio).
 
-    Lists each pending job's total priority and its fairshare, age, and other
+    Lists the eligible pending jobs' total priority and its fairshare, age, and other
     factor contributions, so you can compare where jobs rank.
 
     \b

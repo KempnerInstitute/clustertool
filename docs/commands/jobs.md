@@ -65,7 +65,10 @@ and prints a plain-English diagnosis with suggestions. Best for finished jobs.
 ## `jobs priorities PARTITION`
 
 Show priority factors for pending jobs in a partition (via `sprio`): each job's
-total priority and its fairshare, age, and other contributions.
+total priority and its fairshare, age, and other contributions. Only jobs the
+scheduler is weighing appear: one that is held, waiting on a dependency, capped
+by an array task limit, or not yet eligible has no priority record yet, so use
+`jobs why JOBID` for those.
 
 **Use cases**
 - Compare pending jobs' priorities across a partition.
@@ -101,8 +104,9 @@ predates the current policy or was shaped in a way that check did not catch.
 ## `jobs queue PARTITION`
 
 Show a partition's whole queue, waiting jobs in priority order (via `showq`).
-Lists the partition's active, waiting, and blocked jobs, with the waiting ones
-ordered by priority so you can see where you sit. Unlike `jobs list`, which shows
+Lists the partition's active and waiting jobs, the waiting ones ordered by
+priority so you can see where you sit, plus a count of the blocked ones, which
+the tool summarizes but does not list. Unlike `jobs list`, which shows
 your own jobs, this covers everyone's. A partition the cluster does not have is
 an error, since `showq` reports it as an empty queue.
 
@@ -237,7 +241,7 @@ from resource wait.
 
 **Inputs**
 - `-u, --user`: User to report (default: current user).
-- `-A, --account`: Report an account (others' need operator rights).
+- `-A, --account`: Report an account (others' need `AdminLevel=Admin`, root/SlurmUser, or coordinator of it).
 - `-p, --partition`: Report a partition.
 - `-d, --days`: Window length in days (default 7).
 - `--since` / `--until`: Explicit window, `YYYY-mm-ddTHH:MM:SS`.
@@ -255,7 +259,7 @@ users, and incident nodes.
 
 **Inputs**
 - `-u, --user`: User to report (default: current user).
-- `-A, --account`: Report an account (others' need operator rights).
+- `-A, --account`: Report an account (others' need `AdminLevel=Admin`, root/SlurmUser, or coordinator of it).
 - `-p, --partition`: Report a partition.
 - `-d, --days`: Window length in days (default 7).
 - `--since` / `--until`: Explicit window, `YYYY-mm-ddTHH:MM:SS`.
