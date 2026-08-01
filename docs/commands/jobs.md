@@ -86,9 +86,10 @@ policy. Jobs with no GPUs are not evaluated.
 
 ## `jobs queue PARTITION`
 
-Show a partition's whole queue, waiting jobs in priority order (via `showq`). Unlike
-`jobs list` (your jobs), this is the whole partition's pending queue, so you can
-see where you sit.
+Show a partition's whole queue, waiting jobs in priority order (via `showq`).
+Lists the partition's active, waiting, and blocked jobs, with the waiting ones
+ordered by priority so you can see where you sit. Unlike `jobs list`, which shows
+your own jobs, this covers everyone's.
 
 **Use cases**
 - See how far back your pending job is in a partition.
@@ -178,11 +179,14 @@ jobstats install, so no setup is needed on the Kempner AI Cluster (the offline
 ## `jobs history [-d DAYS] [-u USER]`
 
 List your recent finished jobs (via `sacct`): job id, name, partition, state,
-elapsed, peak memory, and nodes.
+elapsed, and nodes. One row per job allocation, so it covers jobs that are still
+running as well as finished ones. Peak memory is a per-step figure a
+per-allocation listing cannot carry, so use `jobs debug JOBID` or `jobs scope`
+for that.
 
 **Use cases**
 - Review what ran over the last few days and how it ended.
-- Find a past job's id, runtime, or peak memory.
+- Find a past job's id, runtime, or nodes.
 
 **Inputs**
 - `-d, --days`: How many days back to include (default 7).
