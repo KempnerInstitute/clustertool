@@ -13,7 +13,7 @@ from clustertool.grouping import SectionedGroup
 
 @click.group(cls=SectionedGroup)
 def storage() -> None:
-    """Storage quotas, usage, and Lustre striping."""
+    """Storage quotas, usage, and filesystem layout."""
 
 
 storage.add_command(quota)

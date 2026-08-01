@@ -108,6 +108,19 @@ def _effective_limit(soft: str, hard: str) -> str:
     return hard if _to_bytes(soft) == 0 and _to_bytes(hard) > 0 else soft
 
 
+def lustre_ost_count(path: str) -> int:
+    """Return how many OSTs back a Lustre path, or 0 when that cannot be determined.
+
+    A stripe count above this is accepted by lfs but silently clamped, so it is
+    worth knowing before setting one. Returns 0 rather than raising, since the
+    count is only used to sanity-check a request.
+    """
+    code, out, _ = process.probe([site.tool("lfs"), "osts", path])
+    if code != 0:
+        return 0
+    return sum(1 for line in out.splitlines() if "_UUID" in line)
+
+
 def percent_value(text: str) -> float:
     """Return a percent string like '90%' as a float, or -1 for '-' or unparseable."""
     try:

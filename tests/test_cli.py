@@ -6,6 +6,7 @@ import re
 import shutil
 import sys
 
+import pytest
 from click.testing import CliRunner
 from test_gpuhealth import ECC_DISABLED, HEALTHY, _gpu, _nvlink, _smi_xml
 
@@ -833,6 +834,64 @@ def test_storage_lfs_stripe_set_abort(monkeypatch, tmp_path):
     assert result.exit_code != 0
     assert "Aborted" in result.output
     assert calls == []
+
+
+def test_storage_lfs_stripe_rejects_a_count_below_minus_one(monkeypatch, tmp_path):
+    calls = _capture_stream(monkeypatch)
+    monkeypatch.setattr(storage, "lustre_ost_count", lambda path: 64)
+    result = CliRunner().invoke(main, ["storage", "lfs-stripe", str(tmp_path), "-c", "-5", "-y"])
+    assert result.exit_code != 0
+    assert "invalid --count -5" in result.output
+    assert calls == []
+
+
+def test_storage_lfs_stripe_rejects_a_count_above_the_ost_count(monkeypatch, tmp_path):
+    """lfs accepts it and silently clamps, so the directory would advertise a lie."""
+    calls = _capture_stream(monkeypatch)
+    monkeypatch.setattr(storage, "lustre_ost_count", lambda path: 64)
+    result = CliRunner().invoke(main, ["storage", "lfs-stripe", str(tmp_path), "-c", "65", "-y"])
+    assert result.exit_code != 0
+    assert "has 64 OSTs" in result.output
+    assert calls == []
+
+
+def test_storage_lfs_stripe_validates_before_prompting(monkeypatch, tmp_path):
+    monkeypatch.setattr(storage, "lustre_ost_count", lambda path: 64)
+    result = CliRunner().invoke(main, ["storage", "lfs-stripe", str(tmp_path), "-c", "-5"])
+    assert result.exit_code != 0
+    assert "Set stripe count" not in result.output
+
+
+def test_storage_lfs_stripe_prompt_explains_the_special_counts(monkeypatch, tmp_path):
+    """Per man lfs-setstripe, 0 restores the filesystem default and -1 uses every OST."""
+    monkeypatch.setattr(storage, "lustre_ost_count", lambda path: 64)
+    reset = CliRunner().invoke(
+        main, ["storage", "lfs-stripe", str(tmp_path), "-c", "0"], input="n\n"
+    )
+    assert "filesystem default stripe count" in reset.output
+    every = CliRunner().invoke(
+        main, ["storage", "lfs-stripe", str(tmp_path), "-c", "-1"], input="n\n"
+    )
+    assert "across all 64 OSTs" in every.output
+
+
+def test_storage_lfs_stripe_allows_the_ost_count(monkeypatch, tmp_path):
+    calls = _capture_stream(monkeypatch)
+    monkeypatch.setattr(storage, "lustre_ost_count", lambda path: 64)
+    result = CliRunner().invoke(main, ["storage", "lfs-stripe", str(tmp_path), "-c", "64", "-y"])
+    assert result.exit_code == 0
+    assert calls[0] == ["lfs", "setstripe", "-c", "64", str(tmp_path)]
+
+
+@pytest.mark.real_site_tools
+def test_lfs_commands_are_hidden_without_the_lfs_tool(monkeypatch):
+    """A center with no Lustre should not be offered Lustre-only commands."""
+    monkeypatch.setattr(site, "tool_available", lambda key: key != "lfs")
+    result = CliRunner().invoke(main, ["storage", "--help"])
+    assert result.exit_code == 0
+    assert "lfs-stripe" not in result.output
+    assert "lfs-inodes" not in result.output
+    assert "home" in result.output
 
 
 def test_storage_lfs_stripe_missing_path():

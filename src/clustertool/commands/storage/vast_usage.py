@@ -27,7 +27,6 @@ def vast_usage(path: str, group: str) -> None:
       -g, --group  Unix group to break usage down by.
     """
     target = path if path.startswith("/") else f"{site.path_prefix()}/{path}"
-    if process.stream([site.tool("quota"), "--group-user-usage", group, target]):
-        raise click.ClickException(
-            f"per-user usage failed for {group} on {target}; is it a VAST filesystem?"
-        )
+    tool = site.tool("quota")
+    if process.stream([tool, "--group-user-usage", group, target]):
+        raise click.ClickException(f"'{tool} --group-user-usage' failed for {group} on {target}")

@@ -1,7 +1,8 @@
 # storage
 
-Storage quotas, usage, and Lustre striping. Run `clustertool storage --help` to list
-these commands.
+Storage quotas, usage, and filesystem layout. Run `clustertool storage --help` to
+list these commands. The Lustre commands (`lfs-stripe`, `lfs-inodes`) are hidden
+at a site whose `[tools].lfs` binary is not installed.
 
 ## `storage quota [PATH] [-g GROUP | -u USER] [-a] [--fleet LAB] [-v]`
 
@@ -83,19 +84,30 @@ scratch path (`/n/netscratch` with the packaged Kempner profile).
 ## `storage lfs-stripe PATH [-c COUNT] [-y]`
 
 Show or set Lustre striping for a path (via `lfs`). Without `--count`, print the
-current stripe layout (`lfs getstripe`). With `--count`, set the stripe count
-for newly created files under PATH (`lfs setstripe`); existing files are not
-restriped. Use 8 to 16 for large multi-GB or TB files. Setting a count changes
-the default for everyone who writes new files there, including in a shared lab
-directory, so it prompts for confirmation unless `-y`.
+layout of PATH itself and not of anything inside it (`lfs getstripe -d`). With
+`--count`, set the stripe count for newly created files under PATH (`lfs
+setstripe`); existing files are not restriped.
+
+A count spreads each new file over that many OSTs, so it trades throughput on
+large files against more metadata work and wider exposure to a single OST going
+away. Match it to the file size: one stripe suits ordinary files, and a file in
+the hundreds of GB or larger benefits from many. Two counts are special, as
+`lfs-setstripe` defines them: `0` restores the filesystem-wide default rather
+than setting zero stripes, and `-1` stripes over every available OST. A count
+above the number of OSTs is refused, since `lfs` would silently clamp it; use
+`lfs setstripe -C` directly if you really want more than one stripe per OST.
+
+Setting a count changes the default for everyone who writes new files there,
+including in a shared lab directory, so it prompts for confirmation unless `-y`.
+Lustre allows it only on a directory you own, whatever the write permissions.
 
 **Use cases**
 - Check how a directory is striped across Lustre targets.
 - Widen striping before writing very large files for throughput.
 
 **Inputs**
-- `PATH`: A path on a Lustre filesystem (e.g. `/n/holylfs06/...`).
-- `-c, --count`: Stripe count to set for new files under PATH.
+- `PATH`: A path on a Lustre filesystem.
+- `-c, --count`: Stripe count for new files under PATH, or `0` / `-1`.
 - `-y, --yes`: Skip the confirmation prompt.
 
 ## `storage lfs-inodes PATH`

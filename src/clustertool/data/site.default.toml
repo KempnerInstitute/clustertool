@@ -89,6 +89,7 @@ account_usage = "stotal"
 account_efficiency = "seff-account"
 job_stats = "jobstats"
 quota = "quota"
+lfs = "lfs"
 
 # Command paths to turn off at this site, e.g. ["jobs scope", "diag nvlink"].
 # Disabled commands vanish from help, search, and resolution.

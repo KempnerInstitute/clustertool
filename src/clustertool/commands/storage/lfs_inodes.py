@@ -5,11 +5,11 @@ import os
 import click
 
 from clustertool import process, site
-from clustertool.grouping import keywords
+from clustertool.grouping import ToolCommand, keywords
 
 
 @keywords("files", "count", "lustre")
-@click.command("lfs-inodes")
+@click.command("lfs-inodes", cls=ToolCommand, tool_key="lfs")
 @click.argument("path")
 def lfs_inodes(path: str) -> None:
     """Show inode capacity and usage for a Lustre filesystem (via lfs df -i).
@@ -28,5 +28,6 @@ def lfs_inodes(path: str) -> None:
     target = path if path.startswith("/") else f"{site.path_prefix()}/{path}"
     if not os.path.exists(target):
         raise click.ClickException(f"path not found: {target}")
-    if process.stream(["lfs", "df", "-i", target]):
-        raise click.ClickException(f"'lfs df' failed for {target}; is it on a Lustre filesystem?")
+    lfs = site.tool("lfs")
+    if process.stream([lfs, "df", "-i", target]):
+        raise click.ClickException(f"'{lfs} df' failed for {target}")
