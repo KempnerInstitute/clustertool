@@ -16,7 +16,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
 
@@ -28,6 +28,9 @@ jobs:
 
       - name: Sync dependencies
         run: uv sync --frozen
+
+      - name: Show the interpreter
+        run: uv run python -VV
 
       - name: Lint
         run: uv run ruff check .
