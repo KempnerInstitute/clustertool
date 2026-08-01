@@ -1,8 +1,10 @@
 """Tests for the qos helper module."""
 
+import importlib
+
 import pytest
 
-from clustertool import qos
+from clustertool import process, qos
 
 
 def test_qos_exists_exact_match(monkeypatch):
@@ -419,3 +421,61 @@ def test_revoke_targets_plan_expands_all(monkeypatch):
             "partition=kempner_h100",
         ]
     ]
+
+
+def test_account_limits_widens_the_qos_column_past_its_default(monkeypatch):
+    """sacctmgr truncates a column silently, so a long QoS list would lose entries."""
+    limits_cmd = importlib.import_module("clustertool.commands.account.limits")
+
+    long_list = ",".join(f"qos_number_{i}" for i in range(12))
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, long_list + "\n", ""))
+    assert f"QOS%-{len(long_list)}" in limits_cmd._format("user=x")
+
+
+def test_account_limits_keeps_its_default_width_for_short_lists(monkeypatch):
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, "normal\n", ""))
+    limits_cmd = importlib.import_module("clustertool.commands.account.limits")
+
+    assert "QOS%-70" in limits_cmd._format("user=x")
+
+
+def test_account_limits_falls_back_when_the_probe_fails(monkeypatch):
+    """A failed sizing query must not narrow the column below its default."""
+    limits_cmd = importlib.import_module("clustertool.commands.account.limits")
+
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (1, "", "boom"))
+    assert "QOS%-70" in limits_cmd._format("user=x")
+
+
+def test_grant_plan_adds_the_default_qos_to_the_list(monkeypatch):
+    """Slurm requires a DefaultQOS to be a member of the association's QoS list."""
+    monkeypatch.setattr(qos, "read_assoc", lambda u, a, p, cluster=None: ("other", "other"))
+    monkeypatch.setattr(qos, "_cluster", lambda c: "odyssey")
+    plan = qos.grant_plan("bob", "lab", "part", "prio", "normal", None)
+    added = [cmd for cmd in plan if any(arg.startswith("QOS+=") for arg in cmd)]
+    assert added, plan
+    names = added[0][-1].removeprefix("QOS+=").split(",")
+    assert "prio" in names and "normal" in names
+
+
+def test_grant_plan_does_not_re_add_a_qos_already_held(monkeypatch):
+    monkeypatch.setattr(qos, "read_assoc", lambda u, a, p, cluster=None: ("prio,normal", "normal"))
+    monkeypatch.setattr(qos, "_cluster", lambda c: "odyssey")
+    plan = qos.grant_plan("bob", "lab", "part", "prio", "normal", None)
+    assert not [cmd for cmd in plan if any(arg.startswith("QOS+=") for arg in cmd)]
+
+
+def test_partition_references_names_the_setting(monkeypatch):
+    """QoS and AllowQos let jobs use it while DenyQos bars them, so which one matters."""
+    sample = (
+        "PartitionName=cpu QoS=base_caps State=UP\n"
+        "PartitionName=gpu AllowQos=base_caps,other State=UP\n"
+        "PartitionName=locked DenyQos=base_caps State=UP\n"
+    )
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, sample, ""))
+    assert qos.partition_references("BASE_CAPS") == {
+        "cpu": ["QoS"],
+        "gpu": ["AllowQos"],
+        "locked": ["DenyQos"],
+    }
+    assert qos.partitions_referencing("base_caps") == ["cpu", "gpu", "locked"]

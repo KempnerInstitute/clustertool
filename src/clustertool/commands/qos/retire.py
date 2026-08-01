@@ -69,12 +69,13 @@ def retire(
     if not qoslib.qos_exists(qos_name):
         click.echo(f"QoS {qos_name} does not exist; nothing to do.")
         return
-    referencing = qoslib.partitions_referencing(qos_name, cluster=cluster)
-    if referencing:
+    references = qoslib.partition_references(qos_name, cluster=cluster)
+    if references:
+        listed = ", ".join(f"{name} ({'/'.join(kinds)})" for name, kinds in references.items())
         raise click.ClickException(
-            f"QoS {qos_name} is configured on partition(s) {', '.join(referencing)}; "
-            "deleting it would drop the limits those partitions apply. Remove it "
-            "from the partition configuration first"
+            f"QoS {qos_name} is configured on partition(s) {listed}; deleting it "
+            "would change what those partitions allow. Remove it from the partition "
+            "configuration first"
         )
     live = qoslib.jobs_using(qos_name, cluster=cluster)
     if live:

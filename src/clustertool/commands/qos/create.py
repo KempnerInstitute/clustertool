@@ -60,3 +60,5 @@ def create(
     summary = f"Create or update QoS {qos_name} with {len(specs)} limit(s)?"
     if _gate.apply(plan, execute, yes, summary):
         raise SystemExit(1)
+    if execute:
+        _limits.report(qos_name)

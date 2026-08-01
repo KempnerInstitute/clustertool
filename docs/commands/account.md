@@ -103,8 +103,10 @@ Rank an account's members by RawUsage (via `sshare`), highest first.
 ## `account qos [-f TEXT] [-l]`
 
 List QoS definitions and their limits (via `sacctmgr`): priority, max wall time,
-and TRES limits including the per-user and total GPU caps. With `--long`, add the
-per-user job-count, submit, Flags, Preempt, and UsageFactor columns.
+and TRES limits including the per-user, per-account, per-job, and total GPU caps,
+so every limit `qos create` and `qos modify` can set is readable here. With
+`--long`, add the per-user job-count, submit, Flags, Preempt, and UsageFactor
+columns.
 
 **Use cases**
 - See the GPU cap and priority of a partition's QoS.

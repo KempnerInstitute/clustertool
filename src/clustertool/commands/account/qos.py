@@ -5,9 +5,9 @@ import click
 from clustertool import process
 from clustertool.grouping import keywords
 
-_FORMAT = "Name%28,Priority,MaxWall,MaxTRESPU%-32,MaxTRES%18,GrpTRES%18"
+_FORMAT = "Name%28,Priority,MaxWall,MaxTRESPU%-32,MaxTRESPA%18,MaxTRES%18,GrpTRES%18"
 _LONG_FORMAT = (
-    "Name%28,Priority,MaxWall,GrpTRES%18,MaxTRES%18,MaxTRESPU%-32,"
+    "Name%28,Priority,MaxWall,GrpTRES%18,MaxTRES%18,MaxTRESPU%-32,MaxTRESPA%18,"
     "MaxJobsPU,MaxSubmitPU,Flags%20,Preempt%18,UsageFactor"
 )
 
@@ -27,9 +27,10 @@ _LONG_FORMAT = (
 def qos(name_filter: str | None, long_format: bool) -> None:
     """List QoS definitions and their limits (via sacctmgr).
 
-    Shows each QoS with its priority, max wall time, and TRES limits (including
-    the per-user and total GPU caps). With --long, add the job-count, submit,
-    Flags, Preempt, and UsageFactor columns.
+    Shows each QoS with its priority, max wall time, and TRES limits: the
+    per-user, per-account, per-job, and total GPU caps, so every limit qos create
+    and qos modify can set is readable here. With --long, add the job-count,
+    submit, Flags, Preempt, and UsageFactor columns.
 
     \b
     Use cases:

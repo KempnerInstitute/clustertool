@@ -94,19 +94,21 @@ def any_holders(qos_name: str) -> list[str]:
     return [line for line in out.splitlines() if line]
 
 
-def partitions_referencing(qos_name: str, cluster: str | None = None) -> list[str]:
-    """Return partitions whose QoS or AllowQos setting names the QoS.
+def partition_references(qos_name: str, cluster: str | None = None) -> dict[str, list[str]]:
+    """Return {partition: [setting]} for every partition setting naming the QoS.
 
-    Reads the site's Slurm cluster unless another is given, and includes hidden
-    and group-restricted partitions, which a plain 'scontrol show partition'
-    leaves out. Names are matched case-insensitively, as Slurm treats them.
+    The setting matters: QoS and AllowQos let jobs use it, while DenyQos bars
+    them, so deleting the QoS means opposite things for the two. Reads the site's
+    Slurm cluster unless another is given, and includes hidden and
+    group-restricted partitions, which a plain 'scontrol show partition' leaves
+    out. Names are matched case-insensitively, as Slurm treats them.
     """
     cmd = ["scontrol", "-a", "-M", _cluster(cluster), "show", "partition"]
     code, out, err = process.probe(cmd)
     if code != 0:
         raise CommandError(f"could not read partitions: {err.strip() or code}")
     wanted = qos_name.lower()
-    found = []
+    found: dict[str, list[str]] = {}
     name = None
     for token in out.split():
         key, _, value = token.partition("=")
@@ -114,8 +116,47 @@ def partitions_referencing(qos_name: str, cluster: str | None = None) -> list[st
             name = value
         elif key in ("QoS", "AllowQos", "DenyQos") and name:
             if wanted in [v.strip().lower() for v in value.split(",")]:
-                found.append(name)
-    return sorted(set(found))
+                found.setdefault(name, [])
+                if key not in found[name]:
+                    found[name].append(key)
+    return dict(sorted(found.items()))
+
+
+def partitions_referencing(qos_name: str, cluster: str | None = None) -> list[str]:
+    """Return the names of the partitions whose configuration references the QoS."""
+    return list(partition_references(qos_name, cluster=cluster))
+
+
+_DEFINITION_FIELDS = (
+    ("Priority", "Priority"),
+    ("MaxTRESPU", "Per-user max"),
+    ("MaxTRESPA", "Per-account max"),
+    ("GrpTRES", "Group total"),
+    ("MaxTRES", "Per-job max"),
+    ("MaxTRESPerNode", "Per-node max"),
+    ("MaxJobsPU", "Per-user jobs"),
+)
+
+
+def definition(name: str) -> list[tuple[str, str]]:
+    """Return the [(label, value)] limits a QoS carries, skipping the unset ones.
+
+    A limit that can be written has to be readable, and sacctmgr's own listing is
+    too wide to read; an empty field means the limit is not set.
+    """
+    fields = ",".join(field for field, _ in _DEFINITION_FIELDS)
+    code, out, err = process.probe(
+        ["sacctmgr", "-n", "-P", "show", "qos", name, f"format={fields}"]
+    )
+    if code != 0:
+        raise CommandError(f"could not read QoS {name}: {err.strip() or code}")
+    row = next((line for line in out.splitlines() if line.strip()), "")
+    values = row.split("|")
+    return [
+        (label, value.strip())
+        for (_, label), value in zip(_DEFINITION_FIELDS, values, strict=False)
+        if value.strip()
+    ]
 
 
 def show_assoc_rows(user: str, account: str, cluster: str | None = None) -> list[str]:
@@ -346,7 +387,9 @@ def grant_plan(
 
     Creates the association if absent (with the QoS list set exactly), otherwise
     adds the QoS, fixes the default, and strips the catch-all and partition-named
-    QoS. Returns an empty plan when nothing needs to change.
+    QoS. A DefaultQOS has to be in the association's QoS list, so the default is
+    added alongside when it is not there already. Returns an empty plan when
+    nothing needs to change.
     """
     resolved = _cluster(cluster)
     where = [
@@ -377,8 +420,9 @@ def grant_plan(
     current, default = assoc
     current_list = [entry for entry in current.split(",") if entry]
     plan = []
-    if qos_name not in current_list:
-        plan.append(["sacctmgr", "-i", "modify", "user", *where, "set", f"QOS+={qos_name}"])
+    add = [name for name in dict.fromkeys((qos_name, default_qos)) if name not in current_list]
+    if add:
+        plan.append(["sacctmgr", "-i", "modify", "user", *where, "set", f"QOS+={','.join(add)}"])
     if default != default_qos:
         plan.append(
             ["sacctmgr", "-i", "modify", "user", *where, "set", f"DefaultQOS={default_qos}"]

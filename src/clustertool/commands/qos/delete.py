@@ -7,6 +7,15 @@ from clustertool.commands.qos import _gate
 from clustertool.grouping import admin, keywords
 
 
+def _describe(references: dict[str, list[str]]) -> str:
+    """Return 'part (QoS)' for each partition, naming the setting that references it.
+
+    QoS and AllowQos let jobs use the QoS while DenyQos bars them, so which
+    setting names it decides what deleting it would do.
+    """
+    return ", ".join(f"{name} ({'/'.join(settings)})" for name, settings in references.items())
+
+
 @admin
 @keywords("remove", "drop", "retire", "definition")
 @click.command("delete")
@@ -20,7 +29,9 @@ def delete(qos_name: str, execute: bool, yes: bool) -> None:
     with --execute to apply, confirming unless --yes. Refuses while the QoS is
     still in force: if any association on any cluster lists it, if any partition's
     QoS, AllowQos, or DenyQos setting names it, or if any queued or running job
-    carries it. Clear those first.
+    carries it. Clear those first. The refusal names which setting, since QoS and
+    AllowQos let jobs use it while DenyQos bars them, and an association that sets
+    no QoS list of its own inherits its parent's.
     Needs AdminLevel=Operator or above, or
     root/SlurmUser: SchedMD documents an operator as able to add, modify and
     remove any database object, and a QoS is one.
@@ -40,16 +51,19 @@ def delete(qos_name: str, execute: bool, yes: bool) -> None:
         return
     holders = qoslib.any_holders(qos_name)
     if holders:
+        accounts = {line.split("|")[1] for line in holders if len(line.split("|")) > 1}
         raise click.ClickException(
-            f"QoS {qos_name} is still held by {len(holders)} association(s); "
-            "remove it from those associations first"
+            f"QoS {qos_name} is still held by {len(holders)} association(s) across "
+            f"{len(accounts)} account(s); an association that sets no QoS list of its "
+            "own inherits its parent's, so a count this large usually means one "
+            "parent sets it. Clear it there first"
         )
-    partitions = qoslib.partitions_referencing(qos_name)
-    if partitions:
+    references = qoslib.partition_references(qos_name)
+    if references:
         raise click.ClickException(
-            f"QoS {qos_name} is configured on partition(s) {', '.join(partitions)}; "
-            "deleting it would drop the limits those partitions apply. Remove it "
-            "from the partition configuration first"
+            f"QoS {qos_name} is configured on partition(s) {_describe(references)}; "
+            "deleting it would change what those partitions allow. Remove it from "
+            "the partition configuration first"
         )
     live = qoslib.jobs_using(qos_name)
     if live:

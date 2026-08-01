@@ -76,3 +76,5 @@ def modify(
     summary = f"Modify QoS {qos_name} ({len(specs)} limit change(s))?"
     if _gate.apply(plan, execute, yes, summary):
         raise SystemExit(1)
+    if execute:
+        _limits.report(qos_name)

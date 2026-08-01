@@ -87,3 +87,14 @@ def resolve_specs(
         jobs_per_user=jobs_per_user,
         account_gpu=account_gpu,
     )
+
+
+def report(qos_name: str) -> None:
+    """Print the limits the QoS now carries, so a write can be read back."""
+    limits = qoslib.definition(qos_name)
+    if not limits:
+        click.echo(f"QoS {qos_name} now carries no limits.")
+        return
+    click.echo(f"QoS {qos_name} now carries:")
+    for label, value in limits:
+        click.echo(f"  {label:<16} {value}")

@@ -92,9 +92,11 @@ Slurm operator or admin.
 
 Dry run by default. Refuses while the QoS is still in force: if any association
 on any cluster still lists it, if a partition's `QoS`, `AllowQos`, or `DenyQos`
-setting names it (where it applies limits without any association mentioning it),
-or if any queued or running job carries it. A QoS that does not exist is a
-no-op.
+setting names it (where it applies without any association mentioning it), or if
+any queued or running job carries it. The refusal names the setting, since `QoS`
+and `AllowQos` let jobs use it while `DenyQos` bars them. An association that
+sets no QoS list of its own inherits its parent's, so a large holder count
+usually means one parent sets it. A QoS that does not exist is a no-op.
 
 **Use cases**
 - Retire a QoS definition that is no longer assigned to anyone.
