@@ -5,7 +5,16 @@
   </picture>
 </p>
 
-# Cluster Tools
+<p align="center">
+  <a href="https://github.com/KempnerInstitute/clustertool/actions/workflows/ci.yml"><img src="https://github.com/KempnerInstitute/clustertool/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"/></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+"/></a>
+  <a href="https://slurm.schedmd.com/"><img src="https://img.shields.io/badge/scheduler-Slurm-2b8cbe.svg" alt="Slurm"/></a>
+  <a href="https://docs.astral.sh/uv/"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json" alt="uv"/></a>
+  <a href="https://github.com/astral-sh/ruff"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json" alt="Ruff"/></a>
+</p>
+
+# ClusterTool
 
 A single umbrella CLI (`clustertool`) that centralizes the Slurm cluster
 scripts used by both researchers and the engineering team, so common tasks live

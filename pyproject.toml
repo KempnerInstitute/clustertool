@@ -56,3 +56,6 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "real_site_tools: exercise the real PATH lookup instead of assuming site tools are installed",
+]
