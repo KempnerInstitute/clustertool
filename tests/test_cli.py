@@ -867,7 +867,7 @@ def test_jobs_cancel_all_with_nothing_to_cancel(monkeypatch):
 
 
 def test_jobs_cancel_refuses_an_unknown_job(monkeypatch):
-    """scancel exits 0 for an unknown id, so a typo cancelled nothing and said nothing."""
+    """scancel exits 0 for an unknown id, so a typo canceled nothing and said nothing."""
     _cancel_stubs(monkeypatch, exists=False)
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "cancel", "99999997"])

@@ -44,7 +44,7 @@ def cancel(jobids: tuple[str, ...], all_jobs: bool, pending: bool, yes: bool) ->
         if unknown:
             raise click.ClickException(
                 f"no such job: {', '.join(unknown)}. scancel treats an unknown id as "
-                "nothing to do, so this would have exited cleanly having cancelled nothing"
+                "nothing to do, so this would have exited cleanly having canceled nothing"
             )
         cmd = ["scancel", *jobids]
     elif all_jobs or pending:
