@@ -2365,3 +2365,36 @@ def test_diag_ib_verify_no_golden(tmp_path):
     )
     assert result.exit_code == 3
     assert "no golden" in result.output
+
+
+def test_jobs_why_missing_job_errors(monkeypatch):
+    monkeypatch.setattr(slurm, "_run", lambda cmd: "")
+    _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "why", "999999999"])
+    assert result.exit_code != 0
+    assert "not in the queue" in result.output
+
+
+def test_jobs_priorities_unknown_partition_errors(monkeypatch):
+    monkeypatch.setattr(slurm, "partition_nodes", lambda p: [])
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "priorities", "nosuch"])
+    assert result.exit_code != 0
+    assert "does not exist" in result.output
+    assert calls == []
+
+
+def test_jobs_script_missing_job_errors(monkeypatch):
+    monkeypatch.setattr(slurm, "job_accounting", lambda j: {})
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "script", "999999999"])
+    assert result.exit_code != 0
+    assert calls == []
+
+
+def test_jobs_top_missing_job_errors(monkeypatch):
+    monkeypatch.setattr(slurm, "job_accounting", lambda j: {})
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "top", "999999999"])
+    assert result.exit_code != 0
+    assert calls == []

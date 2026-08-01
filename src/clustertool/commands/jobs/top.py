@@ -2,7 +2,7 @@
 
 import click
 
-from clustertool import completion, process
+from clustertool import completion, process, slurm
 from clustertool.grouping import keywords
 
 _FORMAT = "JobID,AveCPU,AveRSS,MaxRSS,AveVMSize,NTasks"
@@ -27,6 +27,8 @@ def top(jobid: str) -> None:
     Inputs:
       JOBID  A running Slurm job id.
     """
+    if not slurm.job_accounting(jobid):
+        raise click.ClickException(f"No accounting record for job {jobid}.")
     code = process.stream(["sstat", "-a", "-j", jobid, "--format", _FORMAT])
     if code:
         raise SystemExit(code)
