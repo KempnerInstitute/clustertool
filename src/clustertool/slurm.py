@@ -38,17 +38,6 @@ def parse_gpu_count(text: str) -> int:
     return int(match.group(1)) if match else 0
 
 
-_GRES_GPU_RE = re.compile(r"gpu:(?:[^:()]+:)?(\d+)")
-
-
-def _gres_gpus(text: str) -> int:
-    """Return the total GPU count in a gres string like 'gpu:h100:4(S:0),gpu:mig:7(S:0)'.
-
-    Sums every gpu entry, since a node can advertise more than one GPU type.
-    """
-    return sum(int(count) for count in _GRES_GPU_RE.findall(text or ""))
-
-
 def gpus_allocated_in(partition: str) -> int:
     """Return the GPUs held by running jobs submitted to a partition.
 
@@ -240,7 +229,11 @@ def _status_bucket(state: str) -> str:
 
     Per man sinfo the trailing flags carry meaning of their own: $ is a
     maintenance reservation and ~ is powered off, so neither can be stripped and
-    bucketed by the base code alone.
+    bucketed by the base code alone. A node marked * is not responding and, in
+    man sinfo's words, "will not be allocated any new work", so a base state that
+    would otherwise read as available becomes down. A node already drained,
+    reserved or down keeps its more specific bucket, which says the same thing
+    about availability while naming the reason.
     """
     if "$" in state:
         return "resv"
@@ -249,16 +242,20 @@ def _status_bucket(state: str) -> str:
     match = re.match(r"[a-z]+", state.lower())
     base = match.group() if match else ""
     if base.startswith(("idle", "plnd", "plan")):
-        return "idle"
-    if base.startswith("mix"):
-        return "mixed"
-    if base.startswith(("alloc", "comp")):
-        return "alloc"
-    if base.startswith(("resv", "rese", "maint")):
-        return "resv"
-    if base.startswith("dr"):
-        return "drain"
-    return "down"
+        bucket = "idle"
+    elif base.startswith("mix"):
+        bucket = "mixed"
+    elif base.startswith(("alloc", "comp")):
+        bucket = "alloc"
+    elif base.startswith(("resv", "rese", "maint")):
+        bucket = "resv"
+    elif base.startswith("dr"):
+        bucket = "drain"
+    else:
+        bucket = "down"
+    if "*" in state and bucket in ("idle", "mixed", "alloc"):
+        return "down"
+    return bucket
 
 
 def gpu_node_status() -> list[tuple[str, dict[str, int]]]:
@@ -389,25 +386,6 @@ def _tres_mem_mb(tres: str) -> float:
         return 0.0
     factors = {"K": 1 / 1024, "M": 1.0, "G": 1024.0, "T": 1024.0 * 1024, "": 1.0}
     return float(match.group(1)) * factors[match.group(2)]
-
-
-def node_free_resources(node: str) -> tuple[int, int, float]:
-    """Return (free_gpu, free_cpu, free_mem_mb) for a node.
-
-    Free memory excludes MemSpecLimit, which is reserved for system use.
-    """
-    out = _run(["scontrol", "show", "node", node])
-    cfg = re.search(r"CfgTRES=(\S+)", out)
-    alloc = re.search(r"AllocTRES=(\S+)", out)
-    cfg_tres = cfg.group(1) if cfg else ""
-    alloc_tres = alloc.group(1) if alloc else ""
-    reserved = _int_field(_field(out, "MemSpecLimit"))
-    free_mem = _tres_mem_mb(cfg_tres) - reserved - _tres_mem_mb(alloc_tres)
-    return (
-        parse_gpu_count(cfg_tres) - parse_gpu_count(alloc_tres),
-        _tres_int(cfg_tres, "cpu") - _tres_int(alloc_tres, "cpu"),
-        free_mem if free_mem > 0 else 0.0,
-    )
 
 
 def _field(text: str, key: str) -> str:

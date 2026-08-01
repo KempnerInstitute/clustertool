@@ -15,7 +15,6 @@ _SSH_OPTS = [
     "-o",
     "LogLevel=ERROR",
 ]
-_NUM_IB = 4
 
 # Fractions of a modern IB link: below _IB_LOW_MBS a fabric is effectively idle.
 _IB_LOW_MBS = 500.0
@@ -49,14 +48,22 @@ def sample(host: str) -> str:
 
 
 def parse_sample(raw: str):
-    """Parse a raw stats line into (gpus, cpu, mem, net) or None."""
+    """Parse a raw stats line into (gpus, cpu, mem, net) or None.
+
+    The sampler closes the line with its InfiniBand port count, so a node with
+    more or fewer HCAs than another is read correctly rather than truncated.
+    """
     fields = raw.split()
-    if len(fields) < 2 + _NUM_IB:
+    if not fields or not fields[-1].isdigit():
         return None
-    net = fields[-_NUM_IB:]
-    mem = fields[-_NUM_IB - 1]
-    cpu = fields[-_NUM_IB - 2]
-    gpu_fields = fields[: -_NUM_IB - 2]
+    count = int(fields[-1])
+    fields = fields[:-1]
+    if len(fields) < 2 + count:
+        return None
+    net = fields[len(fields) - count :] if count else []
+    mem = fields[-count - 1]
+    cpu = fields[-count - 2]
+    gpu_fields = fields[: len(fields) - count - 2]
     gpus = [(gpu_fields[i], gpu_fields[i + 1]) for i in range(0, len(gpu_fields) - 1, 2)]
     return gpus, cpu, mem, net
 
@@ -90,8 +97,8 @@ def _cell(
     return _pad(_colorize(value, low, high, unit, idle_is_bad=idle_is_bad), f"{value}{unit}", width)
 
 
-def _header(title: str, gpus: int, interval: int) -> str:
-    width = 20 + gpus * 20 + 12 + 13 + _NUM_IB * 14
+def _header(title: str, gpus: int, ports: int, interval: int) -> str:
+    width = 20 + gpus * 20 + 12 + 13 + ports * 14
     lines = [
         title,
         f"Updated every {interval} seconds. Press Ctrl+C to quit.",
@@ -101,21 +108,21 @@ def _header(title: str, gpus: int, interval: int) -> str:
     for i in range(gpus):
         cols += _pad(f"GPU{i}(C/M)", f"GPU{i}(C/M)", 20)
     cols += _pad("CPU(%)", "CPU(%)", 12) + _pad("Mem(%)", "Mem(%)", 13)
-    for i in range(_NUM_IB):
+    for i in range(ports):
         cols += _pad(f"ib{i}(MB/s)", f"ib{i}(MB/s)", 14)
     lines.append(cols)
     lines.append("-" * width)
     return "\n".join(lines)
 
 
-def _row(host: str, raw: str, gpus: int) -> str:
+def _row(host: str, raw: str, gpus: int, ports: int) -> str:
     row = _pad(host, host, 20)
     parsed = parse_sample(raw)
     if parsed is None:
         for _ in range(gpus):
             row += _pad("N/A/N/A", "N/A/N/A", 20)
         row += _pad("N/A", "N/A", 12) + _pad("N/A", "N/A", 13)
-        for _ in range(_NUM_IB):
+        for _ in range(ports):
             row += _pad("N/A", "N/A", 14)
         return row
     gpu_cells, cpu, mem, net = parsed
@@ -127,11 +134,21 @@ def _row(host: str, raw: str, gpus: int) -> str:
         else:
             row += _pad("N/A/N/A", "N/A/N/A", 20)
     row += _cell(cpu, 50, 80, 12) + _cell(mem, 70, 90, 13)
-    for i in range(_NUM_IB):
+    for i in range(ports):
         row += _cell(
             net[i] if i < len(net) else "N/A", _IB_LOW_MBS, _IB_HIGH_MBS, 14, idle_is_bad=True
         )
     return row
+
+
+def _port_count(samples: list[str]) -> int:
+    """Return the widest InfiniBand port count across the sampled hosts.
+
+    The table is drawn once and then redrawn in place, so the column count is
+    fixed for the run and has to hold the busiest node.
+    """
+    parsed = [parse_sample(raw) for raw in samples]
+    return max((len(row[3]) for row in parsed if row), default=0)
 
 
 def run_monitor(title: str, hosts: list[str], interval: int) -> None:
@@ -146,18 +163,22 @@ def run_monitor(title: str, hosts: list[str], interval: int) -> None:
             "requires an allocation on the node, monitor a job's own nodes instead"
         )
 
-    print(_header(title, gpus, interval))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(hosts), 32)) as pool:
+        samples = list(pool.map(sample, hosts))
+    ports = _port_count(samples)
+
+    print(_header(title, gpus, ports, interval))
     for _ in hosts:
         print()
     try:
         while True:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(hosts), 32)) as pool:
-                samples = list(pool.map(sample, hosts))
             sys.stdout.write(f"\033[{len(hosts)}A")
             for host, raw in zip(hosts, samples, strict=True):
                 sys.stdout.write("\033[2K")
-                print(_row(host, raw, gpus))
+                print(_row(host, raw, gpus, ports))
             sys.stdout.flush()
             time.sleep(interval)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(hosts), 32)) as pool:
+                samples = list(pool.map(sample, hosts))
     except KeyboardInterrupt:
         print()

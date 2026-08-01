@@ -39,6 +39,9 @@ for i in "${!ib_ports[@]}"; do
     ib_rates+=( "N/A" )
   fi
 done
-while (( ${#ib_rates[@]} < 4 )); do ib_rates+=( "N/A" ); done
 for val in "${gpu_lines[@]}"; do echo -n "$val "; done
-echo "${cpu:-N/A} ${mem:-N/A} ${ib_rates[0]} ${ib_rates[1]} ${ib_rates[2]} ${ib_rates[3]}"
+echo -n "${cpu:-N/A} ${mem:-N/A}"
+for val in "${ib_rates[@]}"; do echo -n " $val"; done
+# The port count closes the line so the reader can split it without assuming how
+# many HCAs a node has.
+echo " ${#ib_rates[@]}"

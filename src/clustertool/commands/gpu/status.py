@@ -24,8 +24,11 @@ def status() -> None:
     nodes down by GPU type and state. Idle, Mixed, and Alloc nodes are up; Resv is
     reserved; Drain is draining; Down is offline. Each column aggregates the
     related Slurm states: a node planned by the backfill scheduler counts as Idle,
-    one still completing a job as Alloc, one held for maintenance as Resv,
-    and one with invalid registered resources as Down.
+    one still completing a job as Alloc, one held for maintenance as Resv, and one
+    with invalid registered resources as Down. A node not responding counts as
+    Down whatever its base state, since man sinfo says it will not be allocated
+    any new work; one already drained or reserved keeps that column instead, which
+    says the same about availability and names the reason.
 
     \b
     Use cases:

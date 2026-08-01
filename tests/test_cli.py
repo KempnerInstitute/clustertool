@@ -3857,3 +3857,15 @@ def test_jobs_list_does_not_check_the_default_user(monkeypatch):
 
 def _unexpected(*args, **kwargs):
     raise AssertionError("no lookup should happen")
+
+
+def test_status_bucket_counts_a_non_responding_node_as_down():
+    """man sinfo: a node marked * "will not be allocated any new work"."""
+    for state in ("idle*", "mix*", "alloc*"):
+        assert slurm._status_bucket(state) == "down", state
+
+
+def test_status_bucket_keeps_the_reason_for_an_already_unavailable_node():
+    """drain and resv say the same thing about availability, and name the cause."""
+    assert slurm._status_bucket("drain*") == "drain"
+    assert slurm._status_bucket("resv*") == "resv"
