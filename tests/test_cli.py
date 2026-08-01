@@ -3666,7 +3666,9 @@ def test_ib_counters_ignores_a_port_in_ethernet_mode(tmp_path):
 
 def test_nvlink_narrows_the_slurm_allocation(monkeypatch):
     """--gpus must select within CUDA_VISIBLE_DEVICES, not be discarded by it."""
-    from clustertool.commands.diag import nvlink as nv
+    import importlib
+
+    nv = importlib.import_module("clustertool.commands.diag.nvlink")
 
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "4,5,6,7")
     assert nv._device_list(2) == "4,5"
