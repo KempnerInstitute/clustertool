@@ -30,6 +30,11 @@ For each partition, ssh to its nodes in parallel and flag any host whose `ip lin
 show` reports an `ib[0-9]` interface in state DOWN. Unreachable hosts are
 skipped.
 
+Needs ssh to every node in the partition, not just the ones running your jobs.
+Where node login is gated on having an allocation, as `pam_slurm_adopt` does,
+only staff can reach the whole partition and an ordinary user sees every host
+skipped.
+
 **Use cases**
 - Find nodes with a downed IB link before scheduling a large job.
 - Spot-check fabric health across a partition.

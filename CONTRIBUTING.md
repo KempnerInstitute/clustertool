@@ -94,6 +94,13 @@ command lives in its own file.
    definition changes need a Slurm or system admin, editing an account or
    assigning a QoS needs an operator or a coordinator of that account.
 
+   Read-only commands can be privileged too. A command that ssh-es to nodes
+   across a whole partition, rather than only the nodes running the caller's own
+   jobs, is admin: where node login requires an allocation on that node, as
+   `pam_slurm_adopt` enforces, an ordinary user cannot reach them. `diag ib` and
+   `gpu monitor-partition` are admin for this reason, while `gpu monitor-job` and
+   `gpu nvtop` stay user scope because they only touch the caller's own job.
+
    Add search keywords for words users might type that are not already in the
    help text, with the `keywords` decorator from `clustertool.grouping`, so
    `clustertool search` can find the command:

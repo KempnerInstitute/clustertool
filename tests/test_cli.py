@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import shutil
 import sys
 
@@ -1070,11 +1071,29 @@ def test_account_help_splits_user_and_admin():
         assert out.index(name) > admin_idx
 
 
-def test_gpu_help_has_no_admin_section():
-    result = CliRunner().invoke(main, ["gpu", "--help"])
+def test_storage_help_has_no_admin_section():
+    result = CliRunner().invoke(main, ["storage", "--help"])
     assert result.exit_code == 0
     assert "Admin Commands:" not in result.output
     assert "Commands:" in result.output
+
+
+def test_gpu_help_sections_monitor_partition_as_admin():
+    result = CliRunner().invoke(main, ["gpu", "--help"])
+    assert result.exit_code == 0
+    out = result.output
+    admin_idx = out.index("Admin Commands:")
+    assert out.index("usage") < admin_idx
+    assert out.index("monitor-partition") > admin_idx
+
+
+def test_diag_help_sections_ib_as_admin():
+    result = CliRunner().invoke(main, ["diag", "--help"])
+    assert result.exit_code == 0
+    out = result.output
+    admin_idx = out.index("Admin Commands:")
+    assert out.index("gpu-health") < admin_idx
+    assert re.search(r"^\s+ib\s", out[admin_idx:], re.M)
 
 
 def test_account_remove_user(monkeypatch):

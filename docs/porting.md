@@ -6,13 +6,8 @@ is hardwired to it. Another Slurm site adopts it in a few steps. See
 
 ```mermaid
 flowchart LR
-    s1["<b>1. install</b><br/>uv tool install"]
-    s2["<b>2. describe your cluster</b><br/>partitions, per-GPU limits,<br/>QoS, account naming, paths"]
-    s3["<b>3. map or drop<br/>the site tools</b><br/>point the tools table at your own,<br/>or leave them absent"]
-    s4["<b>4. disable what<br/>you do not want</b><br/>the commands disable list"]
-    s5["<b>5. add your own</b><br/>plugin entry point,<br/>or a pull request"]
-
-    s1 --> s2 --> s3 --> s4 --> s5
+    s1["1. install"] --> s2["2. describe<br/>your cluster"] --> s3["3. map or drop<br/>site tools"]
+    s3 --> s4["4. disable<br/>what you skip"] --> s5["5. add<br/>your own"]
 ```
 
 Steps 1 and 2 are enough to get a working tool: most commands are generic Slurm

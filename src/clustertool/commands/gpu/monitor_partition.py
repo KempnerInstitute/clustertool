@@ -3,9 +3,10 @@
 import click
 
 from clustertool import completion, monitor, slurm
-from clustertool.grouping import keywords
+from clustertool.grouping import admin, keywords
 
 
+@admin
 @keywords("watch", "live", "realtime", "dashboard")
 @click.command("monitor-partition")
 @click.argument("partition", shell_complete=completion.complete_partitions)
@@ -18,6 +19,11 @@ def monitor_partition(partition: str, interval: int, prefix: str) -> None:
 
     Refreshes a colored per-node table in place until Ctrl+C. Requires
     passwordless ssh to the nodes, which must expose nvidia-smi.
+
+    That means ssh to every node in the partition, not just the ones running
+    your jobs. Where node login is gated on having an allocation, as
+    pam_slurm_adopt does, only staff can reach the whole partition. To watch
+    your own job instead, use 'gpu monitor-job JOBID'.
 
     \b
     Use cases:

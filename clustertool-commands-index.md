@@ -8,7 +8,10 @@ Scope: **user** commands need no special privilege; **admin** commands need
 elevated rights. Which rights depends on the command, so check its help: editing
 accounts or assigning a QoS takes Slurm operator rights or a coordinator of the
 account, while resuming nodes or changing a QoS definition takes a Slurm or
-system admin (`AdminLevel=Administrator`, or root/SlurmUser). The Wraps column
+system admin (`AdminLevel=Administrator`, or root/SlurmUser). Two commands are
+admin for a different reason: `diag ib` and `gpu monitor-partition` ssh to every
+node in a partition, and where node login requires an allocation on that node,
+as `pam_slurm_adopt` enforces, only staff can reach them all. The Wraps column
 names the host tool each command shells out to.
 
 ## top-level
@@ -28,7 +31,7 @@ names the host tool each command shells out to.
 | `gpu status` | user | sinfo | GPU node counts by type and state, from the requeue partition. |
 | `gpu avail PARTITION` | user | scontrol, sinfo | Nodes with allocatable GPUs (free GPUs capped by the enforced per-GPU ratio). |
 | `gpu session GPU_TYPE -A ACCOUNT` | user | salloc | Interactive single-GPU session (a100/h100/h200/rtx), sized to the per-GPU limits. |
-| `gpu monitor-partition PARTITION` | user | ssh, nvidia-smi | Live per-node GPU/CPU/memory/network table for a partition. |
+| `gpu monitor-partition PARTITION` | admin | ssh, nvidia-smi | Live per-node GPU/CPU/memory/network table for a partition (needs ssh to every node). |
 | `gpu monitor-job JOBID` | user | ssh, nvidia-smi | Live per-node GPU/CPU/memory/network table for a running job. |
 | `gpu nvtop JOBID` | user | tmux, nvtop, ssh | tmux session running nvtop on each of a job's nodes. |
 | `gpu pulse [ARG...]` | user | kempnerpulse, ssh | Live per-GPU dashboard (bundled kempnerpulse); `--node`/`--job` launch it on a remote node. |
@@ -103,7 +106,7 @@ names the host tool each command shells out to.
 | Command | Scope | Wraps | Description |
 | --- | --- | --- | --- |
 | `diag gpu-health` | user | nvidia-smi | Node-local GPU health verdict: ECC, throttle, PCIe/NVLink (exit 0/1/2/3). |
-| `diag ib PARTITION...` | user | ssh, ip | Nodes with InfiniBand ports DOWN. |
+| `diag ib PARTITION...` | admin | ssh, ip | Nodes with InfiniBand ports DOWN (needs ssh to every node). |
 | `diag ib-affinity` | user | nvidia-smi | GPU-to-IB-NIC NUMA affinity verdict (exit 0 OK, 3 cross-NUMA, 1 unreachable). |
 | `diag ib-counters BEFORE AFTER` | user | (none) | Diff two ib-snapshots for IB error-counter growth (exit 1 if any advanced). |
 | `diag ib-snapshot [OUT]` | user | nvidia-smi, ibdev2netdev | Capture node IB/GPU topology and counters as JSON, for diffing. |

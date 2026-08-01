@@ -5,7 +5,7 @@ import concurrent.futures
 import click
 
 from clustertool import completion, process, slurm
-from clustertool.grouping import keywords
+from clustertool.grouping import admin, keywords
 
 _SSH_OPTS = [
     "-o",
@@ -25,6 +25,7 @@ def _host_ib_down(host: str) -> str:
     return process.run(["ssh", *_SSH_OPTS, host, _IB_CHECK]).strip()
 
 
+@admin
 @keywords("infiniband", "network", "fabric")
 @click.command("ib")
 @click.argument(
@@ -41,6 +42,11 @@ def ib(partitions: tuple[str, ...], parallel: int) -> None:
     For each partition, ssh to its nodes in parallel and flag any host whose
     'ip link show' reports an ib[0-9] interface in state DOWN. Unreachable hosts
     are skipped.
+
+    Needs ssh to every node in the partition, not just the ones running your
+    jobs. Where node login is gated on having an allocation, as pam_slurm_adopt
+    does, only staff can reach the whole partition and an ordinary user sees
+    every host skipped.
 
     \b
     Use cases:
