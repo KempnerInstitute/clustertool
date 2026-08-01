@@ -132,7 +132,11 @@ def run_monitor(title: str, hosts: list[str], interval: int) -> None:
         counts = list(pool.map(num_gpus, hosts))
     gpus = max(counts, default=0)
     if gpus < 1:
-        raise CommandError(f"could not detect GPUs on any of the {len(hosts)} host(s)")
+        raise CommandError(
+            f"could not detect GPUs on any of the {len(hosts)} host(s). This needs "
+            "passwordless ssh to them, and nvidia-smi there. Where node login "
+            "requires an allocation on the node, monitor a job's own nodes instead"
+        )
 
     print(_header(title, gpus, interval))
     for _ in hosts:

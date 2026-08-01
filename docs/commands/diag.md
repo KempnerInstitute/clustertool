@@ -88,6 +88,12 @@ forensic comparison and for diffing across a run. Read-only. Run it on the node.
 Write to OUTPUT, or print to stdout. Feed two snapshots to a counter diff, or one
 to `diag ib-affinity --snapshot`.
 
+Any probe that could not run is recorded under `probe_errors`, so an empty field
+means the node genuinely had nothing to report rather than that the tool was
+missing or timed out. Run on a login node with no GPUs, for instance, the snapshot
+reports `{"nvidia-smi": "not installed"}` there rather than an unexplained empty
+GPU list.
+
 **Use cases**
 - Capture a node's fabric state when it goes slow, for later comparison.
 - Bracket a benchmark with two snapshots to check for error-counter growth.

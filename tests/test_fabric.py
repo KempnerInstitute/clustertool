@@ -173,3 +173,24 @@ def test_render_drift_verdict():
     assert "DRIFT" in fabric.render_drift({"hardware": ["x"], "informational": []}, False)
     assert "MATCH" in fabric.render_drift({"hardware": [], "informational": ["d"]}, False)
     assert "DRIFT" in fabric.render_drift({"hardware": [], "informational": ["d"]}, True)
+
+
+def test_collect_snapshot_records_a_missing_tool(monkeypatch, tmp_path):
+    """An empty field must be distinguishable from a probe that could not run."""
+    monkeypatch.setattr(fabric.process, "probe", lambda cmd, timeout=None: (127, "", ""))
+    snapshot = fabric.collect_snapshot(ib_root=str(tmp_path), timestamp="2026-08-01T00:00:00+00:00")
+    assert snapshot["probe_errors"]["nvidia-smi"] == "not installed"
+    assert snapshot["probe_errors"]["ibdev2netdev"] == "not installed"
+    assert snapshot["gpus"] == []
+
+
+def test_collect_snapshot_records_a_timeout(monkeypatch, tmp_path):
+    monkeypatch.setattr(fabric.process, "probe", lambda cmd, timeout=None: (124, "", ""))
+    snapshot = fabric.collect_snapshot(ib_root=str(tmp_path), timestamp="2026-08-01T00:00:00+00:00")
+    assert any("timed out" in reason for reason in snapshot["probe_errors"].values())
+
+
+def test_collect_snapshot_has_no_errors_when_every_probe_works(monkeypatch, tmp_path):
+    monkeypatch.setattr(fabric.process, "probe", lambda cmd, timeout=None: (0, "", ""))
+    snapshot = fabric.collect_snapshot(ib_root=str(tmp_path), timestamp="2026-08-01T00:00:00+00:00")
+    assert snapshot["probe_errors"] == {}

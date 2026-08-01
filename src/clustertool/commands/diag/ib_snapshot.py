@@ -21,6 +21,10 @@ def ib_snapshot(output: str | None) -> None:
     node. Write to OUTPUT, or print to stdout to redirect. Feed two snapshots to
     diag ib-counters, or one to diag ib-affinity --snapshot.
 
+    Any probe that could not run is recorded under probe_errors, so an empty field
+    means the node genuinely had nothing to report rather than that the tool was
+    missing or timed out.
+
     \b
     Use cases:
       - Capture a node's fabric state when it goes slow, for later comparison.

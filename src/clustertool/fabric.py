@@ -322,15 +322,28 @@ def counter_deltas(before: dict, after: dict) -> tuple[list[tuple], bool]:
 
 
 def collect_snapshot(ib_root: str = "/sys/class/infiniband", timestamp: str | None = None) -> dict:
-    """Probe the node and return the IB/GPU snapshot dict (the ib-snapshot schema)."""
+    """Probe the node and return the IB/GPU snapshot dict (the ib-snapshot schema).
+
+    A probe that could not run records why under probe_errors, so an empty field
+    means the node really has nothing to report rather than that the tool was
+    missing or timed out.
+    """
+    errors: dict[str, str] = {}
 
     def out(cmd):
-        return process.probe(cmd, timeout=30)[1]
+        code, stdout, _ = process.probe(cmd, timeout=30)
+        if code == 127:
+            errors[cmd[0]] = "not installed"
+        elif code == 124:
+            errors[" ".join(cmd)] = "timed out after 30s"
+        elif code:
+            errors[" ".join(cmd)] = f"exited {code}"
+        return stdout
 
     driver = out(["nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader,nounits"])
     driver_lines = driver.splitlines()
     stamp = timestamp or datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
-    return {
+    snapshot = {
         "schema_version": 1,
         "timestamp_utc": stamp,
         "hostname": os.uname().nodename,
@@ -346,3 +359,5 @@ def collect_snapshot(ib_root: str = "/sys/class/infiniband", timestamp: str | No
         "ib": {"hcas": read_hcas(ib_root)},
         "ibdev2netdev": parse_ibdev2netdev(out(["ibdev2netdev"])),
     }
+    snapshot["probe_errors"] = errors
+    return snapshot
