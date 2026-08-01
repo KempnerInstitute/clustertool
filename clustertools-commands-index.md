@@ -4,9 +4,12 @@ A single-page reference for every `clustertools` command, grouped by area. Run
 each as `clustertools <command>` (for example `clustertools gpu util`). For full
 help, use `--help` on any command, or see [docs/commands/](docs/commands/).
 
-Scope: **user** commands need no special privilege; **admin** commands require
-Slurm operator rights. The Wraps column names the host tool each command shells
-out to.
+Scope: **user** commands need no special privilege; **admin** commands need
+elevated rights. Which rights depends on the command, so check its help: editing
+accounts or assigning a QoS takes Slurm operator rights or a coordinator of the
+account, while resuming nodes or changing a QoS definition takes a Slurm or
+system admin (`AdminLevel=Administrator`, or root/SlurmUser). The Wraps column
+names the host tool each command shells out to.
 
 ## top-level
 

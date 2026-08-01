@@ -103,7 +103,7 @@ per-user job-count, submit, Flags, Preempt, and UsageFactor columns.
 ## `account add-user USER ACCOUNT`
 
 Add a user to a fairshare account (via `sacctmgr`). Prompts for confirmation
-unless `-y`. Operator only.
+unless `-y`. Operator or a coordinator of the account only.
 
 **Use cases**
 - Grant a new lab member access to the lab's Slurm account.
@@ -118,7 +118,7 @@ unless `-y`. Operator only.
 
 Remove a user's association with an account (via `sacctmgr`). Removes only the
 USER and ACCOUNT association, not the user's other accounts. Prompts for
-confirmation unless `-y`. Operator only.
+confirmation unless `-y`. Operator or a coordinator of the account only.
 
 **Use cases**
 - Remove a former member from a lab's Slurm account.
@@ -132,7 +132,7 @@ confirmation unless `-y`. Operator only.
 
 Set a user's fairshare in an account (via `sacctmgr`). SHARE is an integer
 number of raw shares, or `parent` to inherit the account's shares. Prompts for
-confirmation unless `-y`. Operator only.
+confirmation unless `-y`. Operator or a coordinator of the account only.
 
 **Use cases**
 - Adjust a member's fairshare weight within a lab.

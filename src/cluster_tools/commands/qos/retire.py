@@ -38,7 +38,7 @@ def retire(
     deletes the QoS definition. The delete runs only if every revoke succeeded,
     so a QoS still held elsewhere (an account-level or out-of-scope association)
     is left in place. Dry run by default; re-run with --execute to apply,
-    confirming unless --yes. Operator only.
+    confirming unless --yes. Slurm or system admin only.
 
     \b
     Use cases:

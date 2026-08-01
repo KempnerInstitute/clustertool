@@ -18,7 +18,7 @@ def delete(qos_name: str, execute: bool, yes: bool) -> None:
 
     Dry run by default: prints the sacctmgr command and changes nothing. Re-run
     with --execute to apply, confirming unless --yes. Refuses if any association
-    still lists the QoS; remove it from those associations first. Operator only.
+    still lists the QoS; remove it from those associations first. Slurm or system admin only.
 
     \b
     Use cases:

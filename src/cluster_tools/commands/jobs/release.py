@@ -18,7 +18,8 @@ from cluster_tools.grouping import keywords
 def release(jobids: tuple[str, ...]) -> None:
     """Release held jobs so they can be scheduled (via scontrol release).
 
-    Undoes 'jobs hold'.
+    Undoes 'jobs hold'. You can release your own hold, but a hold placed by an
+    operator or admin needs one of them to lift it.
 
     \b
     Use cases:

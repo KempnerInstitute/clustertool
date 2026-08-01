@@ -35,7 +35,7 @@ def modify(
     Dry run by default: prints the sacctmgr command and changes nothing. Re-run
     with --execute to apply, confirming unless --yes. Only the limits you pass
     change; a value of -1 clears one. With --per-user-only the group and per-job
-    GPU caps are cleared so only the per-user caps remain. Operator only.
+    GPU caps are cleared so only the per-user caps remain. Slurm or system admin only.
 
     \b
     Use cases:

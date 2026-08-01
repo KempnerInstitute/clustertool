@@ -242,9 +242,11 @@ exactly as `scancel` does.
 
 ## `jobs set-priority JOBID PRIORITY`
 
-Set a job's scheduling priority (via `scontrol update`). Pins the job to the
-given priority, overriding fairshare until it runs. Operator only. Also
-available as `jobs setprio`.
+Set a job's scheduling priority (via `scontrol update`). Operator only: set by an
+operator the priority is fixed, overriding fairshare until the job runs. A job's
+own owner can only lower it, and the multifactor plugin keeps recomputing the
+value, so raise `Nice` instead to deprioritize your own job. Also available as
+`jobs setprio`.
 
 **Use cases**
 - Boost a specific job ahead of the queue.
@@ -267,7 +269,8 @@ queue but are not scheduled until released with `jobs release`.
 ## `jobs release JOBID...`
 
 Release held jobs so they can be scheduled (via `scontrol release`). Undoes
-`jobs hold`.
+`jobs hold`. You can release your own hold, but a hold placed by an operator or
+admin needs one of them to lift it.
 
 **Use cases**
 - Let a previously held job start.

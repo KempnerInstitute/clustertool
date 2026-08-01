@@ -19,7 +19,7 @@ from cluster_tools.grouping import admin, keywords
 )
 @click.option("-y", "--yes", is_flag=True, help="Skip the confirmation prompt.")
 def resume(nodes: tuple[str, ...], partition: str | None, yes: bool) -> None:
-    """Return drained or down nodes to service (via scontrol). Operator only.
+    """Return drained or down nodes to service (via scontrol). Slurm or system admin only.
 
     Give explicit node names, or --partition to resume every drained node in a
     partition. Prompts for confirmation unless -y.

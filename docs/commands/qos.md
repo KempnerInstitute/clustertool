@@ -9,6 +9,12 @@ commands and change nothing. Re-run with `--execute` to apply, confirming unless
 `-y`. Every `sacctmgr` call carries `-i`, so this tool's dry-run gate, not
 `sacctmgr`, is what guards against accidental changes.
 
+They need two different privilege levels. Changing a QoS *definition* (`create`,
+`modify`, `delete`, `retire`) requires a Slurm or system admin, that is
+`AdminLevel=Administrator` or root/SlurmUser. *Assigning* an existing QoS
+(`grant`, `revoke`, `sync`) only edits associations, so an operator or a
+coordinator of the account can do it.
+
 ## `qos holders QOS_NAME [-p PART] [-c CLUSTER] [-r REGEX] [--by all|user|partition]`
 
 List the users and partitions that hold a QoS (via `sacctmgr`).
@@ -31,7 +37,7 @@ distinct users or partitions, which is handy for scripting a grant or revoke.
 ## `qos create QOS_NAME <limits> [-x] [-y]`
 
 Create a QoS with the given limits, updating it if it already exists (via
-`sacctmgr`). Operator only.
+`sacctmgr`). Slurm or system admin only.
 
 Dry run by default. Give at least one limit; a value of `-1` clears that limit.
 Per-user node and GPU caps merge into one `MaxTRESPU` limit.
@@ -51,7 +57,7 @@ Per-user node and GPU caps merge into one `MaxTRESPU` limit.
 
 ## `qos modify QOS_NAME <limits> [--per-user-only] [-x] [-y]`
 
-Change an existing QoS's limits (via `sacctmgr`). Operator only.
+Change an existing QoS's limits (via `sacctmgr`). Slurm or system admin only.
 
 Dry run by default. Only the limits you pass change; a value of `-1` clears one.
 With `--per-user-only` the group and per-job GPU caps are cleared so only the
@@ -71,7 +77,7 @@ per-user caps remain. Errors if the QoS does not exist (use `qos create`).
 ## `qos delete QOS_NAME [-x] [-y]`
 
 Delete a QoS definition, refusing while it is still referenced (via `sacctmgr`).
-Operator only.
+Slurm or system admin only.
 
 Dry run by default. Refuses if any association still lists the QoS; remove it
 from those associations first. A QoS that does not exist is a no-op.
@@ -87,7 +93,7 @@ from those associations first. A QoS that does not exist is a no-op.
 ## `qos grant QOS_NAME -u USERS -p PART [-d DEFAULT] [-c CLUSTER] [-r REGEX] [-x] [-y]`
 
 Grant a priority QoS to users across their matching accounts on a partition (via
-`sacctmgr`). Operator only.
+`sacctmgr`). Operator or a coordinator of the account only.
 
 For each user, adds the QoS to every association whose account matches the regex,
 sets the default QoS, and strips the catch-all and partition-named QoS so the
@@ -107,7 +113,8 @@ granted one takes effect. Missing associations are created. Dry run by default.
 
 ## `qos revoke QOS_NAME -u USERS|all -p PART|all [-c CLUSTER] [-r REGEX] [-x] [-y]`
 
-Remove a priority QoS from users on a partition (via `sacctmgr`). Operator only.
+Remove a priority QoS from users on a partition (via `sacctmgr`). Operator or a
+coordinator of the account only.
 
 Removes the QoS from each matching association, moving the default off it first
 when needed and deleting the association if the QoS was its only entry. Pass
@@ -129,7 +136,7 @@ default.
 ## `qos retire QOS_NAME -p PART|all [-c CLUSTER] [-r REGEX] [-x] [-y]`
 
 Remove a QoS from all its holders on a partition, then delete it (via
-`sacctmgr`). Operator only.
+`sacctmgr`). Slurm or system admin only, because it deletes the definition.
 
 Revokes the QoS from every holder, then deletes the QoS definition. The delete
 runs only if every revoke succeeded, so a QoS still held elsewhere (an
@@ -148,7 +155,7 @@ account-level or out-of-scope association) is left in place. Dry run by default.
 ## `qos sync QOS_NAME -a ACCOUNT -p PART [-c CLUSTER] [-x] [-y]`
 
 Reconcile a QoS's holders to an account's current membership (via `sacctmgr`).
-Operator only.
+Operator or a coordinator of the account only.
 
 Grants the QoS to account members who lack it and revokes it from holders no
 longer in the account, on the given partition. Idempotent and cron-friendly. Dry

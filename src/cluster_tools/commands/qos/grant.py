@@ -46,7 +46,7 @@ def grant(
     regex, sets the default QoS, and strips the catch-all and partition-named
     QoS so the granted one takes effect. Missing associations are created. Dry
     run by default; re-run with --execute to apply, confirming unless --yes.
-    Operator only.
+    Operator or coordinator only.
 
     \b
     Use cases:
