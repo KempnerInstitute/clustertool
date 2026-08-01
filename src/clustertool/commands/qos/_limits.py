@@ -75,8 +75,10 @@ def resolve_specs(
     if all(value is None for value in values):
         raise click.UsageError("give at least one limit (for example -g 4)")
     for value in values:
-        if value is not None and value != -1 and value < 1:
-            raise click.UsageError("limit values must be a positive integer, or -1 to clear")
+        if value is not None and value < -1:
+            raise click.UsageError(
+                "limit values must be zero or more, or -1 to clear (0 denies the resource)"
+            )
     return qoslib.build_limit_specs(
         gpu_per_user=gpu_per_user,
         node_per_user=node_per_user,

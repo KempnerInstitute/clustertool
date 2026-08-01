@@ -9,12 +9,19 @@ commands and change nothing. Re-run with `--execute` to apply, confirming unless
 `-y`. Every `sacctmgr` call carries `-i`, so this tool's dry-run gate, not
 `sacctmgr`, is what guards against accidental changes.
 
-They need two different privilege levels. Changing a QoS *definition* (`create`,
-`modify`, `delete`, `retire`) requires a Slurm or system admin, that is
-`AdminLevel=Administrator` or root/SlurmUser. *Assigning* an existing QoS
-(`grant`, `revoke`, `sync`) only edits associations, so a Slurm operator or a
-coordinator of the account can do it, unless the site sets `DisableCoordDBD` in
-`slurmdbd.conf`, which restricts it to operators.
+They need two different privilege levels.
+
+Changing a QoS *definition* (`create`, `modify`, `delete`, `retire`) needs at
+least `AdminLevel=Operator`, or root/SlurmUser. SchedMD's own documentation
+describes an operator as able to "add, modify, and remove any database object",
+and a QoS is one; some Slurm builds nonetheless require
+`AdminLevel=Administrator` for QoS definitions, so if an operator's write is
+refused, that is why. A coordinator never has QoS-definition rights, so
+`DisableCoordDBD` does not apply to these four.
+
+*Assigning* an existing QoS (`grant`, `revoke`, `sync`) only edits associations,
+so a Slurm operator or a coordinator of the account can do it, unless the site
+sets `DisableCoordDBD` in `slurmdbd.conf`, which restricts it to operators.
 
 ## `qos holders QOS_NAME [-p PART] [-c CLUSTER] [-r REGEX] [--by all|user|partition]`
 
@@ -38,7 +45,7 @@ distinct users or partitions, which is handy for scripting a grant or revoke.
 ## `qos create QOS_NAME <limits> [-x] [-y]`
 
 Create a QoS with the given limits, updating it if it already exists (via
-`sacctmgr`). Slurm or system admin only.
+`sacctmgr`). Slurm operator or admin.
 
 Dry run by default. Give at least one limit; a value of `-1` clears that limit.
 Per-user node and GPU caps merge into one `MaxTRESPU` limit.
@@ -61,7 +68,7 @@ Per-user node and GPU caps merge into one `MaxTRESPU` limit.
 
 ## `qos modify QOS_NAME <limits> [--per-user-only] [-x] [-y]`
 
-Change an existing QoS's limits (via `sacctmgr`). Slurm or system admin only.
+Change an existing QoS's limits (via `sacctmgr`). Slurm operator or admin.
 
 Dry run by default. Only the limits you pass change; a value of `-1` clears one.
 With `--per-user-only` the per-account, group, and per-job GPU caps are all

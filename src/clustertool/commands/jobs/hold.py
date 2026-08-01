@@ -6,7 +6,7 @@ from clustertool import completion, process
 from clustertool.grouping import keywords
 
 
-@keywords("pause", "suspend", "block", "freeze")
+@keywords("block", "prevent", "unschedule")
 @click.command("hold")
 @click.argument(
     "jobids",
@@ -19,7 +19,9 @@ def hold(jobids: tuple[str, ...]) -> None:
     """Prevent pending jobs from starting (via scontrol hold).
 
     Held jobs stay in the queue but are not scheduled until released with
-    'jobs release'.
+    'jobs release'. Holding a running job does not suspend or cancel it: per man
+    scontrol it only sets the priority to 0, which keeps the job held if it is
+    later requeued.
 
     \b
     Use cases:
@@ -31,4 +33,6 @@ def hold(jobids: tuple[str, ...]) -> None:
       JOBID...  One or more Slurm job ids.
     """
     if process.stream(["scontrol", "hold", ",".join(jobids)]):
-        raise click.ClickException(f"failed to hold {', '.join(jobids)}")
+        raise click.ClickException(
+            f"could not hold one or more of {', '.join(jobids)}; see the messages above for which"
+        )

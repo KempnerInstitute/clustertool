@@ -35,15 +35,20 @@ def modify(
 
     Dry run by default: prints the sacctmgr command and changes nothing. Re-run
     with --execute to apply, confirming unless --yes. Only the limits you pass
-    change; a value of -1 clears one. With --per-user-only the per-account, group,
-    and per-job GPU caps are all cleared, so only the per-user caps remain.
-    Slurm or system admin only.
+    change; a value of -1 clears one. With --per-user-only the gres/gpu entry of
+    MaxTRESPA, GrpTRES and MaxTRES is cleared. Per man sacctmgr a -1 removes only
+    the named TRES, so other TRES components of those limits, and every non-TRES
+    limit such as MaxJobsPA or MaxWall, are left alone. An explicit -A, -G or -j
+    overrides the clear for that one cap.
+    Needs AdminLevel=Operator or above; some Slurm builds require
+    Administrator for a QoS definition.
 
     \b
     Use cases:
       - Raise or lower a QoS's per-user GPU cap.
       - Reduce a QoS to per-user caps only with --per-user-only.
-      - Set the per-account GPU cap that 'gpu usage' reports against, with -A.
+      - Set the per-account GPU cap, with -A. When QOS_NAME is the site base
+        QoS, that is the cap 'gpu usage' reports each account against.
 
     \b
     Inputs:

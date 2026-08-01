@@ -1,5 +1,7 @@
 """gpu monitor-job command."""
 
+import os
+
 import click
 
 from clustertool import completion, monitor, slurm
@@ -26,6 +28,14 @@ def monitor_job(jobid: str, interval: int) -> None:
       JOBID       Slurm job id of a running job.
       --interval  Refresh interval in seconds (default 5).
     """
+    owner = slurm.job_owner(jobid)
+    me = os.environ.get("USER", "")
+    if owner and me and owner != me:
+        raise click.ClickException(
+            f"job {jobid} belongs to {owner}, not you. Node login is gated on having "
+            "an allocation there, so this would be refused on every node; monitor one "
+            "of your own jobs instead"
+        )
     hosts = slurm.job_nodes(jobid)
     if not hosts:
         raise click.ClickException(f"no nodes found for job '{jobid}' (is it running?)")

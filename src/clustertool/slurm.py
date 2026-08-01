@@ -408,6 +408,14 @@ def user_fullnames(usernames: list[str]) -> dict[str, str]:
     return names
 
 
+def job_owner(jobid: str) -> str:
+    """Return the user a job belongs to, or empty when Slurm does not know it."""
+    code, out, _ = process.probe(["squeue", "-j", jobid, "-h", "-O", "username:64"])
+    if code != 0:
+        return ""
+    return next((line.strip() for line in out.splitlines() if line.strip()), "")
+
+
 def job_nodes(jobid: str) -> list[str]:
     """Return the expanded hostnames allocated to a job.
 
@@ -467,7 +475,12 @@ def _mem_to_mb(value: str) -> float:
 
 
 def job_accounting(jobid: str) -> dict:
-    """Return the accounting fields for a finished job (via sacct), or {} if none."""
+    """Return the accounting fields for a job (via sacct), or {} if none.
+
+    A job array id matches every element, so the result also carries element_count
+    and states, a count per final state. Reporting only the first row would let a
+    array whose elements mostly failed read as the state of element zero.
+    """
     out = _run(
         [
             "sacct",
@@ -480,12 +493,18 @@ def job_accounting(jobid: str) -> dict:
             "State,ExitCode,Elapsed,Timelimit,ReqMem,ReqTRES,NodeList",
         ]
     )
-    line = next((row for row in out.splitlines() if row.strip()), "")
-    fields = line.split("|")
-    if len(fields) < 7:
+    rows = [row.split("|") for row in out.splitlines() if row.strip()]
+    rows = [row for row in rows if len(row) >= 7]
+    if not rows:
         return {}
     keys = ("state", "exit_code", "elapsed", "timelimit", "req_mem", "req_tres", "nodelist")
-    return dict(zip(keys, fields, strict=False))
+    info = dict(zip(keys, rows[0], strict=False))
+    states: dict[str, int] = {}
+    for row in rows:
+        states[row[0]] = states.get(row[0], 0) + 1
+    info["element_count"] = len(rows)
+    info["states"] = states
+    return info
 
 
 def job_maxrss_mb(jobid: str) -> float:
@@ -494,19 +513,55 @@ def job_maxrss_mb(jobid: str) -> float:
     return max((_mem_to_mb(row.strip()) for row in out.splitlines()), default=0.0)
 
 
+def _expand_log_pattern(path: str, jobid: str, name: str) -> str:
+    """Expand the sbatch filename patterns sacct stores unexpanded."""
+    master, _, task = jobid.partition("_")
+    return (
+        path.replace("%A", master)
+        .replace("%a", task or "0")
+        .replace("%j", jobid.replace("_", "_"))
+        .replace("%x", name)
+        .replace("%N", "")
+    )
+
+
+def job_output_path(jobid: str) -> str:
+    """Return a job's stdout path, or empty when it cannot be determined.
+
+    Asks the controller first, which holds the expanded path while the job is
+    recent, then accounting, which keeps the pattern long after MinJobAge has
+    purged the job from scontrol. sbatch's default is used when neither records
+    one.
+    """
+    code, out, _ = process.probe(["scontrol", "show", "job", jobid])
+    if code == 0:
+        match = re.search(r"StdOut=(\S+)", out)
+        if match and match.group(1) not in ("", "(null)"):
+            return match.group(1)
+
+    code, out, _ = process.probe(
+        ["sacct", "-j", jobid, "-X", "-n", "-P", "-o", "StdOut,WorkDir,JobName"]
+    )
+    if code != 0:
+        return ""
+    row = next((line.split("|") for line in out.splitlines() if line.strip()), [])
+    if len(row) < 3:
+        return ""
+    stdout_path, workdir, name = row[0].strip(), row[1].strip(), row[2].strip()
+    if stdout_path:
+        return _expand_log_pattern(stdout_path, jobid, name)
+    if workdir:
+        return f"{workdir}/slurm-{jobid}.out"
+    return ""
+
+
 def job_output_tail(jobid: str, lines: int = 200) -> str:
     """Return the tail of a job's stdout log, or empty if it cannot be read."""
-    try:
-        out = _run(["scontrol", "show", "job", jobid])
-    except CommandError:
+    path = job_output_path(jobid)
+    if not path:
         return ""
-    match = re.search(r"StdOut=(\S+)", out)
-    if not match or match.group(1) in ("", "(null)"):
-        return ""
-    try:
-        return _run(["tail", "-n", str(lines), match.group(1)])
-    except CommandError:
-        return ""
+    code, out, _ = process.probe(["tail", "-n", str(lines), path])
+    return out if code == 0 else ""
 
 
 _BAD_NODE_STATES = (

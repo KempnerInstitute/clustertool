@@ -514,11 +514,82 @@ def test_jobs_debug_command(monkeypatch):
     assert "module was missing" in result.output
 
 
+def test_jobs_debug_array_shows_every_state(monkeypatch):
+    """Reporting element zero let an array whose elements mostly failed read as COMPLETED."""
+    monkeypatch.setattr(
+        slurm,
+        "job_accounting",
+        lambda j: {
+            "state": "COMPLETED",
+            "exit_code": "0:0",
+            "elapsed": "00:02:09",
+            "timelimit": "3-00:00:00",
+            "req_mem": "360G",
+            "req_tres": "",
+            "nodelist": "n1",
+            "element_count": 177,
+            "states": {"FAILED": 96, "COMPLETED": 75, "CANCELLED by 11222": 6},
+        },
+    )
+    result = CliRunner().invoke(main, ["jobs", "debug", "9541734"])
+    assert result.exit_code == 0
+    assert "array of 177 elements" in result.output
+    assert "96  FAILED" in result.output
+    assert "Completed successfully" not in result.output
+
+
+def test_jobs_debug_pending_points_at_jobs_why(monkeypatch):
+    monkeypatch.setattr(
+        slurm,
+        "job_accounting",
+        lambda j: {
+            "state": "PENDING",
+            "exit_code": "0:0",
+            "elapsed": "00:00:00",
+            "timelimit": "06:00:00",
+            "req_mem": "64G",
+            "req_tres": "",
+            "nodelist": "None assigned",
+            "element_count": 1,
+            "states": {"PENDING": 1},
+        },
+    )
+    result = CliRunner().invoke(main, ["jobs", "debug", "123"])
+    assert result.exit_code == 0
+    assert "has not started" in result.output
+    assert "jobs why 123" in result.output
+
+
+def test_jobs_debug_does_not_invent_a_signal_for_oom(monkeypatch):
+    """Slurm marks OOM as exit 0:125; 125 is not a signal, and kill tops out at 64."""
+    monkeypatch.setattr(
+        slurm,
+        "job_accounting",
+        lambda j: {
+            "state": "OUT_OF_MEMORY",
+            "exit_code": "0:125",
+            "elapsed": "00:03:28",
+            "timelimit": "01:00:00",
+            "req_mem": "64G",
+            "req_tres": "",
+            "nodelist": "n1",
+            "element_count": 1,
+            "states": {"OUT_OF_MEMORY": 1},
+        },
+    )
+    monkeypatch.setattr(slurm, "job_maxrss_mb", lambda j: 0.0)
+    monkeypatch.setattr(slurm, "job_output_tail", lambda j: "")
+    result = CliRunner().invoke(main, ["jobs", "debug", "123"])
+    assert result.exit_code == 0
+    assert "Ran out of memory" in result.output
+    assert "signal 125" not in result.output
+
+
 def test_jobs_debug_no_record(monkeypatch):
     monkeypatch.setattr(slurm, "job_accounting", lambda jid: {})
     result = CliRunner().invoke(main, ["jobs", "debug", "999"])
     assert result.exit_code != 0
-    assert "No accounting record" in result.output
+    assert "no accounting record" in result.output
 
 
 def test_account_members(monkeypatch):
@@ -2080,6 +2151,22 @@ def test_gpu_monitor_job_no_nodes(monkeypatch):
     assert "no nodes found" in result.output
 
 
+def test_gpu_nvtop_refuses_an_existing_session(monkeypatch):
+    """Splitting into an existing session left the caller's earlier panes mixed in."""
+    monkeypatch.setattr(slurm, "job_nodes", lambda j: ["n1", "n2"])
+    ran = []
+    monkeypatch.setattr(process, "run", lambda cmd, input_text=None: ran.append(cmd) or "")
+    monkeypatch.setattr(slurm, "job_owner", lambda j: "")
+    monkeypatch.setattr(
+        process, "probe", lambda cmd, timeout=None: (1, "", "duplicate session: nvtop_123")
+    )
+    result = CliRunner().invoke(main, ["gpu", "nvtop", "123", "--no-attach"])
+    assert result.exit_code != 0
+    assert "duplicate session" in result.output
+    assert "tmux kill-session -t nvtop_123" in result.output
+    assert ran == []
+
+
 def test_gpu_nvtop(monkeypatch):
     monkeypatch.setattr(slurm, "job_nodes", lambda j: ["n1", "n2"])
     calls = []
@@ -2091,6 +2178,10 @@ def test_gpu_nvtop(monkeypatch):
         return ""
 
     monkeypatch.setattr(process, "run", fake_run)
+    monkeypatch.setattr(slurm, "job_owner", lambda j: "")
+    monkeypatch.setattr(
+        process, "probe", lambda cmd, timeout=None: calls.append(cmd) or (0, "", "")
+    )
     result = CliRunner().invoke(main, ["gpu", "nvtop", "123", "--no-attach"])
     assert result.exit_code == 0
     assert calls[0][:3] == ["tmux", "new-session", "-d"]
@@ -2098,6 +2189,29 @@ def test_gpu_nvtop(monkeypatch):
     assert len(send_keys) == 2
     assert any("n1" in c[4] and "nvtop" in c[4] for c in send_keys)
     assert "attach -t nvtop_123" in result.output
+
+
+def test_gpu_monitor_job_refuses_another_users_job(monkeypatch):
+    """Node login is gated on an allocation, so a foreign job would be refused anyway."""
+    monkeypatch.setenv("USER", "alice")
+    monkeypatch.setattr(slurm, "job_owner", lambda j: "bob")
+    ran = []
+    monkeypatch.setattr(slurm, "job_nodes", lambda j: ran.append(j) or ["n1"])
+    result = CliRunner().invoke(main, ["gpu", "monitor-job", "123"])
+    assert result.exit_code != 0
+    assert "belongs to bob, not you" in result.output
+    assert ran == []
+
+
+def test_gpu_nvtop_refuses_another_users_job(monkeypatch):
+    monkeypatch.setenv("USER", "alice")
+    monkeypatch.setattr(slurm, "job_owner", lambda j: "bob")
+    ran = []
+    monkeypatch.setattr(slurm, "job_nodes", lambda j: ran.append(j) or ["n1"])
+    result = CliRunner().invoke(main, ["gpu", "nvtop", "123", "--no-attach"])
+    assert result.exit_code != 0
+    assert "belongs to bob, not you" in result.output
+    assert ran == []
 
 
 def test_gpu_nvtop_no_nodes(monkeypatch):

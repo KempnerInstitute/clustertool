@@ -16,6 +16,10 @@ _SSH_OPTS = [
     "LogLevel=ERROR",
 ]
 _NUM_IB = 4
+
+# Fractions of a modern IB link: below _IB_LOW_MBS a fabric is effectively idle.
+_IB_LOW_MBS = 500.0
+_IB_HIGH_MBS = 2000.0
 _GREEN, _YELLOW, _RED, _RESET = "\033[32m", "\033[33m", "\033[31m", "\033[0m"
 
 _SAMPLE_SCRIPT = (
@@ -68,7 +72,7 @@ def _colorize(
     try:
         num = float(str(value).rstrip("%"))
     except ValueError:
-        return f"{value}{unit}"
+        return str(value)
     if idle_is_bad:
         color = _RED if num < low else _YELLOW if num < high else _GREEN
     else:
@@ -80,12 +84,14 @@ def _pad(text: str, plain: str, width: int) -> str:
     return text + " " * max(width - len(plain), 0)
 
 
-def _cell(value: str, low: float, high: float, width: int, unit: str = "") -> str:
-    return _pad(_colorize(value, low, high, unit), f"{value}{unit}", width)
+def _cell(
+    value: str, low: float, high: float, width: int, unit: str = "", idle_is_bad: bool = False
+) -> str:
+    return _pad(_colorize(value, low, high, unit, idle_is_bad=idle_is_bad), f"{value}{unit}", width)
 
 
 def _header(title: str, gpus: int, interval: int) -> str:
-    width = 20 + gpus * 21 + 12 + 13 + _NUM_IB * 14
+    width = 20 + gpus * 20 + 12 + 13 + _NUM_IB * 14
     lines = [
         title,
         f"Updated every {interval} seconds. Press Ctrl+C to quit.",
@@ -122,7 +128,9 @@ def _row(host: str, raw: str, gpus: int) -> str:
             row += _pad("N/A/N/A", "N/A/N/A", 20)
     row += _cell(cpu, 50, 80, 12) + _cell(mem, 70, 90, 13)
     for i in range(_NUM_IB):
-        row += _cell(net[i] if i < len(net) else "N/A", 10, 30, 14)
+        row += _cell(
+            net[i] if i < len(net) else "N/A", _IB_LOW_MBS, _IB_HIGH_MBS, 14, idle_is_bad=True
+        )
     return row
 
 

@@ -10,7 +10,12 @@ _STATE_RULES = [
     ("TIMEOUT", "Hit the time limit", "Increase --time, or checkpoint and resume."),
     ("NODE_FAIL", "A node failed", "Resubmit; add a requeue-on-failure directive for resilience."),
     ("CANCELLED", "Canceled", "Canceled by you or an admin (scancel, or a QoS or time limit)."),
+    ("PREEMPTED", "Preempted", "A higher-priority job took the nodes; resubmit."),
+    ("DEADLINE", "Hit the deadline", "The job passed its --deadline before starting."),
+    ("BOOT_FAIL", "A node failed to boot", "Resubmit, and report the node if it recurs."),
 ]
+
+_MAX_SIGNAL = 64
 
 _LOG_RULES = [
     (
@@ -34,7 +39,7 @@ _LOG_RULES = [
     (
         "Traceback (most recent call last)",
         "A Python exception was raised",
-        "See the traceback below.",
+        "See the log for the traceback.",
     ),
 ]
 
@@ -47,17 +52,19 @@ def _diagnose(info: dict, log_text: str) -> list[tuple[str, str]]:
         if state.startswith(key):
             findings.append((cause, suggestion))
     code, _, signal = info.get("exit_code", "").partition(":")
+    matched_state = any(state.startswith(key) for key, _, _ in _STATE_RULES)
+    signal_num = int(signal) if signal.isdigit() else 0
     if signal == "9":
         findings.append(
             ("Killed by signal 9 (SIGKILL)", "Often an out-of-memory kill; request more memory.")
         )
-    elif signal and signal != "0":
+    elif signal_num and signal_num <= _MAX_SIGNAL and not matched_state:
         findings.append(
             (f"Killed by signal {signal}", "The job was terminated by a signal; check the log.")
         )
-    if code and code != "0" and not any(state.startswith(k) for k, _, _ in _STATE_RULES):
+    if code and code != "0" and not matched_state:
         findings.append(
-            (f"Exited with non-zero code {code}", "Check the log below for the failing command.")
+            (f"Exited with non-zero code {code}", "Check the log with 'jobs log JOBID'.")
         )
     for pattern, cause, suggestion in _LOG_RULES:
         if pattern in log_text:
@@ -89,7 +96,22 @@ def debug(jobid: str) -> None:
     """
     info = slurm.job_accounting(jobid)
     if not info:
-        raise click.ClickException(f"No accounting record for job {jobid}.")
+        raise click.ClickException(
+            f"no accounting record for job {jobid}: it may not exist, or may belong to another user"
+        )
+    elements = info.get("element_count", 1)
+    if elements > 1:
+        click.echo(f"Job {jobid} is an array of {elements} elements:")
+        for state, count in sorted(info["states"].items(), key=lambda kv: -kv[1]):
+            click.echo(f"  {count:>6}  {state}")
+        click.echo("")
+        click.echo(f"Name one to diagnose it, for example '{jobid}_0'.")
+        return
+    if info["state"].startswith("PENDING"):
+        click.echo(f"Job {jobid} has not started ({info['state']}).")
+        click.echo(f"There is nothing to diagnose yet; 'jobs why {jobid}' explains the wait.")
+        return
+
     maxrss_mb = slurm.job_maxrss_mb(jobid)
     log_text = slurm.job_output_tail(jobid)
     findings = _diagnose(info, log_text)

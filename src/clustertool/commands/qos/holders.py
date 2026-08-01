@@ -60,7 +60,18 @@ def holders(
     except re.error as exc:
         raise click.ClickException(f"invalid --account-regex: {exc}") from exc
     if not rows:
-        click.echo(f"No user holds QoS {qos_name}.")
+        others = qoslib.any_holders(qos_name)
+        if others:
+            click.echo(
+                f"No user holds QoS {qos_name} on a partition-scoped association, but "
+                f"{len(others)} association(s) do carry it (Cluster|Account|User|Partition):"
+            )
+            for line in others[:20]:
+                click.echo(f"  {line}")
+            if len(others) > 20:
+                click.echo(f"  ... and {len(others) - 20} more")
+            return
+        click.echo(f"Nothing holds QoS {qos_name}.")
         return
     if by == "user":
         for user in sorted({r[0] for r in rows}):

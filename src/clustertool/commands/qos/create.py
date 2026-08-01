@@ -29,7 +29,8 @@ def create(
 
     Dry run by default: prints the sacctmgr commands and changes nothing. Re-run
     with --execute to apply, confirming unless --yes. Give at least one limit; a
-    value of -1 clears that limit. Slurm or system admin only.
+    value of -1 clears that limit. Needs AdminLevel=Operator or above; some Slurm builds require
+    Administrator for a QoS definition.
 
     \b
     Use cases:
