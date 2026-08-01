@@ -432,19 +432,32 @@ def user_fullnames(usernames: list[str]) -> dict[str, str]:
 
 
 def job_exists(jobid: str) -> bool:
-    """Return True if Slurm knows the job id, queued or running."""
-    code, _, _ = process.probe(["squeue", "-j", jobid, "-h", "-O", "jobid:32"])
-    return code == 0
+    """Return True if Slurm knows the job id, queued or running.
+
+    Raises when the controller could not be reached, so an outage is not reported
+    as a job that does not exist. Only squeue's own 'Invalid job id' counts as an
+    answer of no.
+    """
+    code, out, err = process.probe(["squeue", "-j", jobid, "-h", "-O", "jobid:32"])
+    if code == 0:
+        return True
+    if "invalid job id" in (out + err).lower():
+        return False
+    raise CommandError(f"could not check job {jobid}: {err.strip() or out.strip() or code}")
 
 
 def job_state_counts(user: str, pending_only: bool = False) -> dict[str, int]:
-    """Return {state: count} for a user's queued and running jobs."""
+    """Return {state: count} for a user's queued and running jobs.
+
+    Raises when the query fails, so a bulk cancel is never sized against a read
+    that did not happen.
+    """
     cmd = ["squeue", "-h", "-u", user, "-O", "state:32"]
     if pending_only:
         cmd += ["-t", "PENDING"]
-    code, out, _ = process.probe(cmd)
+    code, out, err = process.probe(cmd)
     if code != 0:
-        return {}
+        raise CommandError(f"could not list {user}'s jobs: {err.strip() or code}")
     counts: dict[str, int] = {}
     for line in out.split():
         counts[line] = counts.get(line, 0) + 1
@@ -524,7 +537,7 @@ def job_accounting(jobid: str) -> dict:
     and states, a count per final state. Reporting only the first row would let a
     array whose elements mostly failed read as the state of element zero.
     """
-    out = _run(
+    code, out, err = process.probe(
         [
             "sacct",
             "-j",
@@ -536,6 +549,8 @@ def job_accounting(jobid: str) -> dict:
             "State,ExitCode,Elapsed,Timelimit,ReqMem,ReqTRES,NodeList",
         ]
     )
+    if code != 0:
+        raise CommandError(f"could not read accounting for job {jobid}: {err.strip() or code}")
     rows = [row.split("|") for row in out.splitlines() if row.strip()]
     rows = [row for row in rows if len(row) >= 7]
     if not rows:

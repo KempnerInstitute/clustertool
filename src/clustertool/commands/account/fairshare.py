@@ -40,5 +40,4 @@ def fairshare(account: str | None, user: str | None) -> None:
         if not target:
             raise click.ClickException("no user to look up: give --user, or set $USER")
         cmd = ["sshare", "-U", "-u", target, "-m"]
-    if process.stream(cmd):
-        raise click.ClickException("'sshare' failed")
+    process.passthrough(cmd, "'sshare' failed")

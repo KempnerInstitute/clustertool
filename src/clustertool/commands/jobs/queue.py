@@ -25,5 +25,7 @@ def queue(partition: str) -> None:
     Inputs:
       PARTITION  Slurm partition name.
     """
-    if process.stream([site.tool("queue"), "-o", "-p", partition]):
-        raise click.ClickException(f"'{site.tool('queue')}' failed for partition {partition}")
+    process.passthrough(
+        [site.tool("queue"), "-o", "-p", partition],
+        f"'{site.tool('queue')}' failed for partition {partition}",
+    )

@@ -463,7 +463,13 @@ def test_mem_to_mb():
 
 def test_job_accounting_parsing(monkeypatch):
     monkeypatch.setattr(
-        slurm, "_run", lambda cmd: "FAILED|1:0|00:14:51|03:00:00|1000G|cpu=96,gres/gpu=8|node01\n"
+        slurm.process,
+        "probe",
+        lambda cmd, timeout=None: (
+            0,
+            "FAILED|1:0|00:14:51|03:00:00|1000G|cpu=96,gres/gpu=8|node01\n",
+            "",
+        ),
     )
     info = slurm.job_accounting("123")
     assert info["state"] == "FAILED"
@@ -584,6 +590,55 @@ def test_jobs_debug_does_not_invent_a_signal_for_oom(monkeypatch):
     assert result.exit_code == 0
     assert "Ran out of memory" in result.output
     assert "signal 125" not in result.output
+
+
+def test_jobs_debug_does_not_blame_memory_for_a_cancellation(monkeypatch):
+    """scancel kills with SIGKILL, so 0:9 on a CANCELLED job says nothing about memory."""
+    monkeypatch.setattr(
+        slurm,
+        "job_accounting",
+        lambda j: {
+            "state": "CANCELLED by 11222",
+            "exit_code": "0:9",
+            "elapsed": "00:03:28",
+            "timelimit": "01:00:00",
+            "req_mem": "64G",
+            "req_tres": "",
+            "nodelist": "n1",
+            "element_count": 1,
+            "states": {"CANCELLED": 1},
+        },
+    )
+    monkeypatch.setattr(slurm, "job_maxrss_mb", lambda j: 0.0)
+    monkeypatch.setattr(slurm, "job_output_tail", lambda j: "")
+    result = CliRunner().invoke(main, ["jobs", "debug", "123"])
+    assert result.exit_code == 0
+    assert "Canceled" in result.output
+    assert "out-of-memory" not in result.output
+
+
+def test_jobs_debug_still_reads_a_signal_that_adds_information(monkeypatch):
+    """FAILED alone does not explain the death, so the SIGKILL hint is worth keeping."""
+    monkeypatch.setattr(
+        slurm,
+        "job_accounting",
+        lambda j: {
+            "state": "FAILED",
+            "exit_code": "0:9",
+            "elapsed": "00:03:28",
+            "timelimit": "01:00:00",
+            "req_mem": "64G",
+            "req_tres": "",
+            "nodelist": "n1",
+            "element_count": 1,
+            "states": {"FAILED": 1},
+        },
+    )
+    monkeypatch.setattr(slurm, "job_maxrss_mb", lambda j: 0.0)
+    monkeypatch.setattr(slurm, "job_output_tail", lambda j: "")
+    result = CliRunner().invoke(main, ["jobs", "debug", "123"])
+    assert result.exit_code == 0
+    assert "signal 9" in result.output
 
 
 def test_jobs_debug_no_record(monkeypatch):
@@ -1305,6 +1360,37 @@ def test_jobs_script_treats_none_as_absent(monkeypatch):
     result = CliRunner().invoke(main, ["jobs", "script", "123"])
     assert result.exit_code != 0
     assert "no batch script" in result.output
+
+
+_SACCT_HEADER = "Batch Script for 123\n" + "-" * 80 + "\n"
+
+
+def test_jobs_script_treats_a_headed_none_as_absent(monkeypatch):
+    """sacct heads the script with a title and a rule, so NONE is never the whole output."""
+
+    def fake_probe(cmd, timeout=None):
+        if cmd[0] == "sacct":
+            return 0, _SACCT_HEADER + "NONE\n", ""
+        return 1, "", "Invalid job id specified"
+
+    monkeypatch.setattr(process, "probe", fake_probe)
+    result = CliRunner().invoke(main, ["jobs", "script", "123"])
+    assert result.exit_code != 0
+    assert "no batch script" in result.output
+    assert "NONE" not in result.output
+
+
+def test_jobs_script_emits_only_the_script(monkeypatch):
+    """The output must be redirectable to a runnable file, so the header is dropped."""
+    monkeypatch.setattr(
+        process,
+        "probe",
+        lambda cmd, timeout=None: (0, _SACCT_HEADER + "#!/bin/bash\n#SBATCH -c 4\n", ""),
+    )
+    result = CliRunner().invoke(main, ["jobs", "script", "123"])
+    assert result.exit_code == 0
+    assert result.output.startswith("#!/bin/bash\n")
+    assert "Batch Script for" not in result.output
 
 
 def test_jobs_list_start(monkeypatch):
@@ -2031,6 +2117,24 @@ def test_jobs_violators_unknown_partition(monkeypatch):
     result = CliRunner().invoke(main, ["jobs", "violators", "some_partition"])
     assert result.exit_code != 0
     assert "does not exist, or has no nodes" in result.output
+
+
+def test_jobs_violators_rejects_a_zero_norm_flag(monkeypatch):
+    """Dividing by the norm makes zero and negative values meaningless, not merely odd."""
+    monkeypatch.setattr(slurm, "running_jobs_reqtres", lambda p: [("201", "eve", 8, 1, 1000)])
+    for flag, value in (("--cpus-per-gpu", "0"), ("--mem-per-gpu", "0"), ("--cpus-per-gpu", "-4")):
+        result = CliRunner().invoke(main, ["jobs", "violators", "kempner_h100", flag, value])
+        assert result.exit_code != 0
+        assert "is not in the range" in result.output
+
+
+def test_jobs_violators_rejects_a_zero_norm_from_the_site_config(monkeypatch):
+    """A flag range cannot guard the policy path, which supplies the same divisor."""
+    monkeypatch.setattr(slurm, "running_jobs_reqtres", lambda p: [("201", "eve", 8, 1, 1000)])
+    monkeypatch.setattr(slurm, "PARTITION_LIMITS", {"broken": (0, 0)})
+    result = CliRunner().invoke(main, ["jobs", "violators", "broken"])
+    assert result.exit_code != 0
+    assert "cannot be a norm" in result.output
 
 
 def test_jobs_violators_override(monkeypatch):
@@ -3675,3 +3779,18 @@ def test_nvlink_narrows_the_slurm_allocation(monkeypatch):
     assert nv._device_list(4) == "4,5,6,7"
     monkeypatch.delenv("CUDA_VISIBLE_DEVICES")
     assert nv._device_list(2) == "0,1"
+
+
+def test_entry_restores_the_default_sigpipe_disposition():
+    """Python's ignore-and-raise turns a closed pipe into a spurious exit 1."""
+    import signal
+
+    from clustertool import entry
+
+    original = signal.getsignal(signal.SIGPIPE)
+    try:
+        signal.signal(signal.SIGPIPE, signal.SIG_IGN)
+        entry._restore_sigpipe()
+        assert signal.getsignal(signal.SIGPIPE) == signal.SIG_DFL
+    finally:
+        signal.signal(signal.SIGPIPE, original)

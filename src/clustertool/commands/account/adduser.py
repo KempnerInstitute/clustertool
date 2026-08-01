@@ -59,5 +59,4 @@ def add_user(
         _write.cluster_scope(cluster),
         f"fairshare={share}",
     ]
-    if process.stream(cmd):
-        raise click.ClickException(f"failed to add {user} to {account}")
+    process.passthrough(cmd, f"failed to add {user} to {account}")

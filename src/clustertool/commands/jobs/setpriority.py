@@ -36,5 +36,7 @@ def set_priority(jobid: str, priority: int, yes: bool) -> None:
     """
     if not yes:
         click.confirm(f"Set priority of job {jobid} to {priority}?", abort=True)
-    if process.stream(["scontrol", "update", f"jobid={jobid}", f"priority={priority}"]):
-        raise click.ClickException(f"failed to set the priority of job {jobid}")
+    process.passthrough(
+        ["scontrol", "update", f"jobid={jobid}", f"priority={priority}"],
+        f"failed to set the priority of job {jobid}",
+    )

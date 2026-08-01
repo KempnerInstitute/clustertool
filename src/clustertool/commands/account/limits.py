@@ -41,5 +41,4 @@ def limits(account: str | None, user: str | None) -> None:
             raise click.ClickException("no user to look up: give --user, or set $USER")
         where = f"user={target}"
     cmd = ["sacctmgr", "show", "assoc", where, "format=" + _FORMAT]
-    if process.stream(cmd):
-        raise click.ClickException("'sacctmgr show assoc' failed")
+    process.passthrough(cmd, "'sacctmgr show assoc' failed")

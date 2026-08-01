@@ -379,3 +379,33 @@ def test_resumable_nodes_includes_an_invalid_registration(monkeypatch):
     rows = slurm.resumable_nodes("gpu")
     assert [name for name, _, _ in rows] == ["n1"]
     assert rows[0][2] == "gres/gpu count reported lower than configured (3 < 4)"
+
+
+def test_job_exists_raises_when_the_controller_is_unreachable(monkeypatch):
+    """An outage must not read as a job that does not exist, on a cancel path."""
+    monkeypatch.setattr(
+        slurm.process,
+        "probe",
+        lambda cmd, timeout=None: (
+            1,
+            "",
+            "slurm_load_jobs error: Unable to contact slurm controller",
+        ),
+    )
+    with pytest.raises(slurm.SlurmError):
+        slurm.job_exists("123")
+
+
+def test_job_exists_false_only_for_an_invalid_id(monkeypatch):
+    monkeypatch.setattr(
+        slurm.process,
+        "probe",
+        lambda cmd, timeout=None: (1, "", "slurm_load_jobs error: Invalid job id specified"),
+    )
+    assert slurm.job_exists("99999997") is False
+
+
+def test_job_state_counts_raises_when_the_query_fails(monkeypatch):
+    monkeypatch.setattr(slurm.process, "probe", lambda cmd, timeout=None: (1, "", "down"))
+    with pytest.raises(slurm.SlurmError):
+        slurm.job_state_counts("alice")

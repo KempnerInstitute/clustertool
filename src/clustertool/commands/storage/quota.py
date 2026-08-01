@@ -78,8 +78,10 @@ def quota(
         target = os.path.expanduser("~")
     else:
         target = path if path.startswith("/") else f"{site.path_prefix()}/{path}"
-    if process.stream(storage.quota_cmd(target, group=group, user=user, verbose=verbose)):
-        raise click.ClickException(f"quota lookup failed for {target}")
+    process.passthrough(
+        storage.quota_cmd(target, group=group, user=user, verbose=verbose),
+        f"quota lookup failed for {target}",
+    )
 
 
 def _report_table(path: str | None, fleet_keyword: str | None, user: str | None) -> None:

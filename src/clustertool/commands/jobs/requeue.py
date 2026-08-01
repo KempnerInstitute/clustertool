@@ -31,8 +31,7 @@ def requeue(jobids: tuple[str, ...]) -> None:
     Inputs:
       JOBID...  One or more Slurm job ids.
     """
-    if process.stream(["scontrol", "requeue", ",".join(jobids)]):
-        raise click.ClickException(
-            f"could not requeue one or more of {', '.join(jobids)}; "
-            "see the messages above for which"
-        )
+    process.passthrough(
+        ["scontrol", "requeue", ",".join(jobids)],
+        f"could not requeue one or more of {', '.join(jobids)}; see the messages above for which",
+    )

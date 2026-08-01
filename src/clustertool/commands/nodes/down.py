@@ -34,5 +34,4 @@ def down(partition: str | None) -> None:
         if not qos.partition_exists(partition):
             raise click.ClickException(f"partition '{partition}' does not exist")
         cmd += ["-p", partition]
-    if process.stream(cmd):
-        raise click.ClickException("'sinfo -R' failed")
+    process.passthrough(cmd, "'sinfo -R' failed")

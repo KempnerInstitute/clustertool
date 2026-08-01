@@ -63,5 +63,4 @@ def cancel(jobids: tuple[str, ...], all_jobs: bool, pending: bool, yes: bool) ->
             cmd += ["-t", "PENDING"]
     else:
         raise click.UsageError("Give one or more JOBIDs, or --all / --pending.")
-    if process.stream(cmd):
-        raise click.ClickException("scancel failed")
+    process.passthrough(cmd, "scancel failed")

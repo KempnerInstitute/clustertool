@@ -53,8 +53,7 @@ def lfs_stripe(path: str, count: int | None, yes: bool) -> None:
     if not os.path.exists(path):
         raise click.ClickException(f"path not found: {path}")
     if count is None:
-        if process.stream([lfs, "getstripe", "-d", path]):
-            raise click.ClickException(f"'{lfs} getstripe' failed for {path}")
+        process.passthrough([lfs, "getstripe", "-d", path], f"'{lfs} getstripe' failed for {path}")
         return
 
     osts = storage.lustre_ost_count(path)
@@ -70,8 +69,9 @@ def lfs_stripe(path: str, count: int | None, yes: bool) -> None:
         )
     if not yes:
         click.confirm(_prompt(path, count, osts), abort=True)
-    if process.stream([lfs, "setstripe", "-c", str(count), path]):
-        raise click.ClickException(f"'{lfs} setstripe' failed for {path}")
+    process.passthrough(
+        [lfs, "setstripe", "-c", str(count), path], f"'{lfs} setstripe' failed for {path}"
+    )
 
 
 def _prompt(path: str, count: int, osts: int) -> str:

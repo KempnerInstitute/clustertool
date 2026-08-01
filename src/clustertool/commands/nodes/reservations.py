@@ -20,5 +20,4 @@ def reservations() -> None:
       - Find a reservation name to submit into with --reservation.
       - Check for upcoming maintenance windows before planning a long run.
     """
-    if process.stream(["scontrol", "show", "reservation"]):
-        raise click.ClickException("'scontrol show reservation' failed")
+    process.passthrough(["scontrol", "show", "reservation"], "'scontrol show reservation' failed")

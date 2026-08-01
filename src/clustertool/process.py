@@ -103,3 +103,21 @@ def stream(cmd: list[str], extra_env: dict[str, str] | None = None) -> int:
     except FileNotFoundError as exc:
         raise CommandError(f"'{cmd[0]}' not found on this host") from exc
     return code if code >= 0 else 128 - code
+
+
+SIGPIPE_EXIT = 141
+"""Exit code of a child killed by SIGPIPE, which is a reader closing the pipe."""
+
+
+def passthrough(cmd: list[str], failure: str, extra_env: dict[str, str] | None = None) -> None:
+    """Run a command with inherited stdio, raising CommandError if it fails.
+
+    A reader such as head or less closing the pipe kills the child with SIGPIPE,
+    which is not a failure, so that case exits with the shell's own code for it
+    instead of reporting one.
+    """
+    code = stream(cmd, extra_env=extra_env)
+    if code == SIGPIPE_EXIT:
+        raise SystemExit(SIGPIPE_EXIT)
+    if code:
+        raise CommandError(failure)

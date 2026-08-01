@@ -54,5 +54,4 @@ def set_fairshare(user: str, account: str, share: str, cluster: str | None, yes:
         "set",
         f"fairshare={share}",
     ]
-    if process.stream(cmd):
-        raise click.ClickException(f"failed to set {user} fairshare in {account}")
+    process.passthrough(cmd, f"failed to set {user} fairshare in {account}")

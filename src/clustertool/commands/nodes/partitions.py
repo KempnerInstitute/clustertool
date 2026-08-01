@@ -25,8 +25,7 @@ def partitions(name_filter: str | None) -> None:
     """
     tool = site.tool("partitions")
     if not name_filter:
-        if process.stream([tool]):
-            raise click.ClickException(f"'{tool}' failed")
+        process.passthrough([tool], f"'{tool}' failed")
         return
     code, out, err = process.probe([tool])
     if code:

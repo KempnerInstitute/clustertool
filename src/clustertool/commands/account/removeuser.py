@@ -70,5 +70,4 @@ def remove_user(
     cmd.append(_write.cluster_scope(cluster))
     if partition is not None:
         cmd.append(f"partition={partition}")
-    if process.stream(cmd):
-        raise click.ClickException(f"failed to remove {user} from {account}")
+    process.passthrough(cmd, f"failed to remove {user} from {account}")

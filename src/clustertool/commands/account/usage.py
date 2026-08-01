@@ -61,5 +61,4 @@ def usage(account: str | None, days: int, user: str | None, efficiency: bool) ->
                 "(see docs/configuration.md). For per-job efficiency instead, use --efficiency."
             )
         cmd = [site.tool("account_usage"), *scope, "-S", start, "-E", end, "-d"]
-    if process.stream(cmd):
-        raise click.ClickException(f"'{cmd[0]}' failed")
+    process.passthrough(cmd, f"'{cmd[0]}' failed")

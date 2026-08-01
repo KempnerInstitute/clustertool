@@ -29,5 +29,7 @@ def vast_usage(path: str, group: str) -> None:
     """
     target = path if path.startswith("/") else f"{site.path_prefix()}/{path}"
     tool = site.tool("quota")
-    if process.stream([tool, "--group-user-usage", group, target]):
-        raise click.ClickException(f"'{tool} --group-user-usage' failed for {group} on {target}")
+    process.passthrough(
+        [tool, "--group-user-usage", group, target],
+        f"'{tool} --group-user-usage' failed for {group} on {target}",
+    )

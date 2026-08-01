@@ -43,8 +43,7 @@ def qos(name_filter: str | None, long_format: bool) -> None:
     """
     cmd = ["sacctmgr", "show", "qos", "format=" + (_LONG_FORMAT if long_format else _FORMAT)]
     if not name_filter:
-        if process.stream(cmd):
-            raise click.ClickException("'sacctmgr show qos' failed")
+        process.passthrough(cmd, "'sacctmgr show qos' failed")
         return
     code, out, err = process.probe(cmd)
     if code:

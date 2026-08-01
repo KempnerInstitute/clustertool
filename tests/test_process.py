@@ -1,6 +1,7 @@
 """Tests for the process helpers."""
 
 import os
+import subprocess
 import sys
 
 from clustertool import process
@@ -63,3 +64,25 @@ def test_probe_timeout_returns_124():
     )
     assert code == 124
     assert out == ""
+
+
+def test_stream_reports_a_closed_pipe_as_sigpipe(tmp_path):
+    """A reader closing the pipe, as head does, must be distinguishable from a failure."""
+    runner = tmp_path / "runner.py"
+    runner.write_text(
+        "import signal, sys\n"
+        "from clustertool import process\n"
+        "signal.signal(signal.SIGPIPE, signal.SIG_DFL)\n"
+        "sys.exit(process.stream(['seq', '2000000']))\n"
+    )
+    piped = subprocess.Popen(
+        [sys.executable, str(runner)], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL
+    )
+    piped.stdout.readline()
+    piped.stdout.close()
+    assert piped.wait() == process.SIGPIPE_EXIT
+
+
+def test_sigpipe_exit_matches_the_shell_convention():
+    """128 + SIGPIPE(13), the code a shell reports for a child killed by a closed pipe."""
+    assert process.SIGPIPE_EXIT == 141

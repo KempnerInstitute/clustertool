@@ -68,5 +68,4 @@ def list_jobs(
         cmd += ["-A", account]
     if start:
         cmd.append("--start")
-    if process.stream(cmd):
-        raise click.ClickException("'squeue' failed")
+    process.passthrough(cmd, "'squeue' failed")

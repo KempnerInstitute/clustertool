@@ -30,5 +30,4 @@ def lfs_inodes(path: str) -> None:
     if not os.path.exists(target):
         raise click.ClickException(f"path not found: {target}")
     lfs = site.tool("lfs")
-    if process.stream([lfs, "df", "-i", target]):
-        raise click.ClickException(f"'{lfs} df' failed for {target}")
+    process.passthrough([lfs, "df", "-i", target], f"'{lfs} df' failed for {target}")

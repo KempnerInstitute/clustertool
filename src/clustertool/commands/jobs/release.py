@@ -29,8 +29,7 @@ def release(jobids: tuple[str, ...]) -> None:
     Inputs:
       JOBID...  One or more Slurm job ids.
     """
-    if process.stream(["scontrol", "release", ",".join(jobids)]):
-        raise click.ClickException(
-            f"could not release one or more of {', '.join(jobids)}; "
-            "see the messages above for which"
-        )
+    process.passthrough(
+        ["scontrol", "release", ",".join(jobids)],
+        f"could not release one or more of {', '.join(jobids)}; see the messages above for which",
+    )

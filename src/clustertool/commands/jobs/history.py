@@ -43,5 +43,4 @@ def history(days: int, user: str | None) -> None:
     if not target:
         raise click.ClickException("no user to look up: give --user, or set $USER")
     cmd = ["sacct", "-u", target, "-S", f"now-{days}days", "-X", "--format", _FORMAT]
-    if process.stream(cmd):
-        raise click.ClickException("'sacct' failed")
+    process.passthrough(cmd, "'sacct' failed")
