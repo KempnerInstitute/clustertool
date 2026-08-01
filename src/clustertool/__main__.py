@@ -1,6 +1,6 @@
 """Enable ``python -m clustertool``."""
 
-from clustertool.cli import main
+from clustertool.entry import run
 
 if __name__ == "__main__":
-    main()
+    run()

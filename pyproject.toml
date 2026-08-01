@@ -39,7 +39,7 @@ Issues = "https://github.com/KempnerInstitute/clustertool/issues"
 Documentation = "https://github.com/KempnerInstitute/clustertool/tree/main/docs"
 
 [project.scripts]
-clustertool = "clustertool.cli:main"
+clustertool = "clustertool.entry:run"
 
 [dependency-groups]
 dev = ["pytest>=8", "ruff>=0.6"]

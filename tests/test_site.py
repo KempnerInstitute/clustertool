@@ -1,9 +1,11 @@
 """Tests for the site configuration layer."""
 
+import sys
+
 import pytest
 from click.testing import CliRunner
 
-from clustertool import site, slurm
+from clustertool import entry, site, slurm
 from clustertool.cli import main
 
 
@@ -92,3 +94,36 @@ def test_commands_honor_a_different_site(monkeypatch):
     assert result.exit_code == 0
     assert "alpha" in result.output
     assert "beta" in result.output
+
+
+def test_bad_toml_raises_config_error(tmp_path):
+    bad = tmp_path / "site.toml"
+    bad.write_text("not valid toml [[[\n")
+    with pytest.raises(site.ConfigError) as excinfo:
+        site.load_file(bad)
+    assert str(bad) in str(excinfo.value)
+
+
+def test_env_var_pointing_at_missing_file_is_an_error(tmp_path, monkeypatch):
+    monkeypatch.setenv(site.ENV_VAR, str(tmp_path / "absent.toml"))
+    with pytest.raises(site.ConfigError) as excinfo:
+        site.load()
+    assert site.ENV_VAR in str(excinfo.value)
+
+
+def test_unreadable_config_raises_config_error(tmp_path):
+    with pytest.raises(site.ConfigError):
+        site.load_file(tmp_path / "does-not-exist.toml")
+
+
+def test_entry_reports_config_error_without_traceback(tmp_path, monkeypatch):
+    bad = tmp_path / "site.toml"
+    bad.write_text("nope [[[\n")
+    monkeypatch.setenv(site.ENV_VAR, str(bad))
+    for name in [m for m in list(sys.modules) if m.startswith("clustertool.c")]:
+        monkeypatch.delitem(sys.modules, name, raising=False)
+    site._cache = None
+    with pytest.raises(SystemExit) as excinfo:
+        entry.run()
+    assert "not valid TOML" in str(excinfo.value)
+    site._cache = None
