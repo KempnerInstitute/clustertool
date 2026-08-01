@@ -20,9 +20,12 @@ _LABELS = {
 def status() -> None:
     """Show GPU node status by type and state (via sinfo).
 
-    Reads the site's requeue partition, which spans every GPU node, and breaks
-    the nodes down by GPU type and state. Idle, Mixed, and Alloc nodes are up;
-    Resv is reserved; Drain is draining; Down is offline.
+    Reads the site's requeue partition, which spans every GPU node, and breaks the
+    nodes down by GPU type and state. Idle, Mixed, and Alloc nodes are up; Resv is
+    reserved; Drain is draining; Down is offline. Each column aggregates the
+    related Slurm states: a node planned by the backfill scheduler counts as Idle,
+    one still completing a job as Alloc, one held for maintenance as Resv,
+    and one with invalid registered resources as Down.
 
     \b
     Use cases:

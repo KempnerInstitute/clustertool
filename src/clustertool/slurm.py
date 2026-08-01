@@ -200,7 +200,10 @@ def gpu_node_status() -> list[tuple[str, dict[str, int]]]:
     Each node is mapped to a GPU type from its features and a status bucket from
     its state. Types come back in a fixed order, omitting any with no nodes.
     """
-    out = _run(["sinfo", "-h", "-N", "-p", site.requeue_partition(), "-o", "%N|%t|%f"])
+    partition = site.requeue_partition()
+    code, out, err = process.probe(["sinfo", "-h", "-N", "-p", partition, "-o", "%N|%t|%f"])
+    if code != 0:
+        raise CommandError(f"could not read partition {partition}: {err.strip() or code}")
     counts: dict[str, dict[str, int]] = {}
     seen: set[str] = set()
     for line in out.splitlines():
@@ -395,8 +398,15 @@ def user_fullnames(usernames: list[str]) -> dict[str, str]:
 
 
 def job_nodes(jobid: str) -> list[str]:
-    """Return the expanded hostnames allocated to a job."""
-    compact = _run(["squeue", "-j", jobid, "-h", "-o", "%N"]).strip()
+    """Return the expanded hostnames allocated to a job.
+
+    An empty list means the job exists but holds no nodes yet, as a pending job
+    does. A job Slurm does not know raises, so the two are not confused.
+    """
+    code, out, err = process.probe(["squeue", "-j", jobid, "-h", "-o", "%N"])
+    if code != 0:
+        raise CommandError(f"job '{jobid}' not found: {err.strip() or out.strip() or code}")
+    compact = out.strip()
     if not compact:
         return []
     return [host for host in _run(["scontrol", "show", "hostnames", compact]).split() if host]

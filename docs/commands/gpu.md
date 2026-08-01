@@ -45,7 +45,10 @@ PARTITION, reports the site base partitions.
 Show GPU node status by type and state (via `sinfo`). Reads the site's requeue
 partition, which spans every GPU node, and breaks the nodes down by GPU type and
 state. Idle, Mixed, and Alloc nodes are up; Resv is reserved; Drain is draining;
-Down is offline.
+Down is offline. Each column aggregates the related Slurm states: a node planned
+by the backfill scheduler counts as Idle, one still completing a job as Alloc, one
+held for maintenance as Resv, and one with invalid registered resources as
+Down.
 
 **Use cases**
 - See how many nodes of each GPU type are up, drained, or down.
@@ -111,7 +114,7 @@ override or add flags (salloc uses the last value): for example
 - `-A, --account`: Fairshare account to charge (required).
 - `-t, --time`: Time limit D-HH:MM (default 0-01:00).
 - `--jupyter`: Launch Jupyter Lab on the node and print the SSH tunnel to reach it.
-- `--port`: Port for `--jupyter` (default 8888).
+- `--port`: Port for `--jupyter` (default 8888; 1024-65535).
 - `[SALLOC_ARG]...`: Extra salloc arguments, forwarded (they override the defaults).
 
 ## `gpu monitor-partition PARTITION [--interval S] [--filter PREFIX]`

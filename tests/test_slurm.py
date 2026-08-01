@@ -185,18 +185,27 @@ def test_user_fullnames(monkeypatch):
 
 
 def test_job_nodes(monkeypatch):
-    def fake_run(cmd):
-        if cmd[0] == "squeue":
-            return "holygpu8a[11101-11102]\n"
-        return "holygpu8a11101\nholygpu8a11102\n"
-
-    monkeypatch.setattr(slurm, "_run", fake_run)
+    monkeypatch.setattr(
+        slurm.process, "probe", lambda cmd, timeout=None: (0, "holygpu8a[11101-11102]\n", "")
+    )
+    monkeypatch.setattr(slurm, "_run", lambda cmd: "holygpu8a11101\nholygpu8a11102\n")
     assert slurm.job_nodes("123") == ["holygpu8a11101", "holygpu8a11102"]
 
 
 def test_job_nodes_not_running(monkeypatch):
-    monkeypatch.setattr(slurm, "_run", lambda cmd: "\n")
+    """A pending job exists and holds no nodes; that is not the same as no such job."""
+    monkeypatch.setattr(slurm.process, "probe", lambda cmd, timeout=None: (0, "\n", ""))
     assert slurm.job_nodes("123") == []
+
+
+def test_job_nodes_raises_for_an_unknown_job(monkeypatch):
+    monkeypatch.setattr(
+        slurm.process,
+        "probe",
+        lambda cmd, timeout=None: (1, "", "slurm_load_jobs error: Invalid job id specified"),
+    )
+    with pytest.raises(slurm.SlurmError):
+        slurm.job_nodes("99999991")
 
 
 def test_node_capacity(monkeypatch):

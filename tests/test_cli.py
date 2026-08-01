@@ -78,7 +78,7 @@ def test_gpu_node_status_parsing(monkeypatch):
             "hg7|resv|amd,gpu,rtx6000pro",
         ]
     )
-    monkeypatch.setattr(slurm, "_run", lambda cmd, input_text=None: sample)
+    monkeypatch.setattr(slurm.process, "probe", lambda cmd, timeout=None: (0, sample, ""))
     rows = dict(slurm.gpu_node_status())
     assert rows["H100"] == {"idle": 1, "mixed": 1, "alloc": 0, "resv": 0, "drain": 1, "down": 0}
     assert rows["H200"]["alloc"] == 1

@@ -43,7 +43,13 @@ def _jupyter_command(port: int) -> list[str]:
 @click.option(
     "--jupyter", is_flag=True, help="Launch Jupyter Lab on the node and print the tunnel."
 )
-@click.option("--port", type=int, default=8888, show_default=True, help="Port for --jupyter.")
+@click.option(
+    "--port",
+    type=click.IntRange(1024, 65535),
+    default=8888,
+    show_default=True,
+    help="Port for --jupyter.",
+)
 def session(
     gpu_type: str,
     salloc_args: tuple[str, ...],
@@ -93,7 +99,8 @@ def session(
         cmd += ["--cpus-per-task=" + str(cpus), "--mem=" + str(mem_mb)]
     cmd += ["-t", time_limit, *salloc_args]
     if jupyter:
+        if not os.environ.get("USER"):
+            raise click.ClickException("cannot build the ssh tunnel: $USER is not set")
         cmd += _jupyter_command(port)
-    code = process.stream(cmd)
-    if code:
-        raise SystemExit(code)
+    if process.stream(cmd):
+        raise click.ClickException(f"salloc failed for partition {partition}")
