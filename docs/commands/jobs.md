@@ -7,6 +7,11 @@ Inspect, submit, and control Slurm jobs. Run `clustertool jobs --help` to list t
 
 List your queued and running jobs (via `squeue`).
 
+A filter that names something the cluster does not have is an error: `squeue`
+answers a mistyped user with a message on stderr and exit 0, and a mistyped
+partition or account with a silent empty list, so all three would read as having
+no jobs.
+
 **Use cases**
 - See what you have running and pending right now.
 - Check why a job is pending (the NODELIST(REASON) column).
@@ -72,13 +77,17 @@ total priority and its fairshare, age, and other contributions.
 
 List running jobs requesting more CPU or memory per GPU than the norm (via
 `scontrol`). Norms default to the per-GPU policy your site sets under
-`[partitions.limits]`, which nothing in Slurm enforces; pass `--cpus-per-gpu` /
-`--mem-per-gpu` for partitions without one. Jobs with no GPUs are not evaluated.
+`[partitions.limits]`; pass `--cpus-per-gpu` / `--mem-per-gpu` for partitions
+without one. A norm below 1 is rejected rather than divided by. Jobs with no GPUs
+are not evaluated.
 
 Memory is in MiB throughout, which is what Slurm reports and what `--mem` takes
 by default, so `--mem=360G` and `--mem=368640` are the same request. The `OVER`
 column gives each job's overage as a ratio, so a job a few percent past the norm
-does not read like one at ten times it.
+does not read like one at ten times it. Slurm's scheduler has no per-GPU ratio of
+its own, so these norms are your site's. Where a site does enforce them, it is at
+submission through a `job_submit` plugin, and a job listed here then either
+predates the current policy or was shaped in a way that check did not catch.
 
 **Use cases**
 - Find jobs hoarding CPU or memory relative to their GPU count.
@@ -94,7 +103,8 @@ does not read like one at ten times it.
 Show a partition's whole queue, waiting jobs in priority order (via `showq`).
 Lists the partition's active, waiting, and blocked jobs, with the waiting ones
 ordered by priority so you can see where you sit. Unlike `jobs list`, which shows
-your own jobs, this covers everyone's.
+your own jobs, this covers everyone's. A partition the cluster does not have is
+an error, since `showq` reports it as an empty queue.
 
 **Use cases**
 - See how far back your pending job is in a partition.
@@ -107,7 +117,9 @@ your own jobs, this covers everyone's.
 
 Show live resource use of a running job's steps (via `sstat`): current CPU and
 memory (AveRSS/MaxRSS), which `sacct` and `jobstats` cannot report until the job
-finishes. Only jobs with an active step report data.
+finishes. Only jobs with an active step report data, so a job that is pending or
+already finished is an error rather than a bare header: `sstat` exits 0 either
+way. For an array, name one element.
 
 **Use cases**
 - Watch a running job's memory before it hits the limit.
@@ -118,8 +130,10 @@ finishes. Only jobs with an active step report data.
 ## `jobs log JOBID [-f]`
 
 Show a job's stdout and stderr paths, or tail its output (via `scontrol`). With
-`--follow`, tails the stdout file live. Interactive jobs have no output file, and
-only running or recent jobs are in `scontrol`.
+`--follow`, tails the stdout file live. The controller drops a job `MinJobAge`
+seconds after it ends, so for an older one the path comes from accounting
+instead, which stores the pattern rather than the expanded name and which records
+no path at all for an interactive job, since that writes to your terminal.
 
 A job array writes one file per element, so name an element (`12345_0`) rather
 than the array. Before any element starts, Slurm leaves the task id unfilled and
@@ -140,7 +154,9 @@ Print the batch script a job was submitted with.
 
 Reads the accounting record first, which needs the cluster to store scripts
 (`AccountingStoreFlags=job_script` in `slurm.conf`), and falls back to asking the
-controller with `scontrol write batch_script`. The controller still holds the
+controller with `scontrol write batch_script`. `sacct` heads the script with a
+title and a rule, which is stripped, so redirecting the output gives a runnable
+file on either path. The controller still holds the
 script for a queued or running job, including an array element that has not
 started and so has no accounting record yet.
 
@@ -194,9 +210,9 @@ jobstats install, so no setup is needed on the Kempner AI Cluster (the offline
 
 ## `jobs history [-d DAYS] [-u USER]`
 
-List your recent finished jobs (via `sacct`): job id, name, partition, state,
-elapsed, and nodes. One row per job allocation, so it covers jobs that are still
-running as well as finished ones. Peak memory is a per-step figure a
+List your recent jobs (via `sacct`): job id, name, partition, state, elapsed, and
+nodes. One row per job allocation, so it covers jobs that are still running as
+well as finished ones. Peak memory is a per-step figure a
 per-allocation listing cannot carry, so use `jobs debug JOBID` or `jobs scope`
 for that.
 
@@ -264,13 +280,16 @@ are mutually exclusive, and cannot be combined with a list of job ids.
 
 ## `jobs set-priority JOBID PRIORITY [-y]`
 
-Set a job's scheduling priority (via `scontrol update`). Operator only.
+Set a job's scheduling priority (via `scontrol update`). Operator or admin.
 
 Per `man scontrol`, once a privileged user sets a priority explicitly it is fixed
 and the priority plugin stops modifying it; hold and then release the job to hand
-it back to the multifactor plugin. A priority of zero holds the job. To
-deprioritize your own job as its owner, raise its `Nice` value instead. Prompts
-for confirmation unless `-y`. Also available as `jobs setprio`.
+it back to the multifactor plugin. A priority of zero holds the job. `man
+scontrol` gives the requirement as Privileged or Effective Owner: an
+`AdminLevel` of `Operator` or `Administrator`, root or `SlurmUser`, or the job's
+own owner or an account coordinator, who can only lower a priority. To
+deprioritize your own job, raise its `Nice` value instead. Prompts for
+confirmation unless `-y`. Also available as `jobs setprio`.
 
 **Use cases**
 - Boost a specific job ahead of the queue.
@@ -283,7 +302,9 @@ for confirmation unless `-y`. Also available as `jobs setprio`.
 ## `jobs hold JOBID...`
 
 Prevent pending jobs from starting (via `scontrol hold`). Held jobs stay in the
-queue but are not scheduled until released with `jobs release`.
+queue but are not scheduled until released with `jobs release`. Holding a running
+job does not suspend or cancel it: per `man scontrol` it only sets the priority
+to 0, which keeps the job held if it is later requeued.
 
 **Use cases**
 - Pause a pending job you are not ready to run.
@@ -306,7 +327,10 @@ admin needs one of them to lift it.
 ## `jobs requeue JOBID...`
 
 Cancel and re-queue jobs (via `scontrol requeue`); they return to the pending
-queue and run again from the start.
+queue and run again from the start. `man scontrol` limits this to batch jobs, so
+an `salloc` or `srun` allocation cannot be requeued. The requirement is
+Privileged or Effective Owner: an operator or admin, or the job's own owner or an
+account coordinator.
 
 **Use cases**
 - Restart a running or failed job without resubmitting it.
