@@ -28,10 +28,10 @@ def test_quota_cmd_group():
 
 
 def test_quota_cmd_user_verbose():
-    assert storage.quota_cmd("/n/holystore01", user="mmsh", verbose=True) == [
+    assert storage.quota_cmd("/n/holystore01", user="auser", verbose=True) == [
         "quota",
         "-u",
-        "mmsh",
+        "auser",
         "-v",
         "/n/holystore01",
     ]

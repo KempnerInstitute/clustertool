@@ -558,9 +558,9 @@ def test_storage_quota_user_full_path(monkeypatch):
     monkeypatch.setattr(
         process, "stream", lambda cmd, extra_env=None: captured.update(cmd=cmd) or 0
     )
-    result = CliRunner().invoke(main, ["storage", "quota", "/n/netscratch", "-u", "mmsh"])
+    result = CliRunner().invoke(main, ["storage", "quota", "/n/netscratch", "-u", "auser"])
     assert result.exit_code == 0
-    assert captured["cmd"] == ["quota", "-u", "mmsh", "/n/netscratch"]
+    assert captured["cmd"] == ["quota", "-u", "auser", "/n/netscratch"]
 
 
 def test_storage_quota_infer(monkeypatch):
