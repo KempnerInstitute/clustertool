@@ -12,8 +12,9 @@ commands and change nothing. Re-run with `--execute` to apply, confirming unless
 They need two different privilege levels. Changing a QoS *definition* (`create`,
 `modify`, `delete`, `retire`) requires a Slurm or system admin, that is
 `AdminLevel=Administrator` or root/SlurmUser. *Assigning* an existing QoS
-(`grant`, `revoke`, `sync`) only edits associations, so an operator or a
-coordinator of the account can do it.
+(`grant`, `revoke`, `sync`) only edits associations, so a Slurm operator or a
+coordinator of the account can do it, unless the site sets `DisableCoordDBD` in
+`slurmdbd.conf`, which restricts it to operators.
 
 ## `qos holders QOS_NAME [-p PART] [-c CLUSTER] [-r REGEX] [--by all|user|partition]`
 
@@ -122,8 +123,9 @@ granted one takes effect. Missing associations are created. Dry run by default.
 
 ## `qos revoke QOS_NAME -u USERS|all -p PART|all [-c CLUSTER] [-r REGEX] [-x] [-y]`
 
-Remove a priority QoS from users on a partition (via `sacctmgr`). Operator or a
-coordinator of the account only.
+Remove a priority QoS from users on a partition (via `sacctmgr`). Slurm
+operator, or a coordinator of the account; a site that sets `DisableCoordDBD` in
+`slurmdbd.conf` restricts this to operators.
 
 Removes the QoS from each matching association, moving the default off it first
 when needed and deleting the association if the QoS was its only entry. Pass
