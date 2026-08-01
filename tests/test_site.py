@@ -165,3 +165,15 @@ def test_unnamed_inventory_keeps_the_packaged_default(tmp_path):
     cfg.write_text('[site]\nname = "Example"\n')
     merged = site.load_file(cfg)
     assert "h100" in merged["gpu_types"]
+
+
+def test_gpu_types_keys_are_lower_cased(tmp_path):
+    """TOML allows an upper-case bare key; the type lookup is lower-case."""
+    cfg = tmp_path / "site.toml"
+    cfg.write_text('[gpu_types]\nV100 = "gpu"\nL40S = "gpu_big"\n')
+    monkey = site._cache
+    try:
+        site._cache = site.load_file(cfg)
+        assert site.gpu_type_partition() == {"v100": "gpu", "l40s": "gpu_big"}
+    finally:
+        site._cache = monkey

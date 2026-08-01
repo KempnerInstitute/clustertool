@@ -2,8 +2,10 @@
 #
 # Other centers override these values with their own file, discovered from
 # $CLUSTERTOOL_SITE_CONFIG, then ~/.config/clustertool/site.toml, then
-# /etc/clustertool/site.toml. A site file is deep-merged over this default,
-# so it only needs to set the keys that differ.
+# /etc/clustertool/site.toml. A site file is deep-merged over this default, so it
+# only needs to set the keys that differ. Two tables are the exception:
+# [gpu_types] and [partitions.limits] describe what a cluster has, so defining
+# either one replaces it entirely and you must list every entry you want.
 
 [site]
 name = "Kempner AI Cluster"

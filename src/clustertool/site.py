@@ -3,7 +3,8 @@
 Externalizes cluster-specific values (partition names, per-GPU limits, GPU type
 map, account conventions, storage paths) so the commands stay portable. Values
 load from the first file found among $CLUSTERTOOL_SITE_CONFIG, the user config,
-then the system config, deep-merged over the packaged default.
+then the system config, deep-merged over the packaged default. The tables in
+_REPLACED_TABLES are the exception: defining one replaces it outright.
 """
 
 import os
@@ -163,8 +164,8 @@ def partition_limits() -> dict[str, tuple[int, int]]:
 
 
 def gpu_type_partition() -> dict[str, str]:
-    """Return the GPU type to partition map used by sessions and job builder."""
-    return dict(config()["gpu_types"])
+    """Return the GPU type to partition map, keyed by lower-case type name."""
+    return {str(key).lower(): str(value) for key, value in config()["gpu_types"].items()}
 
 
 def gpu_status_types() -> list[tuple[str, str]]:

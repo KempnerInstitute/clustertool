@@ -390,12 +390,12 @@ def test_jobs_new_builds_script():
 def test_jobs_new_submit(monkeypatch):
     captured = {}
 
-    def fake_run(cmd, input_text=None):
+    def fake_probe(cmd, timeout=None, input_text=None):
         captured["cmd"] = cmd
         captured["script"] = input_text
-        return "Submitted batch job 999"
+        return (0, "Submitted batch job 999", "")
 
-    monkeypatch.setattr(process, "run", fake_run)
+    monkeypatch.setattr(process, "probe", fake_probe)
     result = CliRunner().invoke(
         main, ["jobs", "new", "--gpu-type", "a100", "-A", "LAB", "--submit"]
     )
@@ -2595,3 +2595,49 @@ def test_qos_sync_can_revoke_a_lingering_holder(monkeypatch):
     assert result.exit_code == 0
     assert "revoke stale" in result.output
     assert "revoke alice" not in result.output
+
+
+def test_jobs_new_submit_reports_a_failed_sbatch(monkeypatch):
+    """A rejected submission must not read as success."""
+    monkeypatch.setattr(
+        process,
+        "probe",
+        lambda cmd, timeout=None, input_text=None: (1, "", "sbatch: error: Invalid account\n"),
+    )
+    result = CliRunner().invoke(
+        main, ["jobs", "new", "--gpu-type", "a100", "-A", "nope", "--submit"]
+    )
+    assert result.exit_code != 0
+    assert "Invalid account" in result.output
+
+
+def test_jobs_new_submit_reports_a_missing_sbatch(monkeypatch):
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None, input_text=None: (127, "", ""))
+    result = CliRunner().invoke(main, ["jobs", "new", "--gpu-type", "a100", "-A", "x", "--submit"])
+    assert result.exit_code != 0
+    assert "not found on this host" in result.output
+
+
+def test_jobs_new_rejects_non_positive_counts():
+    for flag, value in (("--gpus", "0"), ("--gpus", "-1"), ("--nodes", "0")):
+        result = CliRunner().invoke(
+            main, ["jobs", "new", "--gpu-type", "a100", "-A", "x", flag, value]
+        )
+        assert result.exit_code != 0, f"{flag} {value} was accepted"
+
+
+def test_jobs_new_output_error_is_reported_cleanly(tmp_path):
+    target = tmp_path / "missing-dir" / "job.sh"
+    result = CliRunner().invoke(
+        main, ["jobs", "new", "--gpu-type", "a100", "-A", "x", "-o", str(target)]
+    )
+    assert result.exit_code != 0
+    assert "cannot write" in result.output
+
+
+def test_jobs_new_sets_one_task_per_node():
+    result = CliRunner().invoke(
+        main, ["jobs", "new", "--gpu-type", "a100", "-A", "x", "--nodes", "2"]
+    )
+    assert result.exit_code == 0
+    assert "#SBATCH --ntasks-per-node=1" in result.output

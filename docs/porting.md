@@ -29,7 +29,9 @@ point clustertool at it:
     export CLUSTERTOOL_SITE_CONFIG=/path/to/site.toml
 
 or deploy it to `/etc/clustertool/site.toml` so every user picks it up. Only the
-keys you set change; the rest keep the packaged defaults. A minimal example:
+keys you set change; the rest keep the packaged defaults, except `[gpu_types]`
+and `[partitions.limits]`, which replace outright so you must list every entry
+you want. A minimal example:
 
     [site]
     name = "Example HPC"

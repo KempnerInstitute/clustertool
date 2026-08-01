@@ -34,23 +34,28 @@ def run(cmd: list[str], input_text: str | None = None) -> str:
     return result.stdout
 
 
-def probe(cmd: list[str], timeout: float | None = None) -> tuple[int, str, str]:
+def probe(
+    cmd: list[str], timeout: float | None = None, input_text: str | None = None
+) -> tuple[int, str, str]:
     """Run a command and return (returncode, stdout, stderr).
 
     Unlike run(), this exposes the exit status instead of raising, for callers
     that treat a nonzero exit as data. A missing binary yields (127, "", "") and
     a timeout yields (124, "", ""), following the shell conventions for those.
     """
+    kwargs: dict = {
+        "capture_output": True,
+        "text": True,
+        "check": False,
+        "env": _child_env(),
+        "timeout": timeout,
+    }
+    if input_text is None:
+        kwargs["stdin"] = subprocess.DEVNULL
+    else:
+        kwargs["input"] = input_text
     try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            check=False,
-            env=_child_env(),
-            stdin=subprocess.DEVNULL,
-            timeout=timeout,
-        )
+        result = subprocess.run(cmd, **kwargs)
     except FileNotFoundError:
         return (127, "", "")
     except subprocess.TimeoutExpired:
