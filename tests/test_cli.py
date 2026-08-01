@@ -1021,12 +1021,55 @@ def test_jobs_priorities(monkeypatch):
     assert calls[0] == ["sprio", "-p", "kempner_h100"]
 
 
+def _gpu_node(name, partitions, gpu_tot, gpu_free, available=True):
+    return {
+        "name": name,
+        "partitions": partitions,
+        "state": "MIXED" if available else "DOWN",
+        "available": available,
+        "cpu_free": 0,
+        "mem_free_mb": 0,
+        "gpu_tot": gpu_tot,
+        "gpu_free": gpu_free,
+    }
+
+
 def test_gpu_util(monkeypatch):
-    monkeypatch.setattr(slurm, "partition_gpu_util", lambda p: (100, 20, 80, 40, 50.0))
+    monkeypatch.setattr(slurm, "node_capacity", lambda: [_gpu_node("n1", ["kempner_h100"], 8, 4)])
     result = CliRunner().invoke(main, ["gpu", "util", "kempner_h100"])
     assert result.exit_code == 0
     assert "kempner_h100" in result.output
     assert "50.0%" in result.output
+
+
+def test_gpu_util_counts_a_shared_node_once(monkeypatch):
+    """sinfo -N emits a row per (node, partition); the totals must not double count."""
+    shared = _gpu_node("n1", ["kempner_h100", "kempner_requeue"], 8, 2)
+    monkeypatch.setattr(slurm, "node_capacity", lambda: [shared])
+    result = CliRunner().invoke(main, ["gpu", "util", "kempner_h100", "kempner_requeue"])
+    assert result.exit_code == 0
+    rows = [line.split() for line in result.output.splitlines()[1:] if line.strip()]
+    assert [row[1] for row in rows] == ["8", "8"]
+    assert [row[3] for row in rows] == ["6", "6"]
+
+
+def test_gpu_util_percent_cannot_exceed_100(monkeypatch):
+    """A drained node still runs its jobs, so used must not be scored against a smaller total."""
+    monkeypatch.setattr(
+        slurm,
+        "node_capacity",
+        lambda: [_gpu_node("n1", ["gpu"], 8, 0, available=False)],
+    )
+    result = CliRunner().invoke(main, ["gpu", "util", "gpu"])
+    assert result.exit_code == 0
+    assert "100.0%" in result.output
+
+
+def test_gpu_util_rejects_an_unknown_partition(monkeypatch):
+    monkeypatch.setattr(slurm, "node_capacity", lambda: [_gpu_node("n1", ["gpu"], 8, 8)])
+    result = CliRunner().invoke(main, ["gpu", "util", "no_such_partition"])
+    assert result.exit_code != 0
+    assert "does not exist, or has no nodes" in result.output
 
 
 def test_nodes_resume_explicit(monkeypatch):

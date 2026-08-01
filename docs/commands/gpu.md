@@ -21,10 +21,18 @@ usage that does not count toward the cap.
 
 ## `gpu util [PARTITION...]`
 
-Show GPU occupancy per partition (via `sinfo` and `squeue`): total, down,
-available, used, and percent. Available excludes GPUs on down or drained nodes,
-and percent is used over available. With no PARTITION, reports the site base
-partitions.
+Show GPU occupancy per partition (via one `scontrol` pass): total, unavailable,
+used, free, and percent.
+
+Every column is measured on the partition's nodes. `UNAVAIL` is the GPUs on nodes
+that cannot take a new job (down, drained, reserved, in maintenance, completing,
+failing, powered down, not responding, or registered with invalid resources).
+`USED` is the GPUs Slurm has allocated on those nodes, and `FREE` the unallocated
+ones on nodes that can still take work, so `USED` plus `FREE` need not reach
+`TOTAL`. Where partitions share nodes, as a requeue or priority partition does
+with a base partition, `USED` counts the neighbors' jobs too, because a job on a
+shared node occupies the same GPU either way. `UTIL` is used over total. With no
+PARTITION, reports the site base partitions.
 
 **Use cases**
 - See how full each GPU partition is right now.
@@ -53,8 +61,11 @@ memory support at the per-GPU ratio your site enforces for that partition, from
 shows raw free GPUs unless `--cpus-per-gpu` / `--mem-per-gpu` are given. Run
 `nodes partitions` to see the configured ratios.
 
-Only schedulable nodes are listed. A drained, down or reserved node keeps its
-free GPUs but cannot take a new job.
+Only schedulable nodes are listed: a node that is down, draining, reserved, in
+maintenance, completing, failing, powered down, not responding, or registered with
+invalid resources keeps its free GPUs but cannot take a new job. A node the
+backfill scheduler has planned for a higher-priority job is still listed, since a
+job that fits before that one is due to start can run on it.
 
 **Use cases**
 - Find where you can actually place a GPU job.

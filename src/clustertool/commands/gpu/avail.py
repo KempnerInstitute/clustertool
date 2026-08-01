@@ -30,8 +30,11 @@ def avail(partition: str, cpus_per_gpu: int | None, mem_per_gpu: int | None) -> 
     configured ratio shows raw free GPUs unless --cpus-per-gpu / --mem-per-gpu
     are given. Run 'nodes partitions' to see the configured ratios.
 
-    Only schedulable nodes are listed. A drained, down or reserved node keeps its
-    free GPUs but cannot take a new job.
+    Only schedulable nodes are listed: a node that is down, draining, reserved, in
+    maintenance, completing, failing, powered down, not responding, or registered
+    with invalid resources keeps its free GPUs but cannot take a new job. A node
+    the backfill scheduler has planned for a higher-priority job is still listed,
+    since a job that fits before that one is due to start can run on it.
 
     \b
     Use cases:
@@ -69,10 +72,12 @@ def avail(partition: str, cpus_per_gpu: int | None, mem_per_gpu: int | None) -> 
             rows.append((node["name"], avail_gpu, free_gpu, free_cpu, round(free_mem / 1024)))
     rows.sort(key=lambda row: row[1], reverse=True)
 
-    if cpus_per_gpu and mem_per_gpu:
-        limit = f"capped by {cpus_per_gpu} CPU / {mem_per_gpu // 1000} GB per GPU"
-    else:
-        limit = "raw free; no per-GPU ratio known"
+    caps = []
+    if cpus_per_gpu:
+        caps.append(f"{cpus_per_gpu} CPU")
+    if mem_per_gpu:
+        caps.append(f"{mem_per_gpu} MB" if mem_per_gpu < 1024 else f"{mem_per_gpu / 1024:.0f} GB")
+    limit = f"capped by {' / '.join(caps)} per GPU" if caps else "raw free; no per-GPU ratio known"
     click.echo(f"Allocatable GPUs on '{partition}' ({limit}), most first")
     click.echo()
     if not rows:

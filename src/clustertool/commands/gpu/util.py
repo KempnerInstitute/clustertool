@@ -15,10 +15,17 @@ from clustertool.grouping import keywords
     shell_complete=completion.complete_partitions,
 )
 def util(partitions: tuple[str, ...]) -> None:
-    """Show GPU occupancy per partition: total, down, available, used, and percent.
+    """Show GPU occupancy per partition: total, unavailable, used, free, and percent.
 
-    Utilization is used / available GPUs, where available excludes GPUs on down
-    or drained nodes. With no PARTITION, reports the site base partitions.
+    Every column is measured on the partition's nodes, read in one scontrol pass.
+    UNAVAIL is the GPUs on nodes that cannot take a new job (down, drained,
+    reserved, or in maintenance). USED is the GPUs Slurm has allocated on those
+    nodes, and FREE the unallocated ones on nodes that can still take work, so
+    USED plus FREE need not reach TOTAL. Where partitions share nodes, as a
+    requeue or priority partition does with a base partition, USED counts the
+    neighbors' jobs too, because a job on a shared node occupies the same GPU
+    either way. UTIL is used over total. With no PARTITION, reports the site base
+    partitions.
 
     \b
     Use cases:
@@ -29,7 +36,19 @@ def util(partitions: tuple[str, ...]) -> None:
       PARTITION...  One or more partitions (default: the site base partitions).
     """
     targets = list(partitions) or list(slurm.BASE_PARTITIONS)
-    click.echo(f"{'PARTITION':<16}{'TOTAL':>7}{'DOWN':>7}{'AVAIL':>7}{'USED':>7}{'UTIL':>8}")
+    if not targets:
+        raise click.ClickException(
+            "no partitions given and no base partitions configured "
+            "([partitions].base in the site config)"
+        )
+    nodes = slurm.node_capacity()
+    known = {name for row in nodes for name in row["partitions"]}
     for partition in targets:
-        total, down, avail, used, pct = slurm.partition_gpu_util(partition)
-        click.echo(f"{partition:<16}{total:>7}{down:>7}{avail:>7}{used:>7}{pct:>7.1f}%")
+        if partition not in known:
+            raise click.ClickException(f"partition '{partition}' does not exist, or has no nodes")
+
+    width = max(9, *(len(partition) for partition in targets)) + 2
+    click.echo(f"{'PARTITION':<{width}}{'TOTAL':>7}{'UNAVAIL':>8}{'USED':>7}{'FREE':>7}{'UTIL':>8}")
+    for partition in targets:
+        total, unavailable, used, free, pct = slurm.partition_gpu_util(partition, nodes)
+        click.echo(f"{partition:<{width}}{total:>7}{unavailable:>8}{used:>7}{free:>7}{pct:>7.1f}%")

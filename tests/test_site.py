@@ -87,7 +87,27 @@ def test_unknown_slurm_attribute_still_raises():
 
 def test_commands_honor_a_different_site(monkeypatch):
     monkeypatch.setattr(site, "base_partitions", lambda: ("alpha", "beta"))
-    monkeypatch.setattr(slurm, "partition_gpu_util", lambda p: (10, 0, 10, 5, 50.0))
+    monkeypatch.setattr(
+        slurm,
+        "partition_gpu_util",
+        lambda partition, nodes=None: (10, 0, 5, 5, 50.0),
+    )
+    monkeypatch.setattr(
+        slurm,
+        "node_capacity",
+        lambda: [
+            {
+                "name": "n1",
+                "partitions": ["alpha", "beta"],
+                "state": "MIXED",
+                "available": True,
+                "cpu_free": 0,
+                "mem_free_mb": 0,
+                "gpu_tot": 10,
+                "gpu_free": 5,
+            }
+        ],
+    )
     result = CliRunner().invoke(main, ["gpu", "util"])
     assert result.exit_code == 0
     assert "alpha" in result.output

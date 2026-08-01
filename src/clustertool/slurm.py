@@ -41,35 +41,36 @@ _GRES_GPU_RE = re.compile(r"gpu:(?:[^:()]+:)?(\d+)")
 
 
 def _gres_gpus(text: str) -> int:
-    """Return the GPU count in a gres string like 'gpu:h100:4(...)' or 'gres/gpu:1'."""
-    match = _GRES_GPU_RE.search(text or "")
-    return int(match.group(1)) if match else 0
+    """Return the total GPU count in a gres string like 'gpu:h100:4(S:0),gpu:mig:7(S:0)'.
 
-
-def _sum_node_gpus(extra: list[str]) -> int:
-    total = 0
-    for line in _run(["sinfo", "-h", "-N", "-o", "%N %G", *extra]).splitlines():
-        parts = line.split(None, 1)
-        if len(parts) == 2:
-            total += _gres_gpus(parts[1])
-    return total
-
-
-def partition_gpu_util(partition: str) -> tuple[int, int, int, int, float]:
-    """Return (total, down, available, used, percent) GPUs for a partition.
-
-    Available excludes GPUs on down or drained nodes; percent is used/available.
+    Sums every gpu entry, since a node can advertise more than one GPU type.
     """
-    total = _sum_node_gpus(["-p", partition])
-    down = _sum_node_gpus(["-R", "-p", partition])
-    available = max(total - down, 0)
-    used = 0
-    for line in _run(["squeue", "-h", "-t", "R", "-o", "%D %b", "-p", partition]).splitlines():
-        parts = line.split()
-        if len(parts) == 2 and parts[0].isdigit():
-            used += int(parts[0]) * _gres_gpus(parts[1])
-    percent = (100.0 * used / available) if available else 0.0
-    return total, down, available, used, percent
+    return sum(int(count) for count in _GRES_GPU_RE.findall(text or ""))
+
+
+def partition_gpu_util(
+    partition: str, nodes: list[dict] | None = None
+) -> tuple[int, int, int, int, float]:
+    """Return (total, unavailable, used, free, percent) GPUs on a partition's nodes.
+
+    Every figure is measured per node from one scontrol pass, so they describe the
+    same population: total is the GPUs the partition's nodes have, unavailable is
+    those on nodes that cannot take a new job, used is those Slurm has allocated,
+    and free is the unallocated GPUs on nodes that can still take work. Percent is
+    used over total, so it is the occupancy of the hardware and cannot exceed 100
+    even while a drained node still runs the jobs it had. Used counts every job on
+    those nodes, whichever partition it was submitted to, because a job on a
+    shared node occupies the same GPU either way. Pass nodes to reuse a
+    node_capacity() result.
+    """
+    rows = [row for row in (nodes if nodes is not None else node_capacity()) if row["gpu_tot"]]
+    rows = [row for row in rows if partition in row["partitions"]]
+    total = sum(row["gpu_tot"] for row in rows)
+    unavailable = sum(row["gpu_tot"] for row in rows if not row["available"])
+    used = sum(row["gpu_tot"] - row["gpu_free"] for row in rows)
+    free = sum(row["gpu_free"] for row in rows if row["available"])
+    percent = (100.0 * used / total) if total else 0.0
+    return total, unavailable, used, free, percent
 
 
 def drained_nodes(partition: str) -> list[tuple[str, str, str]]:
@@ -451,10 +452,10 @@ _BAD_NODE_STATES = (
     "MAINT",
     "NOT_RESPONDING",
     "RESERVED",
-    "PLANNED",
     "COMPLETING",
     "FAIL",
-    "POWER",
+    "POWERED_DOWN",
+    "POWERING_DOWN",
     "INVAL",
 )
 

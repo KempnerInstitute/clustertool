@@ -73,14 +73,10 @@ def _one_lab(account: str) -> None:
             in_cap=False,
             cap=cap,
         ),
-        _section(
-            f"{slurm.REQUEUE_PARTITION} - {outside}",
-            account,
-            [slurm.REQUEUE_PARTITION],
-            in_cap=False,
-            cap=cap,
-        ),
     ]
+    requeue = slurm.REQUEUE_PARTITION
+    if requeue:
+        found.append(_section(f"{requeue} - {outside}", account, [requeue], in_cap=False, cap=cap))
     if not any(found):
         _suggest_prefixed(account)
 
