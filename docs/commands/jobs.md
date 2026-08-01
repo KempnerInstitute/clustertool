@@ -75,10 +75,10 @@ List running jobs requesting more CPU or memory per GPU than the norm (via
 `[partitions.limits]`, which nothing in Slurm enforces; pass `--cpus-per-gpu` /
 `--mem-per-gpu` for partitions without one. Jobs with no GPUs are not evaluated.
 
-Memory is in MiB throughout, which is what Slurm reports. A job written as
-`--mem=360G` asks for 368640 MiB, so it exceeds a norm of 360000 by 2 percent;
-the `OVER` column gives the ratio so a rounding difference does not read like a
-real over-request.
+Memory is in MiB throughout, which is what Slurm reports and what `--mem` takes
+by default, so `--mem=360G` and `--mem=368640` are the same request. The `OVER`
+column gives each job's overage as a ratio, so a job a few percent past the norm
+does not read like one at ten times it.
 
 **Use cases**
 - Find jobs hoarding CPU or memory relative to their GPU count.

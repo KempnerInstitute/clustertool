@@ -98,13 +98,14 @@ packaged Kempner profile that is:
 
 | GPU_TYPE | Partition | CPUs | Memory |
 | --- | --- | --- | --- |
-| `a100` | `kempner` | 16 | 240000 MB |
-| `h100` | `kempner_h100` | 24 | 360000 MB |
-| `h200` | `kempner_h200` | 16 | 360000 MB |
-| `rtx` | `kempner_rtx` | 16 | 180000 MB |
+| `a100` | `kempner` | 16 | 245760 MiB |
+| `h100` | `kempner_h100` | 24 | 368640 MiB |
+| `h200` | `kempner_h200` | 16 | 368640 MiB |
+| `rtx` | `kempner_rtx` | 16 | 184320 MiB |
 
 Run `gpu avail PARTITION` to see the ratio in force on your cluster. Memory is
-passed in MB (Slurm's default unit), so `--mem=360000`, not `360G`. When a
+passed in MiB, Slurm's default unit for `--mem`, so `--mem=368640` rather than
+`360G`; the two are the same amount. When a
 partition has no configured ratio, no CPU or memory request is made and Slurm
 applies that partition's own defaults.
 

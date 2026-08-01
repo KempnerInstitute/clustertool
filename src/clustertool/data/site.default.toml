@@ -19,19 +19,19 @@ priority_pattern = "kempner.*priority"
 
 [partitions.limits.kempner]
 cpus_per_gpu = 16
-mem_per_gpu_mb = 240000
+mem_per_gpu_mb = 245760
 
 [partitions.limits.kempner_h100]
 cpus_per_gpu = 24
-mem_per_gpu_mb = 360000
+mem_per_gpu_mb = 368640
 
 [partitions.limits.kempner_h200]
 cpus_per_gpu = 16
-mem_per_gpu_mb = 360000
+mem_per_gpu_mb = 368640
 
 [partitions.limits.kempner_rtx]
 cpus_per_gpu = 16
-mem_per_gpu_mb = 180000
+mem_per_gpu_mb = 184320
 
 [qos]
 base = "kempner_base"

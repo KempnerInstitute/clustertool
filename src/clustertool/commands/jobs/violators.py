@@ -26,10 +26,11 @@ def violators(partition: str, cpus_per_gpu: int | None, mem_per_gpu: int | None)
     --cpus-per-gpu and --mem-per-gpu. Jobs with no GPUs are not evaluated.
 
     Memory is in MiB throughout, which is what Slurm reports and what --mem takes
-    by default. A job written as --mem=360G asks for 368640 MiB, so it exceeds a
-    norm of 360000 by 2 percent; the OVER column gives the ratio so a rounding
-    difference is not read as a real over-request. Nothing here is enforced by
-    Slurm: these are the site's own norms.
+    by default, so --mem=360G and --mem=368640 are the same request. The OVER
+    column gives each job's overage as a ratio, so a job a few percent past the
+    norm does not read like one at ten times it. Slurm itself enforces none of
+    this; the norms are the site's own, and a site may enforce them separately
+    through a job_submit plugin.
 
     \b
     Use cases:

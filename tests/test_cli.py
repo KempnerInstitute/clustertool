@@ -384,7 +384,7 @@ def test_jobs_new_builds_script():
     assert "--partition=kempner_h100" in out
     assert "--gres=gpu:2" in out
     assert "--cpus-per-task=48" in out
-    assert "--mem=720000" in out
+    assert "--mem=737280" in out
     assert "--account=kempner_dev" in out
     assert "--job-name=train" in out
 
@@ -1074,7 +1074,7 @@ def test_gpu_session_a100(monkeypatch):
     assert "--account=kempner_dev" in cmd
     assert "--gres=gpu:1" in cmd
     assert "--cpus-per-task=16" in cmd
-    assert "--mem=240000" in cmd
+    assert "--mem=245760" in cmd
 
 
 def test_gpu_session_h100(monkeypatch):
@@ -1084,7 +1084,7 @@ def test_gpu_session_h100(monkeypatch):
     cmd = calls[0]
     assert "kempner_h100" in cmd
     assert "--cpus-per-task=24" in cmd
-    assert "--mem=360000" in cmd
+    assert "--mem=368640" in cmd
 
 
 def test_gpu_session_requires_account(monkeypatch):
@@ -1106,7 +1106,7 @@ def test_gpu_session_extra_args(monkeypatch):
     )
     assert result.exit_code == 0
     cmd = calls[0]
-    assert "--mem=240000" in cmd
+    assert "--mem=245760" in cmd
     assert cmd[-3:] == ["--mem=500000", "-J", "dev"]
 
 
@@ -1931,9 +1931,9 @@ def _cap_node(name, gpu_free, cpu_free, mem_free_mb, available=True, partition="
 
 def test_gpu_avail(monkeypatch):
     nodes = [
-        _cap_node("n1", 4, 96, 1440000),  # min(4, 96//24, 1440000//360000) = 4
+        _cap_node("n1", 4, 96, 1474560),  # min(4, 96//24, 1474560//368640) = 4
         _cap_node("n2", 8, 48, 2880000),  # cpu-capped: min(8, 48//24=2, 8) = 2
-        _cap_node("n3", 2, 96, 360000),  # mem-capped: min(2, 4, 360000//360000=1) = 1
+        _cap_node("n3", 2, 96, 368640),  # mem-capped: min(2, 4, 368640//368640=1) = 1
         _cap_node("n4", 0, 0, 0),  # no gpu -> filtered
     ]
     monkeypatch.setattr(slurm, "node_capacity", lambda: nodes)
@@ -1985,17 +1985,27 @@ def test_jobs_violators(monkeypatch):
     assert "104" not in result.output
 
 
+def test_jobs_violators_ignores_a_job_at_exactly_the_norm(monkeypatch):
+    """--mem=360G is 368640 MiB, which is the ceiling the site enforces, not over it."""
+    jobs = [("at_limit", "alice", 24, 1, 368640)]
+    monkeypatch.setattr(slurm, "running_jobs_reqtres", lambda p: jobs)
+    result = CliRunner().invoke(main, ["jobs", "violators", "kempner_h100"])
+    assert result.exit_code == 0
+    assert "at_limit" not in result.output
+    assert "(no jobs over the norm)" in result.output
+
+
 def test_jobs_violators_ranks_the_worst_first(monkeypatch):
-    """A job 2 percent over must not sit above one at ten times the norm."""
+    """A job just over must not sit above one at ten times the norm."""
     jobs = [
-        ("marginal", "alice", 24, 1, 368640),
-        ("severe", "bob", 24, 1, 3600000),
+        ("marginal", "alice", 24, 1, 380000),
+        ("severe", "bob", 24, 1, 3686400),
     ]
     monkeypatch.setattr(slurm, "running_jobs_reqtres", lambda p: jobs)
     result = CliRunner().invoke(main, ["jobs", "violators", "kempner_h100"])
     assert result.exit_code == 0
     assert result.output.index("severe") < result.output.index("marginal")
-    assert "1.02x" in result.output
+    assert "1.03x" in result.output
     assert "10.00x" in result.output
 
 
