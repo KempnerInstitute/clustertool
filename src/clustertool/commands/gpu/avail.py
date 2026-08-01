@@ -30,6 +30,10 @@ def avail(partition: str, cpus_per_gpu: int | None, mem_per_gpu: int | None) -> 
     configured ratio shows raw free GPUs unless --cpus-per-gpu / --mem-per-gpu
     are given. Run 'nodes partitions' to see the configured ratios.
 
+    Only nodes the scheduler can actually place work on are listed. A drained,
+    down or reserved node keeps its free GPUs but cannot take a new job, so
+    counting it would send you somewhere nothing can start.
+
     \b
     Use cases:
       - Find where you can actually place a GPU job.
@@ -47,20 +51,23 @@ def avail(partition: str, cpus_per_gpu: int | None, mem_per_gpu: int | None) -> 
     if mem_per_gpu is None and default:
         mem_per_gpu = default[1]
 
-    nodes = [name for name, _ in slurm.partition_nodes(partition)]
+    nodes = [node for node in slurm.node_capacity() if partition in node["partitions"]]
     if not nodes:
         raise click.ClickException(f"no nodes found in partition '{partition}'")
 
     rows = []
     for node in nodes:
-        free_gpu, free_cpu, free_mem = slurm.node_free_resources(node)
+        if not node["available"]:
+            continue
+        free_gpu, free_cpu = node["gpu_free"], node["cpu_free"]
+        free_mem = node["mem_free_mb"]
         avail_gpu = free_gpu
         if cpus_per_gpu:
             avail_gpu = min(avail_gpu, free_cpu // cpus_per_gpu)
         if mem_per_gpu:
             avail_gpu = min(avail_gpu, int(free_mem // mem_per_gpu))
         if avail_gpu > 0:
-            rows.append((node, avail_gpu, free_gpu, free_cpu, round(free_mem / 1024)))
+            rows.append((node["name"], avail_gpu, free_gpu, free_cpu, round(free_mem / 1024)))
     rows.sort(key=lambda row: row[1], reverse=True)
 
     if cpus_per_gpu and mem_per_gpu:
@@ -73,7 +80,7 @@ def avail(partition: str, cpus_per_gpu: int | None, mem_per_gpu: int | None) -> 
         click.echo("  (no nodes with allocatable GPUs)")
         return
     click.echo(
-        f"  {'Node':<20} {'Avail_GPU':>9} {'Free_GPU':>8} {'Free_CPU':>8} {'Free_Mem_GB':>12}"
+        f"  {'NODE':<20} {'AVAIL_GPU':>9} {'FREE_GPU':>8} {'FREE_CPU':>8} {'FREE_MEM_GB':>12}"
     )
     for node, avail_gpu, free_gpu, free_cpu, free_mem_gb in rows:
         click.echo(f"  {node:<20} {avail_gpu:>9} {free_gpu:>8} {free_cpu:>8} {free_mem_gb:>12}")

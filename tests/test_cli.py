@@ -1338,17 +1338,27 @@ def _node_fields(output):
     }
 
 
-def test_gpu_avail(monkeypatch):
-    monkeypatch.setattr(
-        slurm, "partition_nodes", lambda p: [("n1", "x"), ("n2", "x"), ("n3", "x"), ("n4", "x")]
-    )
-    free = {
-        "n1": (4, 96, 1440000),  # min(4, 96//24, 1440000//360000) = 4
-        "n2": (8, 48, 2880000),  # cpu-capped: min(8, 48//24=2, 8) = 2
-        "n3": (2, 96, 360000),  # mem-capped: min(2, 4, 360000//360000=1) = 1
-        "n4": (0, 0, 0),  # no gpu -> filtered
+def _cap_node(name, gpu_free, cpu_free, mem_free_mb, available=True, partition="kempner_h100"):
+    return {
+        "name": name,
+        "partitions": [partition],
+        "state": "IDLE" if available else "DRAINED",
+        "available": available,
+        "cpu_free": cpu_free,
+        "mem_free_mb": mem_free_mb,
+        "gpu_tot": gpu_free,
+        "gpu_free": gpu_free,
     }
-    monkeypatch.setattr(slurm, "node_free_resources", lambda node: free[node])
+
+
+def test_gpu_avail(monkeypatch):
+    nodes = [
+        _cap_node("n1", 4, 96, 1440000),  # min(4, 96//24, 1440000//360000) = 4
+        _cap_node("n2", 8, 48, 2880000),  # cpu-capped: min(8, 48//24=2, 8) = 2
+        _cap_node("n3", 2, 96, 360000),  # mem-capped: min(2, 4, 360000//360000=1) = 1
+        _cap_node("n4", 0, 0, 0),  # no gpu -> filtered
+    ]
+    monkeypatch.setattr(slurm, "node_capacity", lambda: nodes)
     result = CliRunner().invoke(main, ["gpu", "avail", "kempner_h100"])
     assert result.exit_code == 0
     fields = _node_fields(result.output)
@@ -1360,8 +1370,9 @@ def test_gpu_avail(monkeypatch):
 
 
 def test_gpu_avail_raw_partition(monkeypatch):
-    monkeypatch.setattr(slurm, "partition_nodes", lambda p: [("n1", "x")])
-    monkeypatch.setattr(slurm, "node_free_resources", lambda node: (4, 8, 1000))
+    monkeypatch.setattr(
+        slurm, "node_capacity", lambda: [_cap_node("n1", 4, 8, 1000, partition="kempner_eng")]
+    )
     result = CliRunner().invoke(main, ["gpu", "avail", "kempner_eng"])
     assert result.exit_code == 0
     assert "raw free" in result.output
@@ -1369,8 +1380,9 @@ def test_gpu_avail_raw_partition(monkeypatch):
 
 
 def test_gpu_avail_cpus_per_gpu_override(monkeypatch):
-    monkeypatch.setattr(slurm, "partition_nodes", lambda p: [("n1", "x")])
-    monkeypatch.setattr(slurm, "node_free_resources", lambda node: (8, 40, 1000000))
+    monkeypatch.setattr(
+        slurm, "node_capacity", lambda: [_cap_node("n1", 8, 40, 1000000, partition="kempner_eng")]
+    )
     result = CliRunner().invoke(
         main, ["gpu", "avail", "kempner_eng", "--cpus-per-gpu", "20", "--mem-per-gpu", "100000"]
     )
@@ -2495,3 +2507,29 @@ def test_gpu_usage_does_not_suggest_for_an_already_prefixed_account(monkeypatch)
     result = CliRunner().invoke(main, ["gpu", "usage", "kempner_ydu_lab"])
     assert result.exit_code == 0
     assert "also exists" not in result.output
+
+
+def test_gpu_avail_skips_unschedulable_nodes(monkeypatch):
+    """Free GPUs on a drained node cannot take a job, so listing them misleads."""
+    nodes = [
+        _cap_node("healthy", 4, 96, 1440000),
+        _cap_node("drained", 4, 96, 1440000, available=False),
+    ]
+    monkeypatch.setattr(slurm, "node_capacity", lambda: nodes)
+    result = CliRunner().invoke(main, ["gpu", "avail", "kempner_h100"])
+    assert result.exit_code == 0
+    assert "healthy" in result.output
+    assert "drained" not in result.output
+
+
+def test_gpu_avail_reads_the_fleet_once(monkeypatch):
+    """One scontrol pass, not one per node: a large partition was taking minutes."""
+    passes = []
+    monkeypatch.setattr(
+        slurm,
+        "node_capacity",
+        lambda: passes.append(1) or [_cap_node(f"n{i}", 4, 96, 1440000) for i in range(50)],
+    )
+    result = CliRunner().invoke(main, ["gpu", "avail", "kempner_h100"])
+    assert result.exit_code == 0
+    assert len(passes) == 1

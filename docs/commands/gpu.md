@@ -53,6 +53,10 @@ memory support at the per-GPU ratio your site enforces for that partition, from
 shows raw free GPUs unless `--cpus-per-gpu` / `--mem-per-gpu` are given. Run
 `nodes partitions` to see the configured ratios.
 
+Only nodes the scheduler can actually place work on are listed. A drained, down
+or reserved node keeps its free GPUs but cannot take a new job, so counting it
+would send you somewhere nothing can start.
+
 **Use cases**
 - Find where you can actually place a GPU job.
 - See spare CPU and memory alongside usable GPUs.
