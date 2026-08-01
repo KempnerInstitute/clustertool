@@ -682,6 +682,25 @@ def test_jobs_cancel_all_abort_cancels_nothing(monkeypatch):
     assert calls == []
 
 
+def test_jobs_cancel_all_needs_a_resolvable_user(monkeypatch):
+    """scancel -u '' errors after the prompt; catch it before asking."""
+    monkeypatch.setenv("USER", "")
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "cancel", "--all", "-y"])
+    assert result.exit_code != 0
+    assert "$USER is not set" in result.output
+    assert calls == []
+
+
+def test_jobs_cancel_rejects_conflicting_scopes(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    for args in (["--all", "--pending"], ["111", "--all"], ["111", "--pending"]):
+        result = CliRunner().invoke(main, ["jobs", "cancel", *args, "-y"])
+        assert result.exit_code == 2, args
+        assert "not both" in result.output
+    assert calls == []
+
+
 def test_jobs_cancel_ids_do_not_prompt(monkeypatch):
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "cancel", "333"])

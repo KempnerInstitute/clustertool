@@ -35,17 +35,25 @@ def cancel(jobids: tuple[str, ...], all_jobs: bool, pending: bool, yes: bool) ->
       --pending  Cancel only your pending jobs.
       -y, --yes  Skip the confirmation prompt.
     """
+    if jobids and (all_jobs or pending):
+        raise click.UsageError("Give JOBIDs, or --all / --pending, not both.")
+    if all_jobs and pending:
+        raise click.UsageError("Give --all or --pending, not both.")
     if jobids:
         cmd = ["scancel", *jobids]
     elif all_jobs or pending:
+        owner = os.environ.get("USER", "")
+        if not owner:
+            raise click.ClickException(
+                "cannot tell whose jobs to cancel: $USER is not set. Name the JOBIDs instead"
+            )
         scope = "pending jobs" if pending else "jobs"
         if not yes:
             click.confirm(f"Cancel every one of your {scope}?", abort=True)
-        cmd = ["scancel", "-u", os.environ.get("USER", "")]
+        cmd = ["scancel", "-u", owner]
         if pending:
             cmd += ["-t", "PENDING"]
     else:
         raise click.UsageError("Give one or more JOBIDs, or --all / --pending.")
-    code = process.stream(cmd)
-    if code:
-        raise SystemExit(code)
+    if process.stream(cmd):
+        raise click.ClickException("scancel failed")

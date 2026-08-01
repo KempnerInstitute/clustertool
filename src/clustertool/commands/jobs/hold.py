@@ -30,6 +30,5 @@ def hold(jobids: tuple[str, ...]) -> None:
     Inputs:
       JOBID...  One or more Slurm job ids.
     """
-    code = process.stream(["scontrol", "hold", ",".join(jobids)])
-    if code:
-        raise SystemExit(code)
+    if process.stream(["scontrol", "hold", ",".join(jobids)]):
+        raise click.ClickException(f"failed to hold {', '.join(jobids)}")

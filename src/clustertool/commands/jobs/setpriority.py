@@ -15,9 +15,10 @@ from clustertool.grouping import admin, keywords
 def set_priority(jobid: str, priority: int, yes: bool) -> None:
     """Set a job's scheduling priority (via scontrol update). Operator only.
 
-    For an operator the priority is fixed, overriding fairshare until the job
-    runs. A job's own owner can only lower it, and the multifactor plugin keeps
-    recomputing the value; raise Nice instead to deprioritize your own job.
+    Per man scontrol, once a privileged user sets a priority explicitly it is
+    fixed and the priority plugin stops modifying it; hold and then release the
+    job to hand it back to the multifactor plugin. A priority of zero holds the
+    job. To deprioritize your own job as its owner, raise its Nice value instead.
     Prompts for confirmation unless -y.
 
     \b
@@ -32,6 +33,5 @@ def set_priority(jobid: str, priority: int, yes: bool) -> None:
     """
     if not yes:
         click.confirm(f"Set priority of job {jobid} to {priority}?", abort=True)
-    code = process.stream(["scontrol", "update", f"jobid={jobid}", f"priority={priority}"])
-    if code:
-        raise SystemExit(code)
+    if process.stream(["scontrol", "update", f"jobid={jobid}", f"priority={priority}"]):
+        raise click.ClickException(f"failed to set the priority of job {jobid}")

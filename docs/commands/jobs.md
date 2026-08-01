@@ -229,7 +229,8 @@ users, and incident nodes.
 
 Cancel jobs (via `scancel`). Naming job ids cancels them immediately, exactly as
 `scancel` does. The bulk forms `--all` and `--pending` act on every job you own
-rather than a list you named, so they prompt for confirmation unless `-y`.
+rather than a list you named, so they prompt for confirmation unless `-y`. They
+are mutually exclusive, and cannot be combined with a list of job ids.
 
 **Use cases**
 - Kill a specific job or list of jobs.
@@ -243,11 +244,13 @@ rather than a list you named, so they prompt for confirmation unless `-y`.
 
 ## `jobs set-priority JOBID PRIORITY [-y]`
 
-Set a job's scheduling priority (via `scontrol update`). Operator only: set by an
-operator the priority is fixed, overriding fairshare until the job runs. A job's
-own owner can only lower it, and the multifactor plugin keeps recomputing the
-value, so raise `Nice` instead to deprioritize your own job. Prompts for
-confirmation unless `-y`. Also available as `jobs setprio`.
+Set a job's scheduling priority (via `scontrol update`). Operator only.
+
+Per `man scontrol`, once a privileged user sets a priority explicitly it is fixed
+and the priority plugin stops modifying it; hold and then release the job to hand
+it back to the multifactor plugin. A priority of zero holds the job. To
+deprioritize your own job as its owner, raise its `Nice` value instead. Prompts
+for confirmation unless `-y`. Also available as `jobs setprio`.
 
 **Use cases**
 - Boost a specific job ahead of the queue.
