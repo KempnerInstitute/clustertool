@@ -1,1 +1,1 @@
-"""Kempner AI Cluster Tools."""
+"""Kempner AI ClusterTool."""

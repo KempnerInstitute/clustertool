@@ -1,1 +1,1 @@
-"""Command groups for the Cluster Tools CLI."""
+"""Command groups for the ClusterTool CLI."""
