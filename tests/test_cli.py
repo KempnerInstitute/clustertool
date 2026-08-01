@@ -467,7 +467,7 @@ def test_job_accounting_parsing(monkeypatch):
         "probe",
         lambda cmd, timeout=None: (
             0,
-            "FAILED|1:0|00:14:51|03:00:00|1000G|cpu=96,gres/gpu=8|node01\n",
+            "123|FAILED|1:0|00:14:51|03:00:00|1000G|cpu=96,gres/gpu=8|node01\n",
             "",
         ),
     )
@@ -488,12 +488,21 @@ def test_diagnose_oom_and_timeout():
 
 
 def test_diagnose_exit_code_and_log():
-    from clustertool.commands.jobs.debug import _diagnose
+    from clustertool.commands.jobs.debug import _diagnose, _log_findings
 
     findings = _diagnose({"state": "FAILED", "exit_code": "1:0"}, "CUDA out of memory. Tried ...")
-    causes = [cause for cause, _ in findings]
-    assert any("code 1" in cause for cause in causes)
-    assert any("CUDA" in cause for cause in causes)
+    assert any("code 1" in cause for cause, _ in findings)
+    assert any("CUDA" in cause for cause, _ in _log_findings("CUDA out of memory. Tried ..."))
+
+
+def test_log_patterns_do_not_override_a_completed_state():
+    """A job Slurm recorded as COMPLETED succeeded, whatever text it printed."""
+    from clustertool.commands.jobs.debug import _diagnose
+
+    findings = _diagnose(
+        {"state": "COMPLETED", "exit_code": "0:0"}, "Traceback (most recent call last):\n"
+    )
+    assert [cause for cause, _ in findings] == ["Completed successfully"]
 
 
 def test_jobs_debug_command(monkeypatch):
@@ -4102,3 +4111,25 @@ def test_jobs_why_does_not_force_sprio_to_show_unweighted_factors(monkeypatch):
     result = CliRunner().invoke(main, ["jobs", "why", "12345"])
     assert result.exit_code == 0
     assert "-l" not in captured["sprio"]
+
+
+def test_job_accounting_counts_array_elements_not_rows(monkeypatch):
+    """sacct folds a contiguous pending range onto one row without --array."""
+    rows = (
+        "7_0|RUNNING|0:0|00:01:00|01:00:00|1G||n1\n"
+        "7_1|RUNNING|0:0|00:01:00|01:00:00|1G||n1\n"
+        "7_2|PENDING|0:0|00:00:00|01:00:00|1G||None assigned\n"
+        "7_3|PENDING|0:0|00:00:00|01:00:00|1G||None assigned\n"
+    )
+    seen = {}
+
+    def fake_probe(cmd, timeout=None):
+        seen["cmd"] = cmd
+        return 0, rows, ""
+
+    monkeypatch.setattr(slurm.process, "probe", fake_probe)
+    info = slurm.job_accounting("7")
+    assert "--array" in seen["cmd"]
+    assert info["element_count"] == 4
+    assert info["states"] == {"RUNNING": 2, "PENDING": 2}
+    assert info["first_element"] == "7_0"

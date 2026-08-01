@@ -556,7 +556,9 @@ def job_accounting(jobid: str) -> dict:
 
     A job array id matches every element, so the result also carries element_count
     and states, a count per final state. Reporting only the first row would let a
-    array whose elements mostly failed read as the state of element zero.
+    array whose elements mostly failed read as the state of element zero. --array
+    is passed because sacct otherwise folds a contiguous pending range onto one
+    row, which would count a hundred waiting elements as one.
     """
     code, out, err = process.probe(
         [
@@ -567,35 +569,40 @@ def job_accounting(jobid: str) -> dict:
             "-n",
             "-P",
             "-o",
-            "State,ExitCode,Elapsed,Timelimit,ReqMem,ReqTRES,NodeList",
+            "JobID,State,ExitCode,Elapsed,Timelimit,ReqMem,ReqTRES,NodeList",
+            "--array",
         ]
     )
     if code != 0:
         raise CommandError(f"could not read accounting for job {jobid}: {err.strip() or code}")
     rows = [row.split("|") for row in out.splitlines() if row.strip()]
-    rows = [row for row in rows if len(row) >= 7]
+    rows = [row for row in rows if len(row) >= 8]
     if not rows:
         return {}
     keys = ("state", "exit_code", "elapsed", "timelimit", "req_mem", "req_tres", "nodelist")
-    info = dict(zip(keys, rows[0], strict=False))
+    info = dict(zip(keys, rows[0][1:], strict=False))
     states: dict[str, int] = {}
     for row in rows:
-        states[row[0]] = states.get(row[0], 0) + 1
+        states[row[1]] = states.get(row[1], 0) + 1
     info["element_count"] = len(rows)
     info["states"] = states
+    info["first_element"] = rows[0][0].strip()
     return info
 
 
-def job_maxrss_mb(jobid: str) -> float:
-    """Return the peak MaxRSS across a job's steps in MB (0 if unrecorded).
+def job_maxrss_mb(jobid: str) -> float | None:
+    """Return the peak MaxRSS across a job's steps in MB, or None if unrecorded.
 
-    Raises if accounting could not be read, so a failed query is not reported as
-    a job that used no memory.
+    Slurm leaves the field blank for a job whose steps it never sampled, such as
+    one still running, and None keeps that apart from a job that really did use
+    no measurable memory. Raises if accounting could not be read, so a failed
+    query is not reported as a job that used none.
     """
     code, out, err = process.probe(["sacct", "-j", jobid, "-n", "-P", "-o", "MaxRSS"])
     if code != 0:
         raise CommandError(f"could not read job {jobid}'s memory use: {err.strip() or code}")
-    return max((_mem_to_mb(row.strip()) for row in out.splitlines()), default=0.0)
+    values = [_mem_to_mb(row.strip()) for row in out.splitlines() if row.strip()]
+    return max(values) if values else None
 
 
 _TOKEN = re.compile(r"%(\d*)(.)")
@@ -718,12 +725,22 @@ def job_output_path(jobid: str) -> str:
 
 
 def job_output_tail(jobid: str, lines: int = 200) -> str:
-    """Return the tail of a job's stdout log, or empty if it cannot be read."""
-    path = job_output_path(jobid)
-    if not path:
-        return ""
-    code, out, _ = process.probe(["tail", "-n", str(lines), path])
-    return out if code == 0 else ""
+    """Return the tail of a job's logs, or empty if none can be read.
+
+    Reads stderr as well as stdout when the job wrote them to different files: a
+    traceback lands on stderr, so scanning stdout alone misses the very message
+    that explains the failure.
+    """
+    seen: list[str] = []
+    for path in job_output_paths(jobid):
+        if path and path not in seen:
+            seen.append(path)
+    chunks = []
+    for path in seen:
+        code, out, _ = process.probe(["tail", "-n", str(lines), path])
+        if code == 0 and out:
+            chunks.append(out)
+    return "\n".join(chunks)
 
 
 _BAD_NODE_STATES = (
