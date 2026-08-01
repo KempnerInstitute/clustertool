@@ -9,3 +9,7 @@ entry mirrors the command's `--help`: what it does, use cases, and inputs.
 - [nodes](nodes.md): node status and health
 - [storage](storage.md): filesystem quotas
 - [diag](diag.md): diagnostics and benchmarks
+- [qos](qos.md): QoS holders, and admin provisioning and assignment
+
+The top-level commands are not in a group: `me` for a personal overview,
+`search` to find a command by keyword, and `completion` to set up your shell.

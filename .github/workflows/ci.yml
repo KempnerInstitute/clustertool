@@ -81,7 +81,7 @@ jobs:
       - name: Check the bundled data payloads made it into the wheel
         run: |
           python3 -m zipfile -l dist/*.whl | tee /tmp/wheel.txt
-          for payload in monitor_sample.sh nccl_fsdp_test.py nvlink_saturate_forever.cu; do
+          for payload in monitor_sample.sh nccl_fsdp_test.py nvlink_saturate_forever.cu site.default.toml; do
             grep -q "clustertool/data/$payload" /tmp/wheel.txt \
               || { echo "missing from wheel: $payload"; exit 1; }
           done

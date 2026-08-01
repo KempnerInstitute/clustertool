@@ -15,12 +15,13 @@ from clustertool.grouping import keywords
 )
 @click.option("--all", "all_jobs", is_flag=True, help="Cancel all of your jobs.")
 @click.option("--pending", is_flag=True, help="Cancel all of your pending jobs.")
-def cancel(jobids: tuple[str, ...], all_jobs: bool, pending: bool) -> None:
+@click.option("-y", "--yes", is_flag=True, help="Skip the confirmation prompt.")
+def cancel(jobids: tuple[str, ...], all_jobs: bool, pending: bool, yes: bool) -> None:
     """Cancel jobs (via scancel).
 
-    Pass explicit job ids, or use --all / --pending to cancel your own jobs in
-    bulk. This is a direct wrapper: it cancels immediately, exactly as scancel
-    does.
+    Naming job ids cancels them immediately, exactly as scancel does. The bulk
+    forms --all and --pending act on every job you own rather than a list you
+    named, so they prompt for confirmation unless -y.
 
     \b
     Use cases:
@@ -32,10 +33,14 @@ def cancel(jobids: tuple[str, ...], all_jobs: bool, pending: bool) -> None:
       JOBID...   One or more job ids to cancel.
       --all      Cancel every job you own.
       --pending  Cancel only your pending jobs.
+      -y, --yes  Skip the confirmation prompt.
     """
     if jobids:
         cmd = ["scancel", *jobids]
     elif all_jobs or pending:
+        scope = "pending jobs" if pending else "jobs"
+        if not yes:
+            click.confirm(f"Cancel every one of your {scope}?", abort=True)
         cmd = ["scancel", "-u", os.environ.get("USER", "")]
         if pending:
             cmd += ["-t", "PENDING"]

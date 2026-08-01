@@ -14,6 +14,8 @@ def why(jobid: str) -> None:
 
     Prints the job state and pending reason (from squeue), then the priority
     factor breakdown (from sprio): fairshare, age, partition, QoS, and so on.
+    This is for a job that has not started yet. For one that already failed,
+    use 'jobs debug'.
 
     \b
     Use cases:

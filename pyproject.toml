@@ -22,6 +22,8 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
     "Topic :: System :: Clustering",
     "Topic :: System :: Monitoring",
+    "Topic :: Utilities",
+    "Typing :: Typed",
 ]
 dependencies = [
     "click>=8.1",
@@ -34,6 +36,7 @@ dependencies = [
 Homepage = "https://github.com/KempnerInstitute/clustertool"
 Repository = "https://github.com/KempnerInstitute/clustertool"
 Issues = "https://github.com/KempnerInstitute/clustertool/issues"
+Documentation = "https://github.com/KempnerInstitute/clustertool/tree/main/docs"
 
 [project.scripts]
 clustertool = "clustertool.cli:main"
@@ -42,7 +45,7 @@ clustertool = "clustertool.cli:main"
 dev = ["pytest>=8", "ruff>=0.6"]
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]

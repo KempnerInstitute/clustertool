@@ -39,9 +39,7 @@ def balance(account: str | None, top: int) -> None:
     over = sorted(ranked, key=lambda a: a["ratio"], reverse=True)[:top]
     under = sorted(ranked, key=lambda a: a["ratio"])[:top]
 
-    click.echo(
-        f"Fair-share balance: {len(usable)} account(s) with shares, {len(ranked)} with usage"
-    )
+    click.echo(f"Fairshare balance: {len(usable)} account(s) with shares, {len(ranked)} with usage")
 
     def table(title: str, rows: list) -> None:
         if not rows:

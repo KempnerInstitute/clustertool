@@ -652,7 +652,7 @@ def test_jobs_cancel_ids(monkeypatch):
 def test_jobs_cancel_all(monkeypatch):
     monkeypatch.setenv("USER", "alice")
     calls = _capture_stream(monkeypatch)
-    result = CliRunner().invoke(main, ["jobs", "cancel", "--all"])
+    result = CliRunner().invoke(main, ["jobs", "cancel", "--all", "-y"])
     assert result.exit_code == 0
     assert calls[0] == ["scancel", "-u", "alice"]
 
@@ -660,9 +660,32 @@ def test_jobs_cancel_all(monkeypatch):
 def test_jobs_cancel_pending(monkeypatch):
     monkeypatch.setenv("USER", "alice")
     calls = _capture_stream(monkeypatch)
-    result = CliRunner().invoke(main, ["jobs", "cancel", "--pending"])
+    result = CliRunner().invoke(main, ["jobs", "cancel", "--pending", "-y"])
     assert result.exit_code == 0
     assert calls[0] == ["scancel", "-u", "alice", "-t", "PENDING"]
+
+
+def test_jobs_cancel_all_prompts(monkeypatch):
+    monkeypatch.setenv("USER", "alice")
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "cancel", "--all"], input="y\n")
+    assert result.exit_code == 0
+    assert calls[0] == ["scancel", "-u", "alice"]
+
+
+def test_jobs_cancel_all_abort_cancels_nothing(monkeypatch):
+    monkeypatch.setenv("USER", "alice")
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "cancel", "--all"], input="n\n")
+    assert result.exit_code != 0
+    assert calls == []
+
+
+def test_jobs_cancel_ids_do_not_prompt(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "cancel", "333"])
+    assert result.exit_code == 0
+    assert calls[0] == ["scancel", "333"]
 
 
 def test_jobs_cancel_none_errors(monkeypatch):

@@ -82,7 +82,15 @@ endpoint with `--backend prometheus`.
 
 ## Install
 
-Install as a tool from the repository:
+```bash
+uv tool install clustertool   # or: pipx install clustertool, pip install clustertool
+```
+
+The install name is singular. Unrelated projects hold `clustertools` and
+`cluster-tools` on PyPI, so check the spelling. The command it puts on your PATH
+is `clustertool`, along with the bundled `jobscope` and `kempnerpulse` tools.
+
+To track the development version instead:
 
 ```bash
 uv tool install git+https://github.com/KempnerInstitute/clustertool
