@@ -22,7 +22,7 @@ def test_default_accessors():
     assert "kempner_h100" in site.base_partitions()
     assert site.requeue_partition() == "kempner_requeue"
     assert site.base_qos() == "kempner_base"
-    assert site.default_cap() == 96
+    assert site.default_cap() == 0
     assert site.partition_limits()["kempner_h100"] == (24, 360000)
     assert site.partition_limits()["kempner"] == (16, 240000)
     assert site.gpu_type_partition()["h100"] == "kempner_h100"

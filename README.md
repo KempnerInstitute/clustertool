@@ -17,9 +17,10 @@
 # ClusterTool
 
 A single umbrella CLI (`clustertool`) that centralizes the Slurm cluster
-scripts used by both researchers and the engineering team, so common tasks live
+scripts used by both researchers and the admin team, so common tasks live
 in one place with consistent help and behavior. It is built at the Kempner
-Institute and adapts to other clusters through a site config.
+Institute, Harvard University, and adapts to other clusters through a site
+config.
 
 Every task is a subcommand under a group (for example `clustertool gpu ...`).
 Each command has `--help` explaining what it does, its use cases, and its

@@ -37,9 +37,22 @@ def test_account_cap_prefers_gpu_tres(monkeypatch):
     assert slurm.account_cap() == 96
 
 
-def test_account_cap_default(monkeypatch):
+def test_account_cap_is_none_without_a_gpu_cap(monkeypatch):
+    """No cap beats a made up one: the denominator would otherwise be fiction."""
     monkeypatch.setattr(slurm, "_run", lambda cmd: "\n")
-    assert slurm.account_cap() == slurm.DEFAULT_CAP
+    assert slurm.account_cap() is None
+
+
+def test_account_cap_ignores_a_non_gpu_limit(monkeypatch):
+    """A cpu or memory ceiling on the base QoS is not a GPU cap."""
+    monkeypatch.setattr(slurm, "_run", lambda cmd: "cpu=100,mem=200G\n")
+    assert slurm.account_cap() is None
+
+
+def test_account_cap_uses_a_configured_default(monkeypatch):
+    monkeypatch.setattr(slurm, "_run", lambda cmd: "\n")
+    monkeypatch.setattr(slurm.site, "default_cap", lambda: 48)
+    assert slurm.account_cap() == 48
 
 
 def test_priority_partitions(monkeypatch):

@@ -30,8 +30,13 @@ The packaged default lists every key with Kempner values; it is the reference:
   regex identifying priority partitions.
 - `[partitions.limits.<name>]` `cpus_per_gpu`, `mem_per_gpu_mb`: the enforced
   per-GPU limits used to size sessions and flag over-requests.
-- `[qos]` `base`, `default_cap`, `cluster`, `grant_fairshare`, `grant_strip`: the
-  QoS whose MaxTRESPA holds the per-account GPU cap, and a fallback cap. Then the
+- `[qos]` `base`, `default_cap`, `cluster`, `grant_fairshare`, `grant_strip`:
+  `base` is the QoS whose MaxTRESPA holds the per-account GPU cap, which
+  `gpu usage` reports each account against. Only a `gres/gpu` entry there counts
+  as a GPU cap. `default_cap` is a fallback for a cluster that enforces a cap
+  outside that QoS; it defaults to `0`, meaning no cap is assumed, and then
+  `gpu usage` reports plain GPU counts with no denominator instead of scoring
+  every account against a limit your cluster does not enforce. Then the
   three used by the admin `qos` commands: `cluster` is the Slurm cluster name
   every `sacctmgr` write targets, so **set it before running any `qos` command**
   or you will aim them at a cluster named `odyssey`; `grant_fairshare` is the

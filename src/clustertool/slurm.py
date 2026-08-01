@@ -29,7 +29,6 @@ def __getattr__(name: str):
 SlurmError = CommandError
 
 _GPU_RE = re.compile(r"gres/gpu=(\d+)")
-_INT_RE = re.compile(r"\d+")
 
 
 def parse_gpu_count(text: str) -> int:
@@ -89,14 +88,21 @@ def drained_nodes(partition: str) -> list[tuple[str, str, str]]:
     return result
 
 
-def account_cap() -> int:
-    """Return the per-account base GPU cap from the base QoS."""
+def account_cap() -> int | None:
+    """Return the per-account base GPU cap, or None when there is no GPU cap.
+
+    Reads MaxTRESPA on the site's base QoS. Only a gres/gpu entry counts: an
+    unrelated limit such as cpu=100 is not a GPU cap, and reporting it as one
+    would put a fabricated denominator next to every account. When the QoS names
+    no GPU cap, the configured default is used if a site set one, and otherwise
+    there is no cap to report.
+    """
     out = _run(["sacctmgr", "-nP", "show", "qos", site.base_qos(), "format=MaxTRESPA"])
     gpus = parse_gpu_count(out)
     if gpus:
         return gpus
-    match = _INT_RE.search(out)
-    return int(match.group()) if match else site.default_cap()
+    configured = site.default_cap()
+    return configured if configured > 0 else None
 
 
 def account_exists(account: str) -> bool:

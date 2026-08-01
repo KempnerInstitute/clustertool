@@ -2437,3 +2437,26 @@ def test_qos_retire_refuses_when_holders_are_outside_the_sweep(monkeypatch):
     result = CliRunner().invoke(main, ["qos", "retire", "kemp", "-p", "kempner_h100", "-x", "-y"])
     assert result.exit_code != 0
     assert "does not cover" in result.output
+
+
+def test_gpu_usage_without_a_cap_omits_the_denominator(monkeypatch):
+    """A site with no per-account GPU cap gets plain counts, not a made up limit."""
+    monkeypatch.setattr(slurm, "account_cap", lambda: None)
+    monkeypatch.setattr(slurm, "gpu_by_account", lambda parts: {"lab_a": 7, "lab_b": 3})
+    result = CliRunner().invoke(main, ["gpu", "usage"])
+    assert result.exit_code == 0
+    assert "no per-account GPU cap is set" in result.output
+    assert "/" not in result.output.split("highest first")[1].split("----")[0]
+    assert "10 GPU in use across 2 account(s)" in result.output
+
+
+def test_gpu_usage_one_lab_without_a_cap(monkeypatch):
+    monkeypatch.setattr(slurm, "account_cap", lambda: None)
+    monkeypatch.setattr(slurm, "account_exists", lambda a: True)
+    monkeypatch.setattr(slurm, "priority_partitions", lambda: [])
+    monkeypatch.setattr(slurm, "gpu_rows", lambda a, parts: [("alice", "gpu", 4)])
+    result = CliRunner().invoke(main, ["gpu", "usage", "lab_a"])
+    assert result.exit_code == 0
+    assert "ACCOUNT TOTAL: 4 GPU" in result.output
+    assert "% of the cap" not in result.output
+    assert "-GPU account cap" not in result.output

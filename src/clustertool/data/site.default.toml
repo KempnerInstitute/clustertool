@@ -33,7 +33,10 @@ mem_per_gpu_mb = 180000
 
 [qos]
 base = "kempner_base"
-default_cap = 96
+# Fallback per-account GPU cap, used only when the base QoS names no gres/gpu
+# limit. 0 means assume no cap, so usage is reported without a denominator
+# rather than against a number this cluster does not enforce.
+default_cap = 0
 # Slurm cluster name that the admin qos commands operate on.
 cluster = "odyssey"
 # Fairshare set on a new association created by qos grant.
