@@ -171,9 +171,10 @@ def partition_exists(partition: str) -> bool:
 def user_exists(user: str) -> bool:
     """Return True if the name resolves to an account on this host.
 
-    squeue takes a user name or a numeric uid and resolves it the same way, so a
-    name that does not resolve makes it print an error and an empty list while
-    still exiting 0.
+    squeue answers a name that does not resolve with an error on stderr and an
+    empty list while still exiting 0, so the name has to be checked here. A
+    numeric uid needs no passwd entry for squeue to accept it, and is treated the
+    same way only when it does resolve.
     """
     try:
         if user.isdigit():
@@ -205,8 +206,14 @@ def priority_partitions() -> list[str]:
 
 
 def partition_nodes(partition: str) -> list[tuple[str, str]]:
-    """Return (node, state) rows for a partition."""
-    out = _run(["sinfo", "-h", "-N", "-p", partition, "-o", "%N %t"])
+    """Return (node, state) rows for a partition.
+
+    Raises if sinfo fails, since callers read an empty result as a partition that
+    does not exist, and an unreachable controller is not the user's typo.
+    """
+    code, out, err = process.probe(["sinfo", "-h", "-N", "-p", partition, "-o", "%N %t"])
+    if code != 0:
+        raise CommandError(f"could not list the nodes in {partition}: {err.strip() or code}")
     rows: list[tuple[str, str]] = []
     for line in out.splitlines():
         fields = line.split()
@@ -446,26 +453,29 @@ def job_exists(jobid: str) -> bool:
     """Return True if Slurm knows the job id, queued or running.
 
     Raises when the controller could not be reached, so an outage is not reported
-    as a job that does not exist. Only squeue's own 'Invalid job id' counts as an
-    answer of no.
+    as a job that does not exist. squeue answers a job id whose array element does
+    not exist with exit 0 and no rows, so an empty answer counts as no just as its
+    own 'Invalid job id' does. -t all is passed because squeue otherwise omits a
+    suspended job, which scancel does act on.
     """
-    code, out, err = process.probe(["squeue", "-j", jobid, "-h", "-O", "jobid:32"])
+    code, out, err = process.probe(["squeue", "-t", "all", "-j", jobid, "-h", "-O", "jobid:32"])
     if code == 0:
-        return True
+        return bool(out.strip())
     if "invalid job id" in (out + err).lower():
         return False
     raise CommandError(f"could not check job {jobid}: {err.strip() or out.strip() or code}")
 
 
 def job_state_counts(user: str, pending_only: bool = False) -> dict[str, int]:
-    """Return {state: count} for a user's queued and running jobs.
+    """Return {state: count} for a user's jobs that scancel would act on.
 
     Raises when the query fails, so a bulk cancel is never sized against a read
-    that did not happen.
+    that did not happen. -r counts each array element, since squeue otherwise
+    folds a pending array onto one line while scancel acts on every element. The
+    states are the three man scancel names, so the count is what would be killed.
     """
-    cmd = ["squeue", "-h", "-u", user, "-O", "state:32"]
-    if pending_only:
-        cmd += ["-t", "PENDING"]
+    cmd = ["squeue", "-h", "-r", "-u", user, "-O", "state:32"]
+    cmd += ["-t", "PENDING"] if pending_only else ["-t", "PENDING,RUNNING,SUSPENDED"]
     code, out, err = process.probe(cmd)
     if code != 0:
         raise CommandError(f"could not list {user}'s jobs: {err.strip() or code}")
@@ -588,8 +598,8 @@ def job_maxrss_mb(jobid: str) -> float:
     return max((_mem_to_mb(row.strip()) for row in out.splitlines()), default=0.0)
 
 
-_UNRESOLVABLE_PATTERN = re.compile(r"%\d*[nNstS]")
-_PADDED_PATTERN = re.compile(r"%(\d+)([AajJux])")
+_TOKEN = re.compile(r"%(\d*)(.)")
+_NUMERIC_TOKENS = "AajJ"
 
 
 def _expand_log_pattern(path: str, fields: dict) -> str:
@@ -599,74 +609,112 @@ def _expand_log_pattern(path: str, fields: dict) -> str:
     knew, such as %N for the node it landed on: a half-expanded path names a file
     that cannot exist, which is worse than admitting the log cannot be located.
     man sbatch defines the symbols; %j is the job's own id, which for an array
-    element is its JobIDRaw rather than the master's.
+    element is its JobIDRaw rather than the master's. Expansion is a single pass,
+    so the literal percent %% yields cannot start a second substitution, and
+    per man sbatch a zero-pad width applies only to a numeric symbol.
     """
-    if _UNRESOLVABLE_PATTERN.search(path):
-        return ""
     raw = fields.get("raw_id", "")
     master, _, task = fields.get("job_id", "").partition("_")
     values = {
-        "%%": "%",
-        "%A": master,
-        "%a": task,
-        "%J": raw,
-        "%j": raw,
-        "%u": fields.get("user", ""),
-        "%x": fields.get("name", ""),
+        "%": "%",
+        "A": master,
+        "a": task,
+        "J": raw,
+        "j": raw,
+        "u": fields.get("user", ""),
+        "x": fields.get("name", ""),
     }
-    path = _PADDED_PATTERN.sub(
-        lambda m: values.get(f"%{m.group(2)}", "").zfill(int(m.group(1))), path
-    )
-    for symbol, value in values.items():
-        path = path.replace(symbol, value)
-    return "" if "%" in path else path
+    failed = False
+
+    def expand(match: re.Match) -> str:
+        nonlocal failed
+        width, symbol = match.group(1), match.group(2)
+        if symbol not in values:
+            failed = True
+            return ""
+        value = values[symbol]
+        if not value and symbol != "%":
+            failed = True
+            return ""
+        return value.zfill(int(width)) if width and symbol in _NUMERIC_TOKENS else value
+
+    expanded = _TOKEN.sub(expand, path)
+    return "" if failed else expanded
 
 
-def job_output_path(jobid: str) -> str:
-    """Return a job's stdout path, or empty when it cannot be determined.
+def job_output_paths(jobid: str) -> tuple[str, str]:
+    """Return a job's (stdout, stderr) paths, each empty when it cannot be determined.
 
-    Asks the controller first, which holds the expanded path while the job is
+    Asks the controller first, which holds the expanded paths while the job is
     recent, then accounting, which keeps the unexpanded pattern long after
     MinJobAge has purged the job from scontrol. A pattern sacct stores relative is
-    relative to the job's WorkDir, not to the caller's directory. Accounting
-    records no path for a job submitted without one, so the default sbatch writes
-    is assumed only for a job that has a batch step: an interactive allocation
-    writes to the terminal and has no file to name.
+    relative to the job's WorkDir, not to the caller's directory.
+
+    Accounting records no path for a job submitted without one, and only then is
+    the default sbatch writes assumed, and only for a job that has a batch step:
+    an interactive allocation writes to the terminal and has no file to name. A
+    pattern that is recorded but cannot be expanded yields nothing rather than the
+    default, which would name a file the job never wrote.
     """
     code, out, _ = process.probe(["scontrol", "show", "job", jobid])
     if code == 0:
-        match = re.search(r"StdOut=(\S+)", out)
-        if match and match.group(1) not in ("", "(null)"):
-            return match.group(1)
+        live = {}
+        for key in ("StdOut", "StdErr"):
+            match = re.search(rf"{key}=(\S+)", out)
+            if match and match.group(1) not in ("", "(null)"):
+                live[key] = match.group(1)
+        if live.get("StdOut"):
+            return live["StdOut"], live.get("StdErr", "")
 
     code, out, _ = process.probe(
-        ["sacct", "-j", jobid, "-n", "-P", "-o", "JobID,JobIDRaw,StdOut,WorkDir,JobName,User"]
+        [
+            "sacct",
+            "-j",
+            jobid,
+            "-n",
+            "-P",
+            "-o",
+            "JobID,JobIDRaw,StdOut,StdErr,WorkDir,JobName,User",
+        ]
     )
     if code != 0:
-        return ""
+        return "", ""
     rows = [line.split("|") for line in out.splitlines() if line.strip()]
-    rows = [row for row in rows if len(row) >= 6]
+    rows = [row for row in rows if len(row) >= 7]
     row = next((row for row in rows if "." not in row[0]), [])
     if not row:
-        return ""
-    has_batch_step = any(row[0].strip().endswith(".batch") for row in rows)
+        return "", ""
+    has_batch_step = any(other[0].strip().endswith(".batch") for other in rows)
     fields = {
         "raw_id": row[1].strip(),
         "job_id": jobid,
-        "user": row[5].strip(),
-        "name": row[4].strip(),
+        "user": row[6].strip(),
+        "name": row[5].strip(),
     }
-    workdir = row[3].strip()
-    stdout_path = _expand_log_pattern(row[2].strip(), fields) if row[2].strip() else ""
-    if not stdout_path and workdir and has_batch_step:
-        stdout_path = f"slurm-{fields['raw_id'] or jobid}.out"
-    if not stdout_path:
-        return ""
-    if not stdout_path.startswith("/"):
-        if not workdir:
+    workdir = row[4].strip()
+
+    def resolve(recorded: str, default: str) -> str:
+        if recorded:
+            path = _expand_log_pattern(recorded, fields)
+        elif workdir and has_batch_step:
+            path = default
+        else:
+            path = ""
+        if not path:
             return ""
-        stdout_path = f"{workdir.rstrip('/')}/{stdout_path}"
-    return stdout_path
+        if not path.startswith("/"):
+            return f"{workdir.rstrip('/')}/{path}" if workdir else ""
+        return path
+
+    raw = fields["raw_id"] or jobid
+    stdout_path = resolve(row[2].strip(), f"slurm-{raw}.out")
+    stderr_path = resolve(row[3].strip(), stdout_path)
+    return stdout_path, stderr_path
+
+
+def job_output_path(jobid: str) -> str:
+    """Return a job's stdout path, or empty when it cannot be determined."""
+    return job_output_paths(jobid)[0]
 
 
 def job_output_tail(jobid: str, lines: int = 200) -> str:

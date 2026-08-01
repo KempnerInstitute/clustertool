@@ -1,8 +1,8 @@
 """Tests for the CLI commands."""
 
-import getpass
 import json
 import os
+import pwd
 import re
 import shutil
 import sys
@@ -719,11 +719,30 @@ def _capture_stream(monkeypatch):
 
 
 def test_jobs_list_default(monkeypatch):
-    monkeypatch.setenv("USER", "alice")
+    """The default user is the account this process runs as, not a stale $USER."""
+    monkeypatch.setenv("USER", "someone-else")
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "list"])
     assert result.exit_code == 0
-    assert calls[0] == ["squeue", "-u", "alice"]
+    assert calls[0] == ["squeue", "-u", pwd.getpwuid(os.getuid()).pw_name]
+
+
+def test_jobs_list_trims_a_filter_value(monkeypatch):
+    """A stray space passes an account lookup and then matches no job."""
+    calls = _capture_stream(monkeypatch)
+    monkeypatch.setattr(slurm, "account_exists", lambda a: True)
+    result = CliRunner().invoke(main, ["jobs", "list", "-A", " kempner_dev "])
+    assert result.exit_code == 0
+    assert calls[0][-1] == "kempner_dev"
+
+
+def test_jobs_list_rejects_an_empty_filter(monkeypatch):
+    """An unset shell variable would otherwise widen the query rather than fail."""
+    calls = _capture_stream(monkeypatch)
+    monkeypatch.setattr(slurm, "partition_exists", lambda p: False)
+    result = CliRunner().invoke(main, ["jobs", "list", "-p", ""])
+    assert result.exit_code != 0
+    assert calls == []
 
 
 def test_jobs_list_filters(monkeypatch):
@@ -749,10 +768,60 @@ def test_jobs_list_filters(monkeypatch):
 
 
 def test_jobs_show(monkeypatch):
-    calls = _capture_stream(monkeypatch)
+    """man scontrol takes a single job id for show; a list reads as one bad id."""
+    calls = []
+    monkeypatch.setattr(
+        process, "probe", lambda cmd, timeout=None: calls.append(cmd) or (0, "JobId=x\n", "")
+    )
     result = CliRunner().invoke(main, ["jobs", "show", "111", "222"])
     assert result.exit_code == 0
-    assert calls[0] == ["scontrol", "show", "job", "-dd", "111,222"]
+    assert calls == [
+        ["scontrol", "show", "job", "-dd", "111"],
+        ["scontrol", "show", "job", "-dd", "222"],
+    ]
+
+
+def test_jobs_show_refuses_an_argument_that_is_not_a_job_id(monkeypatch):
+    """scontrol left with no id prints every job on the cluster."""
+    calls = []
+    monkeypatch.setattr(
+        process, "probe", lambda cmd, timeout=None: calls.append(cmd) or (0, "", "")
+    )
+    for bad in ("", "--json", "abc", "-o"):
+        result = CliRunner().invoke(main, ["jobs", "show", "--", bad])
+        assert result.exit_code != 0, bad
+        assert "not a job id" in result.output, bad
+    assert calls == []
+
+
+def test_jobs_show_points_at_debug_for_a_finished_job(monkeypatch):
+    """A job past MinJobAge is gone from the scheduler but still in accounting."""
+
+    def fake_probe(cmd, timeout=None):
+        if cmd[0] == "sacct":
+            return 0, "123\n", ""
+        return 1, "", "Invalid job id specified"
+
+    monkeypatch.setattr(process, "probe", fake_probe)
+    result = CliRunner().invoke(main, ["jobs", "show", "123"])
+    assert result.exit_code != 0
+    assert "has finished" in result.output
+    assert "jobs debug 123" in result.output
+
+
+def test_jobs_show_reports_each_failing_id(monkeypatch):
+    """A good id must still print when another id in the same call fails."""
+
+    def fake_probe(cmd, timeout=None):
+        if cmd[0] == "sacct":
+            return 0, "", ""
+        return (0, "JobId=111\n", "") if cmd[-1] == "111" else (1, "", "Invalid job id specified")
+
+    monkeypatch.setattr(process, "probe", fake_probe)
+    result = CliRunner().invoke(main, ["jobs", "show", "111", "999"])
+    assert result.exit_code != 0
+    assert "JobId=111" in result.output
+    assert "job 999" in result.output
 
 
 _SPRIO_ROWS = (
@@ -766,15 +835,16 @@ def test_jobs_why(monkeypatch):
 
     def fake_probe(cmd, timeout=None):
         captured["cmd"] = cmd
+        if cmd[0] == "squeue":
+            return 0, "12345 PENDING Priority\n", ""
         return 0, _SPRIO_ROWS, ""
 
-    monkeypatch.setattr(process, "run", lambda cmd, input_text=None: "PENDING Priority\n")
     monkeypatch.setattr(process, "probe", fake_probe)
     result = CliRunner().invoke(main, ["jobs", "why", "12345"])
     assert result.exit_code == 0
     assert "Priority" in result.output
     assert "FAIRSHARE" in result.output
-    assert captured["cmd"] == ["sprio", "-j", "12345", "-l"]
+    assert captured["cmd"] == ["sprio", "-j", "12345"]
 
 
 def test_jobs_why_explains_an_empty_sprio_result(monkeypatch):
@@ -805,7 +875,10 @@ def _cancel_stubs(monkeypatch, counts=None, exists=True):
             counts if counts is not None else {"RUNNING": 3, "PENDING": 1}
         ),
     )
-    monkeypatch.setattr(getpass, "getuser", lambda: "alice")
+    monkeypatch.setattr(slurm, "job_owner", lambda j: pwd.getpwuid(os.getuid()).pw_name)
+
+
+_ME = pwd.getpwuid(os.getuid()).pw_name
 
 
 def test_jobs_cancel_ids(monkeypatch):
@@ -821,7 +894,7 @@ def test_jobs_cancel_all(monkeypatch):
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "cancel", "--all", "-y"])
     assert result.exit_code == 0
-    assert calls[0] == ["scancel", "-u", "alice"]
+    assert calls[0] == ["scancel", "-u", pwd.getpwuid(os.getuid()).pw_name]
 
 
 def test_jobs_cancel_pending(monkeypatch):
@@ -829,7 +902,7 @@ def test_jobs_cancel_pending(monkeypatch):
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "cancel", "--pending", "-y"])
     assert result.exit_code == 0
-    assert calls[0] == ["scancel", "-u", "alice", "-t", "PENDING"]
+    assert calls[0] == ["scancel", "-u", _ME, "-t", "PENDING"]
 
 
 def test_jobs_cancel_all_prompts(monkeypatch):
@@ -837,7 +910,7 @@ def test_jobs_cancel_all_prompts(monkeypatch):
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "cancel", "--all"], input="y\n")
     assert result.exit_code == 0
-    assert calls[0] == ["scancel", "-u", "alice"]
+    assert calls[0] == ["scancel", "-u", _ME]
 
 
 def test_jobs_cancel_all_abort_cancels_nothing(monkeypatch):
@@ -853,7 +926,7 @@ def test_jobs_cancel_all_states_the_blast_radius(monkeypatch):
     _cancel_stubs(monkeypatch)
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "cancel", "--all"], input="n\n")
-    assert "Cancel all 4 of your jobs (1 pending, 3 running)?" in result.output
+    assert f"Cancel all 4 jobs owned by {_ME} (1 pending, 3 running)?" in result.output
     assert calls == []
 
 
@@ -872,7 +945,7 @@ def test_jobs_cancel_refuses_an_unknown_job(monkeypatch):
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "cancel", "99999997"])
     assert result.exit_code != 0
-    assert "no such job: 99999997" in result.output
+    assert "not in the queue: 99999997" in result.output
     assert calls == []
 
 
@@ -1284,12 +1357,12 @@ def test_jobs_log_array_master_names_an_element(monkeypatch):
     monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, out, ""))
     result = CliRunner().invoke(main, ["jobs", "log", "1"])
     assert result.exit_code != 0
-    assert "array with 2 elements" in result.output
+    assert "elements each write their own file" in result.output
 
 
 def test_jobs_log_unstarted_array(monkeypatch):
     """Slurm leaves NO_VAL in the path until an element starts, so the file never exists."""
-    out = "JobId=1 StdOut=/n/job_1_4294967294.out"
+    out = "JobId=1 ArrayJobId=1 ArrayTaskId=0-3 StdOut=/n/job_1_4294967294.out"
     monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, out, ""))
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "log", "1", "-f"])
@@ -1318,7 +1391,7 @@ def test_jobs_log_falls_back_to_accounting(monkeypatch):
         "probe",
         lambda cmd, timeout=None: (1, "", "slurm_load_jobs error: Invalid job id specified"),
     )
-    monkeypatch.setattr(slurm, "job_output_path", lambda j: "/work/slurm-123.out")
+    monkeypatch.setattr(slurm, "job_output_paths", lambda j: ("/work/slurm-123.out", ""))
     result = CliRunner().invoke(main, ["jobs", "log", "123"])
     assert result.exit_code == 0
     assert "StdOut: /work/slurm-123.out" in result.output
@@ -1392,7 +1465,7 @@ def test_jobs_script_treats_none_as_absent(monkeypatch):
     monkeypatch.setattr(process, "probe", fake_probe)
     result = CliRunner().invoke(main, ["jobs", "script", "123"])
     assert result.exit_code != 0
-    assert "no batch script" in result.output
+    assert "ran without a batch script" in result.output
 
 
 _SACCT_HEADER = "Batch Script for 123\n" + "-" * 80 + "\n"
@@ -1409,7 +1482,7 @@ def test_jobs_script_treats_a_headed_none_as_absent(monkeypatch):
     monkeypatch.setattr(process, "probe", fake_probe)
     result = CliRunner().invoke(main, ["jobs", "script", "123"])
     assert result.exit_code != 0
-    assert "no batch script" in result.output
+    assert "ran without a batch script" in result.output
     assert "NONE" not in result.output
 
 
@@ -1427,11 +1500,10 @@ def test_jobs_script_emits_only_the_script(monkeypatch):
 
 
 def test_jobs_list_start(monkeypatch):
-    monkeypatch.setenv("USER", "alice")
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "list", "--start"])
     assert result.exit_code == 0
-    assert calls[0] == ["squeue", "-u", "alice", "--start"]
+    assert calls[0] == ["squeue", "-u", pwd.getpwuid(os.getuid()).pw_name, "--start"]
 
 
 def test_diag_scheduler(monkeypatch):
@@ -3401,11 +3473,22 @@ def test_diag_ib_verify_no_golden(tmp_path):
 
 
 def test_jobs_why_missing_job_errors(monkeypatch):
-    monkeypatch.setattr(process, "run", lambda cmd, input_text=None: "")
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, "", ""))
     _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "why", "999999999"])
     assert result.exit_code != 0
-    assert "not in the queue" in result.output
+    assert "no longer in the queue" in result.output
+
+
+def test_jobs_why_does_not_call_a_failed_query_a_missing_job(monkeypatch):
+    """squeue failing is not the same answer as the job having finished."""
+    monkeypatch.setattr(
+        process, "probe", lambda cmd, timeout=None: (1, "", "squeue: fatal: bad config")
+    )
+    result = CliRunner().invoke(main, ["jobs", "why", "12345"])
+    assert result.exit_code != 0
+    assert "could not query job 12345" in result.output
+    assert "finished" not in result.output
 
 
 def test_jobs_priorities_unknown_partition_errors(monkeypatch):
@@ -3423,7 +3506,7 @@ def test_jobs_script_missing_job_errors(monkeypatch):
     )
     result = CliRunner().invoke(main, ["jobs", "script", "999999999"])
     assert result.exit_code != 0
-    assert "no batch script" in result.output
+    assert "no job 999999999 on this cluster" in result.output
 
 
 def test_jobs_top_missing_job_errors(monkeypatch):
@@ -3975,3 +4058,47 @@ def test_qos_dry_run_does_not_claim_a_definition(monkeypatch):
     result = CliRunner().invoke(main, ["qos", "modify", "kemp", "-A", "32"])
     assert result.exit_code == 0
     assert "now carries" not in result.output
+
+
+def test_jobs_script_takes_only_the_first_block_of_an_array(monkeypatch):
+    """sacct answers a whole array with one titled block per element."""
+    rule = "-" * 80
+    out = (
+        f"Batch Script for 7_0\n{rule}\n#!/bin/bash\necho one\n"
+        f"Batch Script for 7_1\n{rule}\n#!/bin/bash\necho one\n"
+    )
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, out, ""))
+    result = CliRunner().invoke(main, ["jobs", "script", "7"])
+    assert result.exit_code == 0
+    assert "Batch Script for" not in result.output
+    assert result.output.strip() == "#!/bin/bash\necho one"
+
+
+def test_jobs_script_names_a_denied_script(monkeypatch):
+    """Slurm lets only the owner or a privileged user read a batch script."""
+
+    def fake_probe(cmd, timeout=None):
+        if cmd[0] == "sacct":
+            return 0, "", ""
+        return 1, "", "Access/permission denied"
+
+    monkeypatch.setattr(process, "probe", fake_probe)
+    result = CliRunner().invoke(main, ["jobs", "script", "123"])
+    assert result.exit_code != 0
+    assert "belongs to another user" in result.output
+
+
+def test_jobs_why_does_not_force_sprio_to_show_unweighted_factors(monkeypatch):
+    """man sprio's default format lists only the factors a cluster weights."""
+    captured = {}
+
+    def fake_probe(cmd, timeout=None):
+        captured.setdefault(cmd[0], cmd)
+        if cmd[0] == "squeue":
+            return 0, "12345 PENDING Priority\n", ""
+        return 0, _SPRIO_ROWS, ""
+
+    monkeypatch.setattr(process, "probe", fake_probe)
+    result = CliRunner().invoke(main, ["jobs", "why", "12345"])
+    assert result.exit_code == 0
+    assert "-l" not in captured["sprio"]

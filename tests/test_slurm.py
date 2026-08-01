@@ -73,8 +73,15 @@ def test_pending_at_cap(monkeypatch):
 
 def test_partition_nodes(monkeypatch):
     sample = "node01 idle\nnode02 mix\nbad\n"
-    monkeypatch.setattr(slurm, "_run", lambda cmd: sample)
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, sample, ""))
     assert slurm.partition_nodes("kempner") == [("node01", "idle"), ("node02", "mix")]
+
+
+def test_partition_nodes_raises_when_sinfo_fails(monkeypatch):
+    """An empty result reads as a partition that does not exist, so a failure cannot."""
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (1, "", "boom"))
+    with pytest.raises(slurm.CommandError):
+        slurm.partition_nodes("kempner")
 
 
 def test_account_members(monkeypatch):
@@ -392,9 +399,9 @@ def test_job_state_counts_raises_when_the_query_fails(monkeypatch):
 def test_job_output_path_assumes_no_default_for_an_interactive_job(monkeypatch):
     """An interactive allocation writes to the terminal, so it has no file to name."""
     rows = (
-        "32923082|32923082||/work|bash|mmsh\n"
-        "32923082.extern|32923082.extern|||extern|\n"
-        "32923082.0|32923082.0|||bash|\n"
+        "32923082|32923082|||/work|bash|mmsh\n"
+        "32923082.extern|32923082.extern||||extern|\n"
+        "32923082.0|32923082.0||||bash|\n"
     )
 
     def fake_probe(cmd, timeout=None):
@@ -416,7 +423,7 @@ def test_job_output_path_assumes_the_sbatch_default_for_a_batch_job(monkeypatch)
     def fake_probe(cmd, timeout=None):
         if cmd[0] == "scontrol":
             return 1, "", "Invalid job id specified"
-        return 0, "77|77||/work|run|mmsh\n77.batch|77.batch|||batch|\n", ""
+        return 0, "77|77|||/work|run|mmsh\n77.batch|77.batch||||batch|\n", ""
 
     monkeypatch.setattr(process, "probe", fake_probe)
     assert slurm.job_output_path("77") == "/work/slurm-77.out"

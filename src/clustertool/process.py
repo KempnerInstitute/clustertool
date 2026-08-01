@@ -17,9 +17,13 @@ def _child_env() -> dict[str, str]:
     from is removed: a user who activated their own environment keeps it, since a
     wrapped install would otherwise strip exactly the environment the command
     needs, such as the torch env diag nccl asks for.
+
+    SLURM_TIME_FORMAT goes too. Per man sacct it rewrites every timestamp Slurm
+    prints, which would silently defeat the parsing the date arithmetic rests on.
     """
     env = os.environ.copy()
     env.pop("PYTHONHOME", None)
+    env.pop("SLURM_TIME_FORMAT", None)
     if sys.prefix == sys.base_prefix:
         return env
     own = os.path.realpath(sys.prefix)
