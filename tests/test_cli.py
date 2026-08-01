@@ -3628,3 +3628,48 @@ def test_gpu_pulse_job_refuses_another_users_job(monkeypatch):
     assert result.exit_code != 0
     assert "belongs to bob, not you" in result.output
     assert ran == []
+
+
+def test_ib_counters_ignores_a_port_in_ethernet_mode(tmp_path):
+    """An adapter in Ethernet mode exposes IB counter files that often read as errors."""
+    snap = {
+        "ib": {
+            "hcas": [
+                {
+                    "name": "mlx5_0",
+                    "ports": [
+                        {
+                            "port": 1,
+                            "link_layer": "InfiniBand",
+                            "counters": {"symbol_error": 0, "port_rcv_data": 100},
+                        }
+                    ],
+                },
+                {
+                    "name": "mlx5_1",
+                    "ports": [
+                        {
+                            "port": 1,
+                            "link_layer": "Ethernet",
+                            "counters": {"symbol_error": None, "VL15_dropped": None},
+                        }
+                    ],
+                },
+            ]
+        }
+    }
+    before, after = _write_snaps(tmp_path, snap, snap)
+    result = CliRunner().invoke(main, ["diag", "ib-counters", before, after])
+    assert result.exit_code == 0
+    assert "mlx5_1" not in result.output
+
+
+def test_nvlink_narrows_the_slurm_allocation(monkeypatch):
+    """--gpus must select within CUDA_VISIBLE_DEVICES, not be discarded by it."""
+    from clustertool.commands.diag import nvlink as nv
+
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "4,5,6,7")
+    assert nv._device_list(2) == "4,5"
+    assert nv._device_list(4) == "4,5,6,7"
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES")
+    assert nv._device_list(2) == "0,1"

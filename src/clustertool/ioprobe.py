@@ -30,7 +30,7 @@ def measure_write(path, size_mb):
         os.fsync(handle.fileno())
     elapsed = time.monotonic() - start
     total_mb = chunks * CHUNK / (1024.0 * 1024.0)
-    return (total_mb / elapsed if elapsed > 0 else None), total_mb
+    return (total_mb / elapsed if elapsed > 0 else 0.0), total_mb
 
 
 def _drop_cache(path) -> bool:
@@ -65,7 +65,7 @@ def measure_read(path):
         while handle.read(CHUNK):
             pass
     elapsed = time.monotonic() - start
-    rate = size_mb / elapsed if elapsed > 0 else None
+    rate = size_mb / elapsed if elapsed > 0 else 0.0
     return rate, not dropped
 
 

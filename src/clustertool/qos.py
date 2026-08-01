@@ -176,6 +176,31 @@ def partition_exists(name: str, cluster: str | None = None) -> bool:
     raise CommandError(f"could not look up partition {name}: {err.strip() or code}")
 
 
+def partition_known(name: str, cluster: str | None = None) -> bool:
+    """Return True if the partition is configured, or still carries associations.
+
+    A partition removed from slurm.conf leaves its associations behind, and
+    clearing those is exactly what revoke and retire are for. Creating an
+    association on such a name is still a mistake, so grant and sync use the
+    stricter partition_exists instead.
+    """
+    if partition_exists(name, cluster=cluster):
+        return True
+    cmd = [
+        "sacctmgr",
+        "-n",
+        "-P",
+        "show",
+        "assoc",
+        "where",
+        f"partition={name}",
+        f"cluster={_cluster(cluster)}",
+        "format=Partition",
+    ]
+    code, out, _ = process.probe(cmd)
+    return code == 0 and bool(out.strip())
+
+
 def jobs_using(qos_name: str, cluster: str | None = None) -> int:
     """Return how many queued or running jobs carry the QoS.
 

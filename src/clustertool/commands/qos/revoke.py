@@ -80,8 +80,8 @@ def revoke(
         )
     if "all" in user_list and len(user_list) > 1:
         raise click.UsageError("-u all must be used on its own")
-    if partition != "all" and not qoslib.partition_exists(partition, cluster=cluster):
-        raise click.ClickException(f"no such partition: {partition}")
+    if partition != "all" and not qoslib.partition_known(partition, cluster=cluster):
+        raise click.ClickException(f"no such partition: {partition}, and no association carries it")
     plan = qoslib.revoke_targets_plan(
         qos_name, user_list, partition, cluster=cluster, account_regex=account_regex
     )

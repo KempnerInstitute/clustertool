@@ -702,6 +702,24 @@ def _float_field(value: str | None) -> float | None:
         return None
 
 
+def _root_raw_usage() -> float:
+    """Return the root account's RawUsage, the denominator for effective usage.
+
+    sshare omits the root row when scoped with -A, so an account-scoped query has
+    to ask for it separately or every ratio comes out zero.
+    """
+    code, out, _ = process.probe(
+        ["sshare", "-a", "-P", "-o", "Account,User,RawUsage", "-A", "root"]
+    )
+    if code != 0:
+        return 0.0
+    for line in out.splitlines():
+        parts = line.split("|")
+        if len(parts) >= 3 and parts[0].strip() == "root" and not parts[1].strip():
+            return _float_field(parts[2]) or 0.0
+    return 0.0
+
+
 def account_shares(account: str | None = None) -> list[dict]:
     """Return per-account normalized share and effective usage from sshare.
 
@@ -735,6 +753,8 @@ def account_shares(account: str | None = None) -> list[dict]:
             root_usage = raw_usage
             continue
         parsed.append((name, _float_field(parts[3]), raw_usage))
+    if not root_usage:
+        root_usage = _root_raw_usage()
 
     rows: list[dict] = []
     for name, norm_shares, raw_usage in parsed:

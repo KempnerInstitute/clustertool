@@ -33,8 +33,13 @@ def holders(
     """List the users and partitions that hold a QoS (via sacctmgr).
 
     Answers the inverse of account limits: given a QoS, which user associations
-    carry it, and on which partitions. Use --by to collapse the output to just
-    the distinct users or partitions (handy for scripting a grant or revoke).
+    carry it, and on which partitions. Use --by to collapse the output to just the
+    distinct users or partitions (handy for scripting a grant or revoke).
+
+    A QoS can also be held without a partition, on an account's or a user's base
+    association. Those do not appear in the table, so when no partition-scoped
+    holder exists the command falls back to listing them; --by still collapses
+    that list, and the explanatory line goes to stderr so a pipe stays clean.
 
     \b
     Use cases:
@@ -53,8 +58,8 @@ def holders(
         raise click.ClickException(f"no such cluster: {cluster}")
     if not qoslib.qos_exists(qos_name):
         raise click.ClickException(f"QoS {qos_name} is not defined")
-    if partition and not qoslib.partition_exists(partition, cluster=cluster):
-        raise click.ClickException(f"no such partition: {partition}")
+    if partition and not qoslib.partition_known(partition, cluster=cluster):
+        raise click.ClickException(f"no such partition: {partition}, and no association carries it")
     try:
         rows = qoslib.holder_rows(
             qos_name, cluster=cluster, partition=partition, account_regex=account_regex
@@ -63,17 +68,28 @@ def holders(
         raise click.ClickException(f"invalid --account-regex: {exc}") from exc
     if not rows:
         others = qoslib.any_holders(qos_name)
-        if others:
-            click.echo(
-                f"No user holds QoS {qos_name} on a partition-scoped association, but "
-                f"{len(others)} association(s) do carry it (Cluster|Account|User|Partition):"
-            )
-            for line in others[:20]:
-                click.echo(f"  {line}")
-            if len(others) > 20:
-                click.echo(f"  ... and {len(others) - 20} more")
+        if not others:
+            click.echo(f"Nothing holds QoS {qos_name}.")
             return
-        click.echo(f"Nothing holds QoS {qos_name}.")
+        parsed = [line.split("|") for line in others]
+        parsed = [row for row in parsed if len(row) == 4]
+        if by == "user":
+            for user in sorted({row[2] for row in parsed if row[2]}):
+                click.echo(user)
+            return
+        if by == "partition":
+            for part in sorted({row[3] for row in parsed if row[3]}):
+                click.echo(part)
+            return
+        click.echo(
+            f"No user holds QoS {qos_name} on a partition-scoped association, but "
+            f"{len(others)} association(s) do carry it (Cluster|Account|User|Partition):",
+            err=True,
+        )
+        for line in others[:20]:
+            click.echo(f"  {line}")
+        if len(others) > 20:
+            click.echo(f"  ... and {len(others) - 20} more")
         return
     if by == "user":
         for user in sorted({r[0] for r in rows}):

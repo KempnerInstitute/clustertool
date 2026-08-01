@@ -18,6 +18,17 @@ def _binary_path() -> pathlib.Path:
     return pathlib.Path(base) / "clustertool" / "nvlink_saturate_forever"
 
 
+def _device_list(count: int) -> str:
+    """Return the CUDA_VISIBLE_DEVICES value for count GPUs.
+
+    Narrows the allocation Slurm already made rather than replacing it, so a
+    saturation benchmark cannot reach a GPU held by another job on a shared node.
+    """
+    visible = os.environ.get("CUDA_VISIBLE_DEVICES", "").strip()
+    allowed = visible.split(",") if visible else [str(i) for i in range(count)]
+    return ",".join(allowed[:count])
+
+
 def _detect_gpus() -> int:
     """Return the number of GPUs on this node via nvidia-smi, or 0."""
     try:
@@ -75,7 +86,9 @@ def nvlink(
 
     if dry_run:
         build = [nvcc, "-O3", "-std=c++17", str(source), "-o", str(binary), "-lnccl"]
-        devices = ",".join(str(i) for i in range(gpus)) if gpus else "<all GPUs on the node>"
+        detected = _detect_gpus()
+        count = gpus or detected
+        devices = _device_list(count) if count else "<all GPUs on the node>"
         env = {**_ENV_BASE, "CUDA_VISIBLE_DEVICES": devices}
         env_str = " ".join(f"{key}={value}" for key, value in env.items())
         click.echo("build: " + " ".join(build))
@@ -103,9 +116,7 @@ def nvlink(
             if process.stream(build) != 0:
                 raise click.ClickException("nvcc build failed")
 
-    visible = os.environ.get("CUDA_VISIBLE_DEVICES", "").strip()
-    devices = visible if visible else ",".join(str(i) for i in range(count))
-    env = {**_ENV_BASE, "CUDA_VISIBLE_DEVICES": devices}
+    env = {**_ENV_BASE, "CUDA_VISIBLE_DEVICES": _device_list(count)}
     click.echo(f"Running NVLink saturation benchmark on {count} GPU(s) (Ctrl+C to stop)...")
     code = process.stream(run_cmd, extra_env=env)
     if code:

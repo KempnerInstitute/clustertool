@@ -288,10 +288,18 @@ _ERROR_COUNTERS = frozenset(
 
 
 def counters_by_port(snapshot: dict) -> dict[str, dict]:
-    """Return {hca/portN: counters} from an ib-snapshot."""
+    """Return {hca/portN: counters} from an ib-snapshot, InfiniBand ports only.
+
+    An adapter in Ethernet mode exposes the same counter files, and on many hosts
+    they read back as errors. They are not InfiniBand counters, so including them
+    would judge the fabric on ports that are not part of it.
+    """
     result = {}
     for hca in snapshot.get("ib", {}).get("hcas", []):
         for port in hca.get("ports", []):
+            link_layer = port.get("link_layer")
+            if link_layer is not None and link_layer != "InfiniBand":
+                continue
             result[f"{hca['name']}/port{port['port']}"] = port.get("counters") or {}
     return result
 
@@ -303,9 +311,10 @@ def counter_deltas(before: dict, after: dict) -> tuple[list[tuple], bool]:
     (port, counter, before, after, delta, is_error) for every counter worth
     reporting, and any_error is True when an error-class counter advanced.
 
-    A counter that could not be read on either side is reported with a delta of
-    None rather than treated as zero, which would turn an unreadable baseline
-    into a full-magnitude error. An error counter that went backwards was reset
+    A counter unreadable on both sides is skipped: that is a property of the port,
+    not a change. One readable and one not is reported with a delta of None rather
+    than treated as zero, which would turn an unreadable baseline into a
+    full-magnitude error. An error counter that went backwards was reset
     between the snapshots, so its whole after value is new and unaccounted for;
     that counts as an error rather than as no growth.
     """
@@ -319,6 +328,8 @@ def counter_deltas(before: dict, after: dict) -> tuple[list[tuple], bool]:
             before_v = a_counters.get(counter)
             after_v = b_counters.get(counter)
             is_error_counter = counter in _ERROR_COUNTERS
+            if before_v is None and after_v is None:
+                continue
             if before_v is None or after_v is None:
                 rows.append((port, counter, before_v, after_v, None, is_error_counter))
                 any_error = any_error or is_error_counter
