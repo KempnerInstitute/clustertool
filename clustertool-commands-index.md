@@ -27,7 +27,7 @@ names the host tool each command shells out to.
 | Command | Scope | Wraps | Description |
 | --- | --- | --- | --- |
 | `gpu usage [ACCOUNT]` | user | squeue, sacctmgr | Rank labs by base-partition GPU usage, or break one lab down by user and partition. |
-| `gpu util [PARTITION...]` | user | sinfo, squeue | GPU occupancy per partition: total, down, available, used, and percent. |
+| `gpu util [PARTITION...] [-p PARTITION]` | user | scontrol, squeue | GPU occupancy per partition: total, unavailable, used, other, free, and percent. |
 | `gpu status` | user | sinfo | GPU node counts by type and state, from the requeue partition. |
 | `gpu avail PARTITION` | user | scontrol, sinfo | Nodes with allocatable GPUs (free GPUs capped by the enforced per-GPU ratio). |
 | `gpu session GPU_TYPE -A ACCOUNT` | user | salloc | Interactive single-GPU session (a100/h100/h200/rtx), sized to the per-GPU limits. |
@@ -49,7 +49,7 @@ names the host tool each command shells out to.
 | `jobs stats JOBID...` | user | jobstats | Utilization for one or more jobs. |
 | `jobs scope [ARG...]` | user | jobscope | Completed-job efficiency plus DCGM profiling (bundled jobscope). |
 | `jobs history` | user | sacct | Your recent finished jobs (`-d`, `-u`). |
-| `jobs log JOBID [-f]` | user | scontrol, tail | Show, or tail, a job's stdout/stderr. |
+| `jobs log JOBID [-f]` | user | scontrol, sacct, tail | Show, or tail, a job's stdout/stderr. |
 | `jobs script JOBID` | user | sacct | The batch script a job was submitted with. |
 | `jobs priorities PARTITION` | user | sprio | Priority factors for all pending jobs in a partition. |
 | `jobs violators PARTITION` | user | squeue, scontrol | Running jobs over the per-GPU CPU/memory norm. |
@@ -105,12 +105,12 @@ names the host tool each command shells out to.
 
 | Command | Scope | Wraps | Description |
 | --- | --- | --- | --- |
-| `diag gpu-health` | user | nvidia-smi | Node-local GPU health verdict: ECC, throttle, PCIe/NVLink (exit 0/1/2/3). |
+| `diag gpu-health` | user | nvidia-smi | Node-local GPU health verdict: ECC, throttle, PCIe/NVLink (exit 0 OK, 1 WARN, 3 probe error, 4 FAIL). |
 | `diag ib PARTITION...` | admin | ssh, ip | Nodes with InfiniBand ports DOWN (needs ssh to every node). |
-| `diag ib-affinity` | user | nvidia-smi | GPU-to-IB-NIC NUMA affinity verdict (exit 0 OK, 1 cross-NUMA, 2 no NIC reached, 3 probe error). |
-| `diag ib-counters BEFORE AFTER` | user | (none) | Diff two ib-snapshots for IB error-counter growth (exit 0 clean, 2 if any advanced, 3 unreadable file). |
+| `diag ib-affinity` | user | nvidia-smi | GPU-to-IB-NIC NUMA affinity verdict (exit 0 OK, 1 cross-NUMA, 3 probe error, 4 no NIC reached). |
+| `diag ib-counters BEFORE AFTER` | user | (none) | Diff two ib-snapshots for IB error-counter growth (exit 0 clean, 3 unreadable file, 4 if any advanced). |
 | `diag ib-snapshot [OUT]` | user | nvidia-smi, ibdev2netdev | Capture node IB/GPU topology and counters as JSON, for diffing. |
-| `diag ib-verify GOLDEN` | user | nvidia-smi, ibdev2netdev | Compare a node's snapshot against a golden one (exit 0 match, 2 drift, 3 setup error). |
+| `diag ib-verify GOLDEN` | user | nvidia-smi, ibdev2netdev | Compare a node's snapshot against a golden one (exit 0 match, 3 setup error, 4 drift). |
 | `diag io-probe -d DIR` | user | (none) | Filesystem write/read MB/s and metadata latency, with optional pass/fail gates. |
 | `diag nccl` | user | srun, torch | Multi-node FSDP NCCL sanity check inside a Slurm job. |
 | `diag nvlink` | user | nvcc, NCCL | Saturate a node's NVLink fabric with NCCL all-reduce. |

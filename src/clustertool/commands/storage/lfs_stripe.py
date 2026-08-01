@@ -36,7 +36,8 @@ def lfs_stripe(path: str, count: int | None, yes: bool) -> None:
 
     Setting a count changes the default for everyone who writes new files there,
     so it prompts for confirmation unless -y. Lustre allows it only on a directory
-    you own.
+    you own: on one you merely have group write access to it fails with Operation
+    not permitted.
 
     \b
     Use cases:

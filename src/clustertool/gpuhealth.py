@@ -375,7 +375,9 @@ def render_text(result):
     for gpu in result["gpus"]:
         name = gpu["name"] or "?"
         serial = gpu["serial"] or NA
-        lines.append(f"GPU {gpu['index']}: {name}  (serial {serial})")
+        minor = gpu["minor_number"]
+        device = f", /dev/nvidia{minor}" if minor is not None else ""
+        lines.append(f"GPU {gpu['index']}: {name}  (serial {serial}{device})")
         for check_name in ("ecc", "throttle", "pcie", "nvlink"):
             check = gpu["checks"][check_name]
             line = f"  {check_name + ':':<9} {check['status']}"
