@@ -16,7 +16,8 @@ States are Slurm's own short codes: `idle` is free, `mix` partly allocated,
 not match its configuration, and `plnd` is reserved by the backfill scheduler for
 a higher-priority job. Two flags can follow: `*` means the node is not
 responding, and `-` that backfill has planned it for a higher-priority job.
-`man sinfo` documents seven more flags that this cluster does not currently use.
+`man sinfo` documents seven more, covering power, reboot, and
+maintenance-reservation states.
 
 An unknown partition name is an error rather than an empty list.
 

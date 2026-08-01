@@ -33,7 +33,9 @@ def util(partitions: tuple[str, ...], named: tuple[str, ...]) -> None:
     OTHER is what jobs from partitions sharing the same nodes hold, which is why
     USED plus FREE need not reach TOTAL. On a cluster where a requeue or priority
     partition overlaps a base partition, that column is where the rest of the
-    hardware went. UTIL is used over total.
+    hardware went. UTIL is USED over TOTAL, so it answers how much of the
+    partition's hardware its own jobs hold, not how busy the nodes are: add
+    OTHER for that.
 
     With no PARTITION, reports the site base partitions.
 

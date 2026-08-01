@@ -33,7 +33,10 @@ registered with invalid resources), and those still unallocated on nodes that ca
 `OTHER` is what jobs from partitions sharing the same nodes hold, which is why
 `USED` plus `FREE` need not reach `TOTAL`. On a cluster where a requeue or
 priority partition overlaps a base partition, that column is where the rest of the
-hardware went. `UTIL` is used over total.
+hardware went. `UTIL` is `USED` over `TOTAL`, so it answers how much of the
+partition's hardware its own jobs hold. It is deliberately not `(USED + OTHER)`
+over `TOTAL`, which would read as high occupancy on a partition none of whose own
+jobs are running; add the two columns yourself for how busy the nodes are.
 
 With no PARTITION, reports the site base partitions.
 
