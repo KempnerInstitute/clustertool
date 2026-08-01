@@ -302,7 +302,7 @@ mail flags all work. Run `sbatch --help` for the full list.
 
 **Most useful**
 - `jobs submit job.sh`: submit a batch script.
-- `jobs submit -p kempner_h100 --account=LAB --gres=gpu:1 -t 0-01:00 job.sh`: submit with resources.
+- `jobs submit -p PARTITION --account=LAB --gres=gpu:1 -t 0-01:00 job.sh`: submit with resources.
 - `jobs submit --array=1-10 job.sh`: submit an array job.
 
 **Inputs**

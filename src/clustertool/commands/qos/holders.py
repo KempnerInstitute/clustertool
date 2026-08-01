@@ -51,6 +51,8 @@ def holders(
     """
     if not qoslib.qos_exists(qos_name):
         raise click.ClickException(f"QoS {qos_name} is not defined")
+    if partition and not qoslib.partition_exists(partition, cluster=cluster):
+        raise click.ClickException(f"no such partition: {partition}")
     try:
         rows = qoslib.holder_rows(
             qos_name, cluster=cluster, partition=partition, account_regex=account_regex
