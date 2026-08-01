@@ -486,10 +486,18 @@ def job_state_counts(user: str, pending_only: bool = False) -> dict[str, int]:
 
 
 def job_owner(jobid: str) -> str:
-    """Return the user a job belongs to, or empty when Slurm does not know it."""
-    code, out, _ = process.probe(["squeue", "-j", jobid, "-h", "-O", "username:64"])
+    """Return the user a job belongs to, or empty when Slurm has no record of it.
+
+    Raises when the query fails, because callers use this to refuse acting on
+    someone else's job: an unknown owner must not read as "not theirs". -t all is
+    passed for the same reason job_exists passes it, since squeue otherwise omits
+    a suspended job, which scancel and scontrol both still act on.
+    """
+    code, out, err = process.probe(["squeue", "-t", "all", "-j", jobid, "-h", "-O", "username:64"])
     if code != 0:
-        return ""
+        if "invalid job id" in (out + err).lower():
+            return ""
+        raise CommandError(f"could not check who owns job {jobid}: {err.strip() or code}")
     return next((line.strip() for line in out.splitlines() if line.strip()), "")
 
 
@@ -605,29 +613,41 @@ def job_maxrss_mb(jobid: str) -> float | None:
     return max(values) if values else None
 
 
-_TOKEN = re.compile(r"%(\d*)(.)")
-_NUMERIC_TOKENS = "AajJ"
+_TOKEN = re.compile(r"\\(.)|%(\d*)(.?)")
+_NUMERIC_TOKENS = "AabjJ"
+_MAX_PAD = 10
+_NO_ARRAY_TASK = "4294967294"
 
 
 def _expand_log_pattern(path: str, fields: dict) -> str:
     """Expand the sbatch filename patterns sacct stores unexpanded.
 
-    Returns an empty string when the pattern needs something only the running job
-    knew, such as %N for the node it landed on: a half-expanded path names a file
-    that cannot exist, which is worse than admitting the log cannot be located.
-    man sbatch defines the symbols; %j is the job's own id, which for an array
-    element is its JobIDRaw rather than the master's. Expansion is a single pass,
-    so the literal percent %% yields cannot start a second substitution, and
-    per man sbatch a zero-pad width applies only to a numeric symbol.
+    Follows man sbatch's FILENAME PATTERN section: a backslash suppresses the
+    next symbol, a zero-pad width is capped at 10 and applies only to a numeric
+    symbol, a trailing lone percent is dropped, and a symbol sbatch does not
+    define is left in the name literally, which is what Slurm itself writes.
+    %a on a job that is not an array becomes Slurm's own no-task value, and %b
+    that value modulo 10, which is how the 4 in a non-array name arises.
+
+    Returns an empty string only when a symbol is genuinely unresolvable from
+    accounting, since a half-expanded path names a file that cannot exist, which
+    is worse than admitting the log cannot be located.
     """
     raw = fields.get("raw_id", "")
-    master, _, task = fields.get("job_id", "").partition("_")
+    master, sep, task = fields.get("job_id", "").partition("_")
+    array_task = task if sep else _NO_ARRAY_TASK
     values = {
         "%": "%",
         "A": master,
-        "a": task,
+        "a": array_task,
+        "b": str(int(array_task) % 10) if array_task.isdigit() else "",
         "J": raw,
         "j": raw,
+        "N": fields.get("node", ""),
+        "n": "0",
+        "s": "batch",
+        "t": "0",
+        "r": "0",
         "u": fields.get("user", ""),
         "x": fields.get("name", ""),
     }
@@ -635,18 +655,38 @@ def _expand_log_pattern(path: str, fields: dict) -> str:
 
     def expand(match: re.Match) -> str:
         nonlocal failed
-        width, symbol = match.group(1), match.group(2)
+        escaped, width, symbol = match.groups()
+        if escaped is not None:
+            return escaped
+        if not symbol:
+            return ""
         if symbol not in values:
-            failed = True
-            return ""
+            return match.group(0)
         value = values[symbol]
-        if not value and symbol != "%":
+        if not value:
             failed = True
             return ""
-        return value.zfill(int(width)) if width and symbol in _NUMERIC_TOKENS else value
+        if width and symbol in _NUMERIC_TOKENS:
+            return value.zfill(min(int(width), _MAX_PAD))
+        return value
 
     expanded = _TOKEN.sub(expand, path)
     return "" if failed else expanded
+
+
+def _first_node(nodelist: str) -> str:
+    """Return the first node of a NodeList, which is what %N expands to for a batch step.
+
+    Accounting records the list, so a name using %N is resolvable after the fact
+    rather than only while the job runs.
+    """
+    if not nodelist or nodelist == "None assigned":
+        return ""
+    head = nodelist.split(",")[0]
+    if "[" not in head:
+        return head
+    prefix, _, rest = head.partition("[")
+    return prefix + rest.split("-")[0].split(",")[0].rstrip("]")
 
 
 def job_output_paths(jobid: str) -> tuple[str, str]:
@@ -681,13 +721,13 @@ def job_output_paths(jobid: str) -> tuple[str, str]:
             "-n",
             "-P",
             "-o",
-            "JobID,JobIDRaw,StdOut,StdErr,WorkDir,JobName,User",
+            "JobID,JobIDRaw,StdOut,StdErr,WorkDir,JobName,User,NodeList",
         ]
     )
     if code != 0:
         return "", ""
     rows = [line.split("|") for line in out.splitlines() if line.strip()]
-    rows = [row for row in rows if len(row) >= 7]
+    rows = [row for row in rows if len(row) >= 8]
     row = next((row for row in rows if "." not in row[0]), [])
     if not row:
         return "", ""
@@ -697,6 +737,7 @@ def job_output_paths(jobid: str) -> tuple[str, str]:
         "job_id": jobid,
         "user": row[6].strip(),
         "name": row[5].strip(),
+        "node": _first_node(row[7].strip()),
     }
     workdir = row[4].strip()
 

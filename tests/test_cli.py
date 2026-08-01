@@ -4341,3 +4341,59 @@ def test_account_balance_does_not_invent_a_share_for_one_account(monkeypatch):
     assert result.exit_code == 0
     assert "1.000000" not in result.output
     assert "most over-served" not in result.output
+
+
+def test_jobs_script_keeps_a_dashes_line_inside_the_script():
+    """A rule of dashes is ordinary in a heredoc; splitting there truncates silently."""
+    from clustertool.commands.jobs.script import _script_body
+
+    rule = "-" * 80
+    body = f"#!/bin/bash\ncat <<EOF\n{rule}\n---\nEOF\necho done"
+    out = f"Batch Script for 7\n{rule}\n{body}\n"
+    assert _script_body(out) == ("script", body)
+
+
+def test_jobs_script_still_splits_an_array_on_the_title():
+    from clustertool.commands.jobs.script import _script_body
+
+    rule = "-" * 80
+    out = (
+        f"Batch Script for 7_0\n{rule}\n#!/bin/bash\necho one\n"
+        f"Batch Script for 7_1\n{rule}\n#!/bin/bash\necho one\n"
+    )
+    assert _script_body(out) == ("script", "#!/bin/bash\necho one")
+
+
+def test_jobs_script_refuses_a_step_id(monkeypatch):
+    """scontrol show job takes no step id, and sacct answers one for the job."""
+    calls = []
+    monkeypatch.setattr(
+        process, "probe", lambda cmd, timeout=None: calls.append(cmd) or (0, "", "")
+    )
+    result = CliRunner().invoke(main, ["jobs", "script", "123.batch"])
+    assert result.exit_code != 0
+    assert "names a step" in result.output
+    assert calls == []
+
+
+def test_jobs_show_accepts_a_heterogeneous_component(monkeypatch):
+    """man squeue: a heterogeneous allocation's id is of the form #+#."""
+    calls = []
+    monkeypatch.setattr(
+        process, "probe", lambda cmd, timeout=None: calls.append(cmd) or (0, "JobId=x\n", "")
+    )
+    result = CliRunner().invoke(main, ["jobs", "show", "123+0"])
+    assert result.exit_code == 0
+    assert calls[0][-1] == "123+0"
+
+
+def test_jobs_show_refuses_forms_scontrol_rejects(monkeypatch):
+    """A step id and an array range both fail client-side in scontrol show job."""
+    calls = []
+    monkeypatch.setattr(
+        process, "probe", lambda cmd, timeout=None: calls.append(cmd) or (0, "", "")
+    )
+    for bad in ("123.batch", "123_[0-9]", "١٢٣"):
+        result = CliRunner().invoke(main, ["jobs", "show", bad])
+        assert result.exit_code != 0, bad
+    assert calls == []

@@ -7,7 +7,7 @@ import click
 from clustertool import completion, process
 from clustertool.grouping import keywords
 
-_JOB_ID = re.compile(r"^\d+(_(\d+|\[[\d,\-]+\]))?(\.[\w+]+)?$")
+_JOB_ID = re.compile(r"^[0-9]+([+_][0-9]+)?$")
 
 
 def _in_accounting(jobid: str) -> bool:
@@ -46,7 +46,8 @@ def show(jobids: tuple[str, ...]) -> None:
         if not _JOB_ID.match(jobid):
             raise click.ClickException(
                 f"not a job id: {jobid!r}. Give a job id such as 1234567, an array "
-                "element such as 1234567_0, or a step such as 1234567.batch"
+                "element such as 1234567_0, or a heterogeneous component such as "
+                "1234567+0. scontrol show job takes no step id and no array range"
             )
 
     failures = []

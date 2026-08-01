@@ -399,9 +399,9 @@ def test_job_state_counts_raises_when_the_query_fails(monkeypatch):
 def test_job_output_path_assumes_no_default_for_an_interactive_job(monkeypatch):
     """An interactive allocation writes to the terminal, so it has no file to name."""
     rows = (
-        "32923082|32923082|||/work|bash|mmsh\n"
-        "32923082.extern|32923082.extern||||extern|\n"
-        "32923082.0|32923082.0||||bash|\n"
+        "32923082|32923082|||/work|bash|mmsh|n1\n"
+        "32923082.extern|32923082.extern||||extern||n1\n"
+        "32923082.0|32923082.0||||bash||n1\n"
     )
 
     def fake_probe(cmd, timeout=None):
@@ -423,7 +423,47 @@ def test_job_output_path_assumes_the_sbatch_default_for_a_batch_job(monkeypatch)
     def fake_probe(cmd, timeout=None):
         if cmd[0] == "scontrol":
             return 1, "", "Invalid job id specified"
-        return 0, "77|77|||/work|run|mmsh\n77.batch|77.batch||||batch|\n", ""
+        return 0, "77|77|||/work|run|mmsh|n1\n77.batch|77.batch||||batch||n1\n", ""
 
     monkeypatch.setattr(process, "probe", fake_probe)
     assert slurm.job_output_path("77") == "/work/slurm-77.out"
+
+
+def test_expand_log_pattern_follows_man_sbatch():
+    """Checked against the names Slurm itself wrote for jobs using each symbol."""
+    plain = {"raw_id": "36684103", "job_id": "36684103", "user": "mmsh", "name": "nm", "node": ""}
+    node = dict(plain, node="holy8a26602")
+    element = {"raw_id": "36684140", "job_id": "36684139_1", "user": "mmsh", "name": "nm"}
+    cases = [
+        ("w20_%20j.out", plain, "w20_0036684103.out"),
+        ("trail_out%", plain, "trail_out"),
+        (r"esc_\%j.out", plain, "esc_%j.out"),
+        ("undef_%z.out", plain, "undef_%z.out"),
+        ("nona_%a.out", plain, "nona_4294967294.out"),
+        ("bmod_%b.out", plain, "bmod_4.out"),
+        ("node_%N.out", node, "node_holy8a26602.out"),
+        ("arr_%A_%a_%b.out", element, "arr_36684139_1_1.out"),
+        ("%%j.out", plain, "%j.out"),
+        ("job%4j.out", plain, "job36684103.out"),
+    ]
+    for pattern, fields, expected in cases:
+        assert slurm._expand_log_pattern(pattern, fields) == expected, pattern
+
+
+def test_expand_log_pattern_caps_the_pad_width_at_ten():
+    """man sbatch: a width above 10 pads to 10, not to the width given."""
+    fields = {"raw_id": "7", "job_id": "7", "user": "u", "name": "n", "node": ""}
+    assert slurm._expand_log_pattern("%20j.out", fields) == "0000000007.out"
+
+
+def test_expand_log_pattern_keeps_an_unresolvable_symbol_out_of_the_name():
+    """A symbol with no value would otherwise name a file the job never wrote."""
+    fields = {"raw_id": "7", "job_id": "7", "user": "u", "name": "n", "node": ""}
+    assert slurm._expand_log_pattern("%N.out", fields) == ""
+
+
+def test_first_node_takes_the_head_of_a_range():
+    assert slurm._first_node("holygpu8a[10102,10202]") == "holygpu8a10102"
+    assert slurm._first_node("holygpu8a[10301-10302]") == "holygpu8a10301"
+    assert slurm._first_node("holy8a26602") == "holy8a26602"
+    assert slurm._first_node("None assigned") == ""

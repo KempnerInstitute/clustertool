@@ -9,25 +9,31 @@ _NO_SCRIPT = "Job script not specified"
 _DENIED = "Access/permission denied"
 
 
+_TITLE = "Batch Script for "
+
+
 def _script_body(out: str) -> tuple[str, str]:
     """Return (status, script) from sacct --batch-script output.
 
-    sacct heads each record with a title and a rule, and answers a whole array
-    with one such block per element, so only the first block is a script: the
-    later titles would otherwise be read as script lines. Every element of an
-    array shares one script. Status is 'script' when a script was found, 'none'
-    when the record exists but sacct printed its NONE sentinel, and 'absent' when
+    sacct heads each record with "Batch Script for <id>" and a rule, and answers
+    a whole array with one such block per element, so only the first block is a
+    script and every element of an array shares it. The split is on the title
+    line rather than on the rule, because a rule of dashes is ordinary inside a
+    script, in a heredoc or a YAML document separator, and splitting there would
+    silently truncate it. Status is 'script' when a script was found, 'none' when
+    the record exists but sacct printed its NONE sentinel, and 'absent' when
     there was no record at all.
     """
     lines = out.splitlines()
-    rules = [i for i, line in enumerate(lines) if line.strip() and set(line.strip()) == {"-"}]
-    if not rules:
+    titles = [i for i, line in enumerate(lines) if line.startswith(_TITLE)]
+    if not titles:
         body = out.strip("\n")
-        if not body.strip():
-            return "absent", ""
-        return ("none", "") if body.strip() == "NONE" else ("script", body)
-    end = rules[1] - 1 if len(rules) > 1 else len(lines)
-    body = "\n".join(lines[rules[0] + 1 : end]).strip("\n")
+    else:
+        start = titles[0] + 1
+        if start < len(lines) and set(lines[start].strip()) == {"-"}:
+            start += 1
+        stop = titles[1] if len(titles) > 1 else len(lines)
+        body = "\n".join(lines[start:stop]).strip("\n")
     if not body.strip():
         return "absent", ""
     return ("none", "") if body.strip() == "NONE" else ("script", body)
@@ -44,7 +50,7 @@ def script(jobid: str) -> None:
     controller. The controller still holds the script for a queued or running
     job, including an array element that has not started and so has no accounting
     record yet. Only the job's owner, an account coordinator, or a Slurm admin can
-    read a script, per man scontrol.
+    read a script: man scontrol gives that to the owner or a privileged user.
 
     \b
     Use cases:
@@ -54,7 +60,16 @@ def script(jobid: str) -> None:
     Inputs:
       JOBID  A Slurm job id, or an array element such as 12345_0.
     """
-    code, out, _ = process.probe(["sacct", "-j", jobid, "--batch-script"])
+    if "." in jobid:
+        raise click.ClickException(
+            f"{jobid} names a step, which has no script of its own. "
+            f"Give the job id, {jobid.split('.')[0]}"
+        )
+    code, out, err = process.probe(["sacct", "-j", jobid, "--batch-script"])
+    if code != 0 and "invalid" not in (out + err).lower():
+        raise click.ClickException(
+            f"could not read job {jobid} from accounting: {err.strip() or out.strip() or code}"
+        )
     status, body = _script_body(out) if code == 0 else ("absent", "")
     if status == "script":
         click.echo(body)
@@ -74,8 +89,8 @@ def script(jobid: str) -> None:
         )
     if _DENIED in detail:
         raise click.ClickException(
-            f"job {jobid} belongs to another user: Slurm lets only the owner, an "
-            "account coordinator, or an admin read a batch script"
+            f"job {jobid} belongs to another user: per man scontrol only the owner "
+            "or a privileged user can read a batch script"
         )
     raise click.ClickException(
         f"no job {jobid} on this cluster, or it has aged out of both the scheduler "
