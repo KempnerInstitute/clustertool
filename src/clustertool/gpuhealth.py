@@ -143,10 +143,10 @@ def parse_smi_xml(xml_text):
                 ),
             }
         ecc_mode = _find_text(node, "ecc_mode/current_ecc")
-        minor = _to_int(_find_text(node, "minor_number"))
         gpus.append(
             {
-                "index": minor if minor is not None else position,
+                "index": position,
+                "minor_number": _to_int(_find_text(node, "minor_number")),
                 "name": _find_text(node, "product_name"),
                 "serial": _find_text(node, "serial"),
                 "ecc_enabled": None if ecc_mode is None else ecc_mode.lower() == "enabled",

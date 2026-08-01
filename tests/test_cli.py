@@ -625,13 +625,36 @@ def test_jobs_show(monkeypatch):
     assert calls[0] == ["scontrol", "show", "job", "-dd", "111,222"]
 
 
+_SPRIO_ROWS = (
+    "          JOBID PARTITION     USER   PRIORITY        AGE  FAIRSHARE\n"
+    "          12345 kempner_h100  alice      1234        100        900\n"
+)
+
+
 def test_jobs_why(monkeypatch):
-    calls = _capture_stream(monkeypatch)
+    captured = {}
+
+    def fake_probe(cmd, timeout=None):
+        captured["cmd"] = cmd
+        return 0, _SPRIO_ROWS, ""
+
     monkeypatch.setattr(process, "run", lambda cmd, input_text=None: "PENDING Priority\n")
+    monkeypatch.setattr(process, "probe", fake_probe)
     result = CliRunner().invoke(main, ["jobs", "why", "12345"])
     assert result.exit_code == 0
     assert "Priority" in result.output
-    assert calls[0] == ["sprio", "-j", "12345", "-l"]
+    assert "FAIRSHARE" in result.output
+    assert captured["cmd"] == ["sprio", "-j", "12345", "-l"]
+
+
+def test_jobs_why_explains_an_empty_sprio_result(monkeypatch):
+    """sprio ranks only pending jobs it is weighing, so a bare header is not an answer."""
+    header_only = "          JOBID PARTITION     USER   PRIORITY        AGE  FAIRSHARE\n"
+    monkeypatch.setattr(process, "run", lambda cmd, input_text=None: "RUNNING None\n")
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, header_only, ""))
+    result = CliRunner().invoke(main, ["jobs", "why", "12345"])
+    assert result.exit_code == 0
+    assert "no priority record" in result.output
 
 
 def test_jobs_history(monkeypatch):
@@ -1760,7 +1783,20 @@ def test_jobs_violators(monkeypatch):
     assert "102" in result.output
     assert "103" not in result.output
     assert "104" not in result.output
-    assert result.output.index("101") < result.output.index("102")
+
+
+def test_jobs_violators_ranks_the_worst_first(monkeypatch):
+    """A job 2 percent over must not sit above one at ten times the norm."""
+    jobs = [
+        ("marginal", "alice", 24, 1, 368640),
+        ("severe", "bob", 24, 1, 3600000),
+    ]
+    monkeypatch.setattr(slurm, "running_jobs_reqtres", lambda p: jobs)
+    result = CliRunner().invoke(main, ["jobs", "violators", "kempner_h100"])
+    assert result.exit_code == 0
+    assert result.output.index("severe") < result.output.index("marginal")
+    assert "1.02x" in result.output
+    assert "10.00x" in result.output
 
 
 def test_jobs_violators_h200(monkeypatch):
@@ -1770,11 +1806,21 @@ def test_jobs_violators_h200(monkeypatch):
     assert "301" in result.output
 
 
+def test_jobs_violators_partition_without_a_policy(monkeypatch):
+    """A real partition with no configured ratio is not the same as a typo."""
+    monkeypatch.setattr(slurm, "running_jobs_reqtres", lambda p: [])
+    monkeypatch.setattr(slurm, "partition_nodes", lambda p: [("n1", "idle")])
+    result = CliRunner().invoke(main, ["jobs", "violators", "sapphire"])
+    assert result.exit_code != 0
+    assert "no per-GPU policy configured" in result.output
+
+
 def test_jobs_violators_unknown_partition(monkeypatch):
     monkeypatch.setattr(slurm, "running_jobs_reqtres", lambda p: [])
+    monkeypatch.setattr(slurm, "partition_nodes", lambda p: [])
     result = CliRunner().invoke(main, ["jobs", "violators", "some_partition"])
     assert result.exit_code != 0
-    assert "unknown partition" in result.output
+    assert "does not exist, or has no nodes" in result.output
 
 
 def test_jobs_violators_override(monkeypatch):

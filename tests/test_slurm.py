@@ -228,16 +228,27 @@ def test_node_capacity(monkeypatch):
 def test_sacct_window_rows_scoping(monkeypatch):
     captured = {}
 
-    def fake_run(cmd):
+    def fake_probe(cmd, timeout=None):
         captured["cmd"] = cmd
-        return "1|kempner|q|s|e\n\n"
+        return 0, "1|kempner|q|s|e\n\n", ""
 
-    monkeypatch.setattr(slurm, "_run", fake_run)
+    monkeypatch.setattr(slurm.process, "probe", fake_probe)
     rows = slurm.sacct_window_rows("A,B", "S", "E", account="acct")
     assert rows == [["1", "kempner", "q", "s", "e"]]
     assert "-A" in captured["cmd"] and "acct" in captured["cmd"] and "-a" in captured["cmd"]
     slurm.sacct_window_rows("A,B", "S", "E", user="bob")
     assert captured["cmd"][-2:] == ["-u", "bob"]
+
+
+def test_sacct_window_rows_raises_on_a_bad_window(monkeypatch):
+    """A bad time string must not be reported as a window in which nothing ran."""
+    monkeypatch.setattr(
+        slurm.process,
+        "probe",
+        lambda cmd, timeout=None: (1, "", "Invalid time specification (pos=0): julyfirst"),
+    )
+    with pytest.raises(slurm.SlurmError):
+        slurm.sacct_window_rows("A,B", "julyfirst", "now")
 
 
 def test_percentile():

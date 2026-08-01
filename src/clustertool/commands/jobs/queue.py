@@ -10,10 +10,11 @@ from clustertool.grouping import ToolCommand, keywords
 @click.command("queue", cls=ToolCommand, tool_key="queue")
 @click.argument("partition", shell_complete=completion.complete_partitions)
 def queue(partition: str) -> None:
-    """Show a partition's pending jobs in priority order (via showq).
+    """Show a partition's whole queue, waiting jobs in priority order (via showq).
 
-    Lists who is waiting and where you sit, ordered by priority. Unlike
-    'jobs list' (your jobs) this is the whole partition's pending queue.
+    Lists the partition's active, waiting, and blocked jobs, with the waiting
+    ones ordered by priority so you can see where you sit. Unlike 'jobs list',
+    which shows your own jobs, this covers everyone's.
 
     \b
     Use cases:
@@ -22,8 +23,7 @@ def queue(partition: str) -> None:
 
     \b
     Inputs:
-      PARTITION  Slurm partition name (e.g. kempner_h100).
+      PARTITION  Slurm partition name.
     """
-    code = process.stream([site.tool("queue"), "-o", "-p", partition])
-    if code:
-        raise SystemExit(code)
+    if process.stream([site.tool("queue"), "-o", "-p", partition]):
+        raise click.ClickException(f"'{site.tool('queue')}' failed for partition {partition}")

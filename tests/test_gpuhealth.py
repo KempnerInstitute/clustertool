@@ -473,3 +473,11 @@ def test_render_json_round_trips():
     payload = gh.render_json(result)
     assert json.loads(payload) == result
     assert payload.endswith("\n")
+
+
+def test_nvlink_errors_are_attributed_to_the_right_gpu():
+    """The XML position is the nvidia-smi index that parse_nvlink keys on."""
+    xml = "<nvidia_smi_log>" + _gpu(index=1) + _gpu(index=0) + "</nvidia_smi_log>"
+    parsed = gh.parse_smi_xml(xml)["gpus"]
+    assert [g["index"] for g in parsed] == [0, 1]
+    assert [g["minor_number"] for g in parsed] == [1, 0]

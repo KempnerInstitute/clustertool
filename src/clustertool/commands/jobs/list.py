@@ -56,7 +56,10 @@ def list_jobs(
       -A, --account    Limit to one account.
       --start          Show the estimated start time of pending jobs.
     """
-    cmd = ["squeue", "-u", user or os.environ.get("USER", "")]
+    target = user or os.environ.get("USER", "")
+    if not target:
+        raise click.ClickException("no user to list: give --user, or set $USER")
+    cmd = ["squeue", "-u", target]
     if state:
         cmd += ["-t", state.upper()]
     if partition:
@@ -65,6 +68,5 @@ def list_jobs(
         cmd += ["-A", account]
     if start:
         cmd.append("--start")
-    code = process.stream(cmd)
-    if code:
-        raise SystemExit(code)
+    if process.stream(cmd):
+        raise click.ClickException("'squeue' failed")

@@ -33,6 +33,17 @@ def why(jobid: str) -> None:
             f"'jobs debug {jobid}' explains how it ended."
         )
     click.echo(f"State and reason: {reason}")
-    code = process.stream(["sprio", "-j", jobid, "-l"])
+    code, out, err = process.probe(["sprio", "-j", jobid, "-l"])
     if code:
-        raise SystemExit(code)
+        raise click.ClickException(f"'sprio' failed for job {jobid}: {err.strip() or code}")
+    rows = [line for line in out.splitlines() if line.strip()]
+    if len(rows) <= 1:
+        click.echo()
+        click.echo(
+            "sprio has no priority record for this job. It ranks only pending jobs "
+            "the scheduler is weighing, so a running, held, or dependency-blocked "
+            "job has none; the state and reason above are the explanation."
+        )
+        return
+    for line in rows:
+        click.echo(line)

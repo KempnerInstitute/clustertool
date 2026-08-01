@@ -21,7 +21,7 @@ def priorities(partition: str) -> None:
 
     \b
     Inputs:
-      PARTITION  Slurm partition name (e.g. kempner_h100).
+      PARTITION  Slurm partition name.
     """
     if not slurm.partition_nodes(partition):
         raise click.ClickException(f"partition '{partition}' does not exist, or has no nodes.")

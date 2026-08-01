@@ -573,7 +573,11 @@ def sacct_window_rows(
     account: str | None = None,
     partition: str | None = None,
 ) -> list[list[str]]:
-    """Return split sacct rows for a window, scoped by user, account, or partition."""
+    """Return split sacct rows for a window, scoped by user, account, or partition.
+
+    Raises if sacct fails, so a bad time string, an unknown user, or an
+    unreachable slurmdbd is not reported as a window in which nothing ran.
+    """
     cmd = ["sacct", "-X", "-n", "-P", "-o", fields, "-S", start, "-E", end]
     if account:
         cmd += ["-A", account, "-a"]
@@ -581,7 +585,9 @@ def sacct_window_rows(
         cmd += ["-r", partition, "-a"]
     elif user:
         cmd += ["-u", user]
-    out = _run(cmd)
+    code, out, err = process.probe(cmd)
+    if code != 0:
+        raise CommandError(f"sacct failed: {err.strip() or out.strip() or code}")
     return [line.split("|") for line in out.splitlines() if line.strip()]
 
 

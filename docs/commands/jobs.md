@@ -66,7 +66,7 @@ total priority and its fairshare, age, and other contributions.
 - Compare pending jobs' priorities across a partition.
 
 **Inputs**
-- `PARTITION`: Slurm partition name (e.g. `kempner_h100`).
+- `PARTITION`: Slurm partition name.
 
 ## `jobs violators PARTITION [--cpus-per-gpu N] [--mem-per-gpu MB]`
 
@@ -80,13 +80,13 @@ policy. Jobs with no GPUs are not evaluated.
 - Spot over-requests that block other jobs from a lab's GPUs.
 
 **Inputs**
-- `PARTITION`: Slurm partition name (e.g. `kempner_h100`).
+- `PARTITION`: Slurm partition name.
 - `--cpus-per-gpu`: CPU-per-GPU norm (default: the per-partition policy).
 - `--mem-per-gpu`: Memory-per-GPU norm in MB (default: the per-partition policy).
 
 ## `jobs queue PARTITION`
 
-Show a partition's pending jobs in priority order (via `showq`). Unlike
+Show a partition's whole queue, waiting jobs in priority order (via `showq`). Unlike
 `jobs list` (your jobs), this is the whole partition's pending queue, so you can
 see where you sit.
 
@@ -95,7 +95,7 @@ see where you sit.
 - Gauge contention before submitting.
 
 **Inputs**
-- `PARTITION`: Slurm partition name (e.g. `kempner_h100`).
+- `PARTITION`: Slurm partition name.
 
 ## `jobs top JOBID`
 
