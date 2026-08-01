@@ -10,11 +10,14 @@ from clustertool.grouping import keywords
 @click.command("violators")
 @click.argument("partition", shell_complete=completion.complete_partitions)
 @click.option(
-    "--cpus-per-gpu", type=int, default=None, help="CPU-per-GPU norm (overrides the default)."
+    "--cpus-per-gpu",
+    type=click.IntRange(min=1),
+    default=None,
+    help="CPU-per-GPU norm (overrides the default).",
 )
 @click.option(
     "--mem-per-gpu",
-    type=int,
+    type=click.IntRange(min=1),
     default=None,
     help="Memory-per-GPU norm in MiB, Slurm's own unit (overrides the default).",
 )
@@ -48,6 +51,14 @@ def violators(partition: str, cpus_per_gpu: int | None, mem_per_gpu: int | None)
         cpus_per_gpu = default[0] if default else None
     if mem_per_gpu is None:
         mem_per_gpu = default[1] if default else None
+    if (cpus_per_gpu is not None and cpus_per_gpu < 1) or (
+        mem_per_gpu is not None and mem_per_gpu < 1
+    ):
+        raise click.ClickException(
+            f"partition '{partition}' has a per-GPU policy of {cpus_per_gpu} CPU and "
+            f"{mem_per_gpu} MiB, which cannot be a norm; fix [partitions.limits] in "
+            "the site config, or pass --cpus-per-gpu and --mem-per-gpu"
+        )
     if cpus_per_gpu is None or mem_per_gpu is None:
         if not slurm.partition_nodes(partition):
             raise click.ClickException(f"partition '{partition}' does not exist, or has no nodes")
