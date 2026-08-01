@@ -21,8 +21,8 @@ from clustertool.grouping import keywords
 def violators(partition: str, cpus_per_gpu: int | None, mem_per_gpu: int | None) -> None:
     """List running jobs requesting more CPU or memory per GPU than the norm.
 
-    Norms default to the per-partition policy (kempner_h100: 24 CPU / 360000 MB
-    per GPU; kempner: 16 CPU / 240000 MB per GPU). For other partitions, pass
+    Norms default to the per-partition policy your site sets under
+    [partitions.limits]. For a partition with no configured policy, pass
     --cpus-per-gpu and --mem-per-gpu. Jobs with no GPUs are not evaluated.
 
     \b

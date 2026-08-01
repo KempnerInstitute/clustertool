@@ -2,7 +2,7 @@
 
 import click
 
-from clustertool import completion, slurm
+from clustertool import completion, site, slurm
 from clustertool.grouping import keywords
 
 
@@ -18,13 +18,15 @@ from clustertool.grouping import keywords
     "--all",
     "all_accounts",
     is_flag=True,
-    help="List every Kempner lab account and its members as CSV.",
+    help="List every lab account and its members as CSV.",
 )
 def members(account_name: str | None, all_accounts: bool) -> None:
     """List the users in a Slurm fairshare account.
 
-    With --all, list every Kempner lab account (from the kempner partition's
-    allowed accounts) and its members as CSV: account,username,full_name.
+    With --all, list every lab account and its members as CSV:
+    account,username,full_name. Lab accounts are the ones allowed on the site's
+    roster partition whose name carries the site's lab prefix, both set under
+    [accounts] in the site config.
 
     \b
     Use cases:
@@ -34,13 +36,15 @@ def members(account_name: str | None, all_accounts: bool) -> None:
     \b
     Inputs:
       ACCOUNT  Slurm account name (e.g. kempner_dev). Omit when using --all.
-      --all    List all Kempner lab accounts and members as CSV.
+      --all    List all lab accounts and members as CSV.
     """
     if all_accounts:
-        accounts = [a for a in slurm.partition_accounts("kempner") if a.startswith("kempner_")]
+        roster = site.roster_partition()
+        prefix = site.lab_account_prefix()
+        accounts = [a for a in slurm.partition_accounts(roster) if a.startswith(prefix)]
         if not accounts:
             raise click.ClickException(
-                "could not determine lab accounts from the kempner partition"
+                f"could not determine lab accounts from the '{roster}' partition"
             )
         pairs = []
         users = set()

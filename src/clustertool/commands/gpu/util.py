@@ -18,15 +18,15 @@ def util(partitions: tuple[str, ...]) -> None:
     """Show GPU occupancy per partition: total, down, available, used, and percent.
 
     Utilization is used / available GPUs, where available excludes GPUs on down
-    or drained nodes. With no PARTITION, reports the Kempner base partitions.
+    or drained nodes. With no PARTITION, reports the site base partitions.
 
     \b
     Use cases:
-      - See how full each Kempner GPU partition is right now.
+      - See how full each GPU partition is right now.
 
     \b
     Inputs:
-      PARTITION...  One or more partitions (default: the Kempner base partitions).
+      PARTITION...  One or more partitions (default: the site base partitions).
     """
     targets = list(partitions) or list(slurm.BASE_PARTITIONS)
     click.echo(f"{'PARTITION':<16}{'TOTAL':>7}{'DOWN':>7}{'AVAIL':>7}{'USED':>7}{'UTIL':>8}")

@@ -18,7 +18,7 @@ def _build_script(
     cpus_per_gpu: int | None,
     mem_per_gpu: int | None,
 ) -> str:
-    """Return an sbatch script for a Kempner GPU job, sized to the per-GPU limits."""
+    """Return an sbatch script for a GPU job, sized to the per-GPU limits."""
     partition = slurm.GPU_TYPE_PARTITION[gpu_type.lower()]
     default_cpu, default_mem = slurm.PARTITION_LIMITS[partition]
     cpus = (cpus_per_gpu or default_cpu) * gpus
@@ -78,7 +78,7 @@ def new(
     output: str | None,
     submit: bool,
 ) -> None:
-    """Build a Kempner GPU sbatch script, then print, save, or submit it.
+    """Build a GPU sbatch script, then print, save, or submit it.
 
     Prompts for the GPU type and account if not given, sizes CPUs and memory to
     the partition's enforced per-GPU limits, and writes a correct sbatch header.

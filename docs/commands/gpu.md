@@ -9,8 +9,8 @@ Show live base-partition GPU usage, for all labs or one lab.
 
 Without ACCOUNT, rank every account by base-partition GPU usage (the usage that
 counts toward each account's cap), highest first. With ACCOUNT, break that
-account's usage down by user and partition, plus additive priority and
-kempner_requeue usage that does not count toward the cap.
+account's usage down by user and partition, plus additive priority and requeue
+usage that does not count toward the cap.
 
 **Use cases**
 - See which labs are the heaviest GPU users right now (no argument).
@@ -23,21 +23,21 @@ kempner_requeue usage that does not count toward the cap.
 
 Show GPU occupancy per partition (via `sinfo` and `squeue`): total, down,
 available, used, and percent. Available excludes GPUs on down or drained nodes,
-and percent is used over available. With no PARTITION, reports the Kempner base
+and percent is used over available. With no PARTITION, reports the site base
 partitions.
 
 **Use cases**
-- See how full each Kempner GPU partition is right now.
+- See how full each GPU partition is right now.
 
 **Inputs**
-- `PARTITION...`: One or more partitions (default: the Kempner base partitions).
+- `PARTITION...`: One or more partitions (default: the site base partitions).
 
 ## `gpu status`
 
-Show Kempner GPU node status by type and state (via `sinfo`). Reads
-`kempner_requeue`, which spans every Kempner GPU node, and breaks the nodes down
-by GPU type (A100, H100, H200, RTX) and state. Idle, Mixed, and Alloc nodes are
-up; Resv is reserved; Drain is draining; Down is offline.
+Show GPU node status by type and state (via `sinfo`). Reads the site's requeue
+partition, which spans every GPU node, and breaks the nodes down by GPU type and
+state. Idle, Mixed, and Alloc nodes are up; Resv is reserved; Drain is draining;
+Down is offline.
 
 **Use cases**
 - See how many nodes of each GPU type are up, drained, or down.
@@ -48,9 +48,10 @@ up; Resv is reserved; Drain is draining; Down is offline.
 List nodes with GPUs you can actually allocate, most first.
 
 Available GPUs per node are the free GPUs, capped by how many the free CPU and
-memory support at the enforced per-GPU ratio (kempner: 16 CPU / 240 GB;
-kempner_h100: 24 / 360; kempner_h200: 16 / 360; kempner_rtx: 16 / 180). Other
-partitions show raw free GPUs unless `--cpus-per-gpu` / `--mem-per-gpu` are given.
+memory support at the per-GPU ratio your site enforces for that partition, from
+`[partitions.limits]` in the site config. A partition with no configured ratio
+shows raw free GPUs unless `--cpus-per-gpu` / `--mem-per-gpu` are given. Run
+`nodes partitions` to see the configured ratios.
 
 **Use cases**
 - Find where you can actually place a GPU job.
@@ -63,12 +64,14 @@ partitions show raw free GPUs unless `--cpus-per-gpu` / `--mem-per-gpu` are give
 
 ## `gpu session GPU_TYPE -A ACCOUNT [-t TIME] [SALLOC_ARG]...`
 
-Start an interactive single-GPU session on a Kempner base partition (via
-`salloc`). GPU_TYPE selects the partition, and the session requests one GPU plus
-the CPU and memory that partition enforces per GPU. Drops you into a shell on
-the node; exit it (or let the time limit lapse) to release the allocation.
+Start an interactive single-GPU session on a base partition (via `salloc`).
+GPU_TYPE selects the partition, and the session requests one GPU plus the CPU and
+memory that partition enforces per GPU. Drops you into a shell on the node; exit
+it (or let the time limit lapse) to release the allocation.
 
-Per-GPU resources (one GPU each):
+The GPU types come from `[gpu_types]` in the site config, each mapped to a
+partition whose per-GPU CPU and memory come from `[partitions.limits]`. With the
+packaged Kempner profile that is:
 
 | GPU_TYPE | Partition | CPUs | Memory |
 | --- | --- | --- | --- |
@@ -77,8 +80,8 @@ Per-GPU resources (one GPU each):
 | `h200` | `kempner_h200` | 16 | 360000 MB |
 | `rtx` | `kempner_rtx` | 16 | 180000 MB |
 
-Memory is passed in MB (Slurm's default unit); the values above are the enforced
-per-GPU caps, so `--mem=360000`, not `360G`.
+Run `nodes partitions` to see the mapping in force on your cluster. Memory is
+passed in MB (Slurm's default unit), so `--mem=360000`, not `360G`.
 
 Any extra arguments are forwarded to `salloc` after these defaults, so you can
 override or add flags (salloc uses the last value): for example
