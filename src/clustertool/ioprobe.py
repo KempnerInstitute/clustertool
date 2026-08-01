@@ -1,7 +1,8 @@
 """Filesystem responsiveness probe used by diag io-probe.
 
 Not a benchmark: a seconds-long probe against a target directory that measures
-bounded sequential write (fsync included) and read (page-cache assisted)
+bounded sequential write (fsync included) and read (page cache dropped first
+where the kernel allows it)
 throughput plus small-file create/stat/delete latency.
 """
 
@@ -29,18 +30,43 @@ def measure_write(path, size_mb):
         os.fsync(handle.fileno())
     elapsed = time.monotonic() - start
     total_mb = chunks * CHUNK / (1024.0 * 1024.0)
-    return (total_mb / elapsed if elapsed > 0 else float("inf")), total_mb
+    return (total_mb / elapsed if elapsed > 0 else None), total_mb
+
+
+def _drop_cache(path) -> bool:
+    """Ask the kernel to forget a file's pages; return True when it could."""
+    advise = getattr(os, "posix_fadvise", None)
+    if advise is None:
+        return False
+    try:
+        fd = os.open(path, os.O_RDONLY)
+    except OSError:
+        return False
+    try:
+        advise(fd, 0, 0, os.POSIX_FADV_DONTNEED)
+    except OSError:
+        return False
+    finally:
+        os.close(fd)
+    return True
 
 
 def measure_read(path):
-    """Re-read the file in CHUNK pieces; return mb_per_s (page-cache assisted)."""
+    """Re-read the file in CHUNK pieces; return (mb_per_s, from_cache).
+
+    The page cache is dropped first where the kernel supports it, so the figure
+    measures the filesystem rather than memory. from_cache is True when the pages
+    could not be dropped, and the number is therefore cache-assisted.
+    """
     size_mb = os.path.getsize(path) / (1024.0 * 1024.0)
+    dropped = _drop_cache(path)
     start = time.monotonic()
     with open(path, "rb") as handle:
         while handle.read(CHUNK):
             pass
     elapsed = time.monotonic() - start
-    return size_mb / elapsed if elapsed > 0 else float("inf")
+    rate = size_mb / elapsed if elapsed > 0 else None
+    return rate, not dropped
 
 
 def measure_meta(dirpath, count):
@@ -98,7 +124,12 @@ def render(metrics, status, reasons):
         f"io-probe: {metrics['dir']}  ({metrics['size_mb']:.0f} MB file, "
         f"{metrics['meta_files']} metadata files)",
         f"  write     : {metrics['write_mbs']:8.1f} MB/s (fsync included)",
-        f"  read      : {metrics['read_mbs']:8.1f} MB/s (page-cache-assisted on this host)",
+        f"  read      : {metrics['read_mbs']:8.1f} MB/s"
+        + (
+            "  (page-cache-assisted; the cache could not be dropped)"
+            if metrics["read_cached"]
+            else ""
+        ),
         f"  metadata  : create {meta['create']:.2f}  stat {meta['stat']:.2f}  "
         f"delete {meta['delete']:.2f} ms/op",
     ]
@@ -130,7 +161,7 @@ def run_probe(directory, size_mb, meta_files, keep=False):
         data_path = os.path.join(scratch, "data.bin")
         try:
             write_mbs, written_mb = measure_write(data_path, size_mb)
-            read_mbs = measure_read(data_path)
+            read_mbs, read_cached = measure_read(data_path)
             meta_ms = measure_meta(scratch, meta_files)
         except OSError as exc:
             raise ProbeError(f"io failure during probe: {exc}") from exc
@@ -140,7 +171,7 @@ def run_probe(directory, size_mb, meta_files, keep=False):
             "meta_files": meta_files,
             "write_mbs": write_mbs,
             "read_mbs": read_mbs,
-            "read_cached": True,
+            "read_cached": read_cached,
             "meta_ms": meta_ms,
         }
     finally:

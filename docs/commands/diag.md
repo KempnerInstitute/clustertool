@@ -24,23 +24,30 @@ FAIL, 3 probe error, so it slots into a health cron or CI check.
 
 ## `diag ib PARTITION... [--parallel N]`
 
-Report nodes with InfiniBand ports DOWN in one or more partitions.
+Report nodes whose InfiniBand ports are not ACTIVE, in one or more partitions.
 
-For each partition, ssh to its nodes in parallel and flag any host whose `ip link
-show` reports an `ib[0-9]` interface in state DOWN. Unreachable hosts are
-skipped.
+For each partition, ssh to its nodes in parallel and read each InfiniBand port's
+state from `/sys/class/infiniband`, which is what the RDMA stack itself reports.
+A port whose link layer is Ethernet is not InfiniBand and is not counted.
+
+A host that could not be reached is reported as unreachable rather than counted
+as healthy, so a run that contacted nothing cannot read as a clean fabric.
 
 Needs ssh to every node in the partition, not just the ones running your jobs.
 Where node login is gated on having an allocation, as `pam_slurm_adopt` does,
 only staff can reach the whole partition and an ordinary user sees every host
-skipped.
+unreachable.
+
+Exit codes: 0 every reachable host has all InfiniBand ports ACTIVE, 1 some hosts
+were unreachable or have no InfiniBand ports, 2 at least one port is not ACTIVE,
+3 a partition does not exist.
 
 **Use cases**
 - Find nodes with a downed IB link before scheduling a large job.
 - Spot-check fabric health across a partition.
 
 **Inputs**
-- `PARTITION...`: One or more Slurm partition names (e.g. `kempner_h100`).
+- `PARTITION...`: One or more Slurm partition names.
 - `--parallel`: Maximum parallel ssh checks (default 24).
 
 ## `diag ib-affinity [--snapshot FILE]`
@@ -129,9 +136,10 @@ drift, 3 setup error.
 Probe a filesystem's write/read throughput and metadata latency (not a
 benchmark).
 
-Writes a bounded file (fsync included), re-reads it (page-cache assisted), and
-times create/stat/delete on a batch of small files, against a scratch
-subdirectory of the target. Run it on a compute node (wrap in `srun`) to probe
+Writes a bounded file (fsync included), re-reads it after asking the kernel to
+drop its page cache, and times create/stat/delete on a batch of small files,
+against a scratch subdirectory of the target. Where the cache cannot be dropped
+the report says so, and the read figure is then memory rather than storage. Run it on a compute node (wrap in `srun`) to probe
 from there. Set `--min-write`, `--min-read`, or `--max-meta-ms` to turn it into a
 pass/fail gate. The exit code is 0 report or pass, 2 a gate missed, 3 setup or IO
 error.

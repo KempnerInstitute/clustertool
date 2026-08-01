@@ -2,6 +2,7 @@
 
 import os
 import subprocess
+import sys
 
 
 class CommandError(RuntimeError):
@@ -9,14 +10,27 @@ class CommandError(RuntimeError):
 
 
 def _child_env() -> dict[str, str]:
-    """Return a child environment with this tool's virtualenv removed."""
+    """Return a child environment with this tool's own virtualenv removed.
+
+    The commands run here are Slurm and system binaries, which clustertool's
+    interpreter must not shadow. Only the virtualenv clustertool is itself running
+    from is removed: a user who activated their own environment keeps it, since a
+    wrapped install would otherwise strip exactly the environment the command
+    needs, such as the torch env diag nccl asks for.
+    """
     env = os.environ.copy()
-    venv = env.pop("VIRTUAL_ENV", None)
     env.pop("PYTHONHOME", None)
-    if venv:
-        bin_dir = os.path.join(venv, "bin")
-        parts = [p for p in env.get("PATH", "").split(os.pathsep) if p and p != bin_dir]
-        env["PATH"] = os.pathsep.join(parts)
+    if sys.prefix == sys.base_prefix:
+        return env
+    own = os.path.realpath(sys.prefix)
+    declared = env.get("VIRTUAL_ENV")
+    if declared and os.path.realpath(declared) == own:
+        env.pop("VIRTUAL_ENV", None)
+    bin_dir = os.path.join(own, "bin")
+    parts = [
+        p for p in env.get("PATH", "").split(os.pathsep) if p and os.path.realpath(p) != bin_dir
+    ]
+    env["PATH"] = os.pathsep.join(parts)
     return env
 
 
@@ -85,6 +99,7 @@ def stream(cmd: list[str], extra_env: dict[str, str] | None = None) -> int:
     if extra_env:
         env.update(extra_env)
     try:
-        return subprocess.run(cmd, check=False, env=env).returncode
+        code = subprocess.run(cmd, check=False, env=env).returncode
     except FileNotFoundError as exc:
         raise CommandError(f"'{cmd[0]}' not found on this host") from exc
+    return code if code >= 0 else 128 - code

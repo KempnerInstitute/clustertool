@@ -72,7 +72,8 @@ def io_probe(
 ) -> None:
     """Probe a filesystem's write/read throughput and metadata latency.
 
-    Writes a bounded file (fsync included), re-reads it (page-cache assisted),
+    Writes a bounded file (fsync included), re-reads it after asking the kernel to
+    drop its page cache,
     and times create/stat/delete on a batch of small files, against a scratch
     subdirectory of the target. Not a benchmark. Run it on a compute node (wrap
     in srun) to probe from there. Set --min-write, --min-read, or --max-meta-ms

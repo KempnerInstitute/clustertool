@@ -11,8 +11,8 @@ from clustertool.grouping import keywords
 
 @keywords("infiniband", "counters", "errors", "delta", "diff")
 @click.command("ib-counters")
-@click.argument("before", type=click.Path(exists=True, dir_okay=False))
-@click.argument("after", type=click.Path(exists=True, dir_okay=False))
+@click.argument("before", type=click.Path(dir_okay=False))
+@click.argument("after", type=click.Path(dir_okay=False))
 @click.pass_context
 def ib_counters(ctx: click.Context, before: str, after: str) -> None:
     """Diff two ib-snapshot files for InfiniBand error-counter growth.

@@ -103,8 +103,10 @@ def nvlink(
             if process.stream(build) != 0:
                 raise click.ClickException("nvcc build failed")
 
-    env = {**_ENV_BASE, "CUDA_VISIBLE_DEVICES": ",".join(str(i) for i in range(count))}
+    visible = os.environ.get("CUDA_VISIBLE_DEVICES", "").strip()
+    devices = visible if visible else ",".join(str(i) for i in range(count))
+    env = {**_ENV_BASE, "CUDA_VISIBLE_DEVICES": devices}
     click.echo(f"Running NVLink saturation benchmark on {count} GPU(s) (Ctrl+C to stop)...")
     code = process.stream(run_cmd, extra_env=env)
     if code:
-        raise SystemExit(code)
+        raise click.ClickException(f"the NVLink benchmark exited {code}")

@@ -63,13 +63,20 @@ def nccl(python_bin: str, timeout_s: int, dry_run: bool) -> None:
 
     if not process.succeeds([python_bin, "-c", "import torch"]):
         raise click.ClickException(
-            f"'{python_bin}' cannot import torch; activate an environment with torch "
-            "or pass --python /path/to/python"
+            f"'{python_bin}' cannot import torch; pass --python /path/to/python, "
+            "or activate an environment that has it"
         )
 
     source = importlib.resources.files("clustertool") / "data" / "nccl_fsdp_test.py"
-    test_path = pathlib.Path(f"nccl_fsdp_test_{os.environ.get('SLURM_JOB_ID', 'test')}.py")
-    test_path.write_text(source.read_text())
+    staging = pathlib.Path(os.environ.get("SLURM_SUBMIT_DIR") or pathlib.Path.cwd())
+    test_path = (staging / f"nccl_fsdp_test_{os.environ.get('SLURM_JOB_ID', 'test')}.py").resolve()
+    try:
+        test_path.write_text(source.read_text())
+    except OSError as exc:
+        raise click.ClickException(
+            f"cannot stage the test script in {staging}: {exc}. Every task must be "
+            "able to read it, so run from a directory on a shared filesystem"
+        ) from exc
     env = {
         "MASTER_ADDR": slurm.first_hostname(),
         "MASTER_PORT": str(_free_port()),

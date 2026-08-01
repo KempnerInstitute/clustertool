@@ -1847,21 +1847,74 @@ def test_account_members_needs_account():
     assert "give an ACCOUNT or use --all" in result.output
 
 
+_IB_OK = "__clustertool_ports__ 1\n"
+
+
+def _fake_ib_probe(per_host):
+    def probe(cmd, timeout=None):
+        host = cmd[-2]
+        return per_host.get(host, (0, _IB_OK, ""))
+
+    return probe
+
+
 def test_diag_ib(monkeypatch):
     monkeypatch.setattr(
         slurm, "partition_nodes", lambda p: [("n1", "idle"), ("n2", "idle"), ("n3", "idle")]
     )
+    monkeypatch.setattr(
+        process,
+        "probe",
+        _fake_ib_probe({"n2": (0, "mlx5_0/ports/1 1: DOWN\n" + _IB_OK, "")}),
+    )
+    result = CliRunner().invoke(main, ["diag", "ib", "kempner_h100"])
+    assert result.exit_code == 2
+    assert "n2" in result.output
+    assert "mlx5_0/ports/1" in result.output
+    assert "1 down, 2 ok" in result.output
 
-    def fake_run(cmd):
-        host = cmd[-2]
-        return "5: ib1: <BROADCAST,MULTICAST> mtu 4092 state DOWN\n" if host == "n2" else ""
 
-    monkeypatch.setattr(process, "run", fake_run)
+def test_diag_ib_all_up(monkeypatch):
+    monkeypatch.setattr(slurm, "partition_nodes", lambda p: [("n1", "idle"), ("n2", "idle")])
+    monkeypatch.setattr(process, "probe", _fake_ib_probe({}))
     result = CliRunner().invoke(main, ["diag", "ib", "kempner_h100"])
     assert result.exit_code == 0
-    assert "n2" in result.output
-    assert "ib1" in result.output
-    assert "1 host(s) with IB ports DOWN" in result.output
+    assert "0 down, 2 ok" in result.output
+
+
+def test_diag_ib_does_not_certify_a_fabric_it_never_reached(monkeypatch):
+    """Every ssh failing must not read as a clean fabric."""
+    monkeypatch.setattr(slurm, "partition_nodes", lambda p: [("n1", "idle"), ("n2", "idle")])
+    monkeypatch.setattr(
+        process,
+        "probe",
+        _fake_ib_probe(
+            {"n1": (255, "", "Permission denied"), "n2": (255, "", "Permission denied")}
+        ),
+    )
+    result = CliRunner().invoke(main, ["diag", "ib", "kempner_h100"])
+    assert result.exit_code == 1
+    assert "0 down, 0 ok" in result.output
+    assert "2 unreachable" in result.output
+    assert "unreachable: n1, n2" in result.output
+
+
+def test_diag_ib_reports_a_host_without_infiniband(monkeypatch):
+    monkeypatch.setattr(slurm, "partition_nodes", lambda p: [("n1", "idle")])
+    monkeypatch.setattr(
+        process, "probe", _fake_ib_probe({"n1": (0, "__clustertool_ports__ 0\n", "")})
+    )
+    result = CliRunner().invoke(main, ["diag", "ib", "kempner_h100"])
+    assert result.exit_code == 1
+    assert "1 without IB" in result.output
+
+
+def test_diag_ib_rejects_an_unknown_partition(monkeypatch):
+    monkeypatch.setattr(slurm, "partition_nodes", lambda p: [])
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: False)
+    result = CliRunner().invoke(main, ["diag", "ib", "no_such_partition"])
+    assert result.exit_code == 3
+    assert "does not exist" in result.output
 
 
 def test_gpu_monitor_job(monkeypatch):

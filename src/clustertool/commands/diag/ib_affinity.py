@@ -36,21 +36,40 @@ def ib_affinity(ctx: click.Context, snapshot: str | None) -> None:
     Inputs:
       --snapshot  Analyze a saved ib-snapshot JSON instead of probing the node.
     """
-    try:
-        if snapshot:
+    if snapshot:
+        try:
             raw = json.loads(pathlib.Path(snapshot).read_text())["topology"]["raw"]
-        else:
-            _code, raw, _err = process.probe(["nvidia-smi", "topo", "-m"])
-    except (OSError, ValueError, KeyError) as exc:
-        click.echo(f"ib-affinity: error: {exc}", err=True)
-        ctx.exit(3)
+        except OSError as exc:
+            click.echo(f"ib-affinity: error: cannot read {snapshot}: {exc}", err=True)
+            ctx.exit(3)
+        except (ValueError, KeyError, TypeError):
+            click.echo(
+                f"ib-affinity: error: {snapshot} is not an ib-snapshot file (no topology.raw)",
+                err=True,
+            )
+            ctx.exit(3)
+    else:
+        code, raw, err = process.probe(["nvidia-smi", "topo", "-m"], timeout=30)
+        if code == 127:
+            click.echo("ib-affinity: error: nvidia-smi not found on this host", err=True)
+            ctx.exit(3)
+        if code == 124:
+            click.echo("ib-affinity: error: nvidia-smi timed out after 30s", err=True)
+            ctx.exit(3)
+        if code:
+            click.echo(f"ib-affinity: error: nvidia-smi failed: {err.strip() or code}", err=True)
+            ctx.exit(3)
 
     if not raw.strip():
         click.echo("ib-affinity: error: no topology data available", err=True)
         ctx.exit(3)
     matrix = fabric.parse_topo(raw)
     if not matrix:
-        click.echo("ib-affinity: error: could not parse topology output", err=True)
+        click.echo(
+            "ib-affinity: error: the topology matrix lists no GPU-to-NIC pairs; "
+            "this node exposes no RDMA NICs to nvidia-smi",
+            err=True,
+        )
         ctx.exit(3)
 
     rows = fabric.affinity_rows(matrix)

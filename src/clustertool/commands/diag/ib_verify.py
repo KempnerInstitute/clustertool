@@ -15,7 +15,7 @@ from clustertool.grouping import keywords
 @click.option(
     "--current",
     "current_file",
-    type=click.Path(exists=True, dir_okay=False),
+    type=click.Path(dir_okay=False),
     default=None,
     help="Use an existing snapshot instead of probing this node.",
 )
@@ -73,9 +73,16 @@ def ib_verify(
 
     try:
         golden_snap = json.loads(pathlib.Path(golden).read_text())
-    except (OSError, ValueError):
+    except OSError:
         click.echo(
             f"ib-verify: error: no golden snapshot at {golden}; create one with --save-golden",
+            err=True,
+        )
+        ctx.exit(3)
+    except ValueError as exc:
+        click.echo(
+            f"ib-verify: error: {golden} exists but is not valid JSON ({exc}); "
+            "it was not overwritten",
             err=True,
         )
         ctx.exit(3)

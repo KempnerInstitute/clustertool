@@ -300,8 +300,14 @@ def counter_deltas(before: dict, after: dict) -> tuple[list[tuple], bool]:
     """Diff two snapshots' per-port counters.
 
     Returns (rows, any_error) where rows is
-    (port, counter, before, after, delta, is_error) for every non-zero delta,
-    and any_error is True when an error-class counter advanced.
+    (port, counter, before, after, delta, is_error) for every counter worth
+    reporting, and any_error is True when an error-class counter advanced.
+
+    A counter that could not be read on either side is reported with a delta of
+    None rather than treated as zero, which would turn an unreadable baseline
+    into a full-magnitude error. An error counter that went backwards was reset
+    between the snapshots, so its whole after value is new and unaccounted for;
+    that counts as an error rather than as no growth.
     """
     a = counters_by_port(before)
     b = counters_by_port(after)
@@ -310,12 +316,17 @@ def counter_deltas(before: dict, after: dict) -> tuple[list[tuple], bool]:
     for port in sorted(set(a) | set(b)):
         a_counters, b_counters = a.get(port, {}), b.get(port, {})
         for counter in sorted(set(a_counters) | set(b_counters)):
-            before_v = a_counters.get(counter) or 0
-            after_v = b_counters.get(counter) or 0
+            before_v = a_counters.get(counter)
+            after_v = b_counters.get(counter)
+            is_error_counter = counter in _ERROR_COUNTERS
+            if before_v is None or after_v is None:
+                rows.append((port, counter, before_v, after_v, None, is_error_counter))
+                any_error = any_error or is_error_counter
+                continue
             delta = after_v - before_v
             if delta == 0:
                 continue
-            is_error = counter in _ERROR_COUNTERS and delta > 0
+            is_error = is_error_counter and delta != 0
             rows.append((port, counter, before_v, after_v, delta, is_error))
             any_error = any_error or is_error
     return rows, any_error

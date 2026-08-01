@@ -6,14 +6,43 @@ import sys
 from clustertool import process
 
 
-def test_child_env_strips_virtualenv(monkeypatch):
-    monkeypatch.setenv("VIRTUAL_ENV", "/tmp/venv")
-    monkeypatch.setenv("PATH", os.pathsep.join(["/tmp/venv/bin", "/usr/bin", "/bin"]))
+def test_child_env_strips_our_own_virtualenv(monkeypatch, tmp_path):
+    own = tmp_path / "ourvenv"
+    (own / "bin").mkdir(parents=True)
+    monkeypatch.setattr(process.sys, "prefix", str(own))
+    monkeypatch.setattr(process.sys, "base_prefix", "/usr")
+    monkeypatch.setenv("VIRTUAL_ENV", str(own))
+    monkeypatch.setenv("PATH", os.pathsep.join([str(own / "bin"), "/usr/bin", "/bin"]))
     env = process._child_env()
     assert "VIRTUAL_ENV" not in env
     parts = env["PATH"].split(os.pathsep)
-    assert "/tmp/venv/bin" not in parts
+    assert str(own / "bin") not in parts
     assert "/usr/bin" in parts
+
+
+def test_child_env_keeps_the_users_own_virtualenv(monkeypatch, tmp_path):
+    """A wrapped install must not strip the torch env diag nccl asks the user for."""
+    own = tmp_path / "toolvenv"
+    theirs = tmp_path / "uservenv"
+    for path in (own, theirs):
+        (path / "bin").mkdir(parents=True)
+    monkeypatch.setattr(process.sys, "prefix", str(own))
+    monkeypatch.setattr(process.sys, "base_prefix", "/usr")
+    monkeypatch.setenv("VIRTUAL_ENV", str(theirs))
+    monkeypatch.setenv("PATH", os.pathsep.join([str(theirs / "bin"), str(own / "bin"), "/usr/bin"]))
+    env = process._child_env()
+    assert env["VIRTUAL_ENV"] == str(theirs)
+    parts = env["PATH"].split(os.pathsep)
+    assert str(theirs / "bin") in parts
+    assert str(own / "bin") not in parts
+
+
+def test_child_env_outside_a_virtualenv_changes_nothing(monkeypatch):
+    monkeypatch.setattr(process.sys, "prefix", "/usr")
+    monkeypatch.setattr(process.sys, "base_prefix", "/usr")
+    monkeypatch.setenv("PATH", os.pathsep.join(["/usr/bin", "/bin"]))
+    env = process._child_env()
+    assert env["PATH"] == os.pathsep.join(["/usr/bin", "/bin"])
 
 
 def test_probe_returns_code_and_output():
