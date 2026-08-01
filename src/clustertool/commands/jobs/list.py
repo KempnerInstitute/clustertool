@@ -4,7 +4,7 @@ import os
 
 import click
 
-from clustertool import completion, process
+from clustertool import completion, process, slurm
 from clustertool.grouping import keywords
 
 
@@ -42,6 +42,9 @@ def list_jobs(
 ) -> None:
     """List your queued and running jobs (via squeue).
 
+    A filter that names something the cluster does not have is an error, since
+    squeue answers a mistyped user, partition or account with an empty list.
+
     \b
     Use cases:
       - See what you have running and pending right now.
@@ -59,6 +62,12 @@ def list_jobs(
     target = user or os.environ.get("USER", "")
     if not target:
         raise click.ClickException("no user to list: give --user, or set $USER")
+    if user and not slurm.user_exists(user):
+        raise click.ClickException(f"no such user: {user}")
+    if partition and not slurm.partition_exists(partition):
+        raise click.ClickException(f"partition '{partition}' does not exist")
+    if account and not slurm.account_exists(account):
+        raise click.ClickException(f"account '{account}' does not exist")
     cmd = ["squeue", "-u", target]
     if state:
         cmd += ["-t", state.upper()]

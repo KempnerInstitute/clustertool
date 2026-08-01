@@ -7,7 +7,7 @@ import click
 import pytest
 from click.testing import CliRunner
 
-from clustertool import process, site
+from clustertool import process, site, slurm
 from clustertool.cli import main
 from clustertool.commands.jobs import jobs as jobs_group
 
@@ -112,6 +112,7 @@ def test_configured_tool_name_is_used(monkeypatch):
     monkeypatch.setattr(site, "tool_available", lambda key: True)
     monkeypatch.setattr(site, "tool", lambda key: "myqueue" if key == "queue" else key)
     monkeypatch.setattr(process, "stream", lambda cmd, **kw: calls.append(cmd) or 0)
+    monkeypatch.setattr(slurm, "partition_exists", lambda p: True)
     result = CliRunner().invoke(main, ["jobs", "queue", "part"])
     assert result.exit_code == 0
     assert calls[0][0] == "myqueue"

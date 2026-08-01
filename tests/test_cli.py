@@ -728,6 +728,9 @@ def test_jobs_list_default(monkeypatch):
 
 def test_jobs_list_filters(monkeypatch):
     calls = _capture_stream(monkeypatch)
+    monkeypatch.setattr(slurm, "user_exists", lambda u: True)
+    monkeypatch.setattr(slurm, "partition_exists", lambda p: True)
+    monkeypatch.setattr(slurm, "account_exists", lambda a: True)
     result = CliRunner().invoke(
         main, ["jobs", "list", "-u", "bob", "-t", "pending", "-p", "kempner", "-A", "kempner_dev"]
     )
@@ -1301,9 +1304,39 @@ def test_jobs_log_unknown_job(monkeypatch):
         "probe",
         lambda cmd, timeout=None: (1, "", "slurm_load_jobs error: Invalid job id specified"),
     )
+    monkeypatch.setattr(slurm, "job_output_path", lambda j: "")
+    monkeypatch.setattr(slurm, "job_accounting", lambda j: {})
     result = CliRunner().invoke(main, ["jobs", "log", "999999999"])
     assert result.exit_code != 0
     assert "not found" in result.output
+
+
+def test_jobs_log_falls_back_to_accounting(monkeypatch):
+    """The controller drops a job MinJobAge seconds after it ends; accounting keeps it."""
+    monkeypatch.setattr(
+        process,
+        "probe",
+        lambda cmd, timeout=None: (1, "", "slurm_load_jobs error: Invalid job id specified"),
+    )
+    monkeypatch.setattr(slurm, "job_output_path", lambda j: "/work/slurm-123.out")
+    result = CliRunner().invoke(main, ["jobs", "log", "123"])
+    assert result.exit_code == 0
+    assert "StdOut: /work/slurm-123.out" in result.output
+
+
+def test_jobs_log_names_an_interactive_job_as_such(monkeypatch):
+    """A job accounting still knows, but with no file, is not a missing job."""
+    monkeypatch.setattr(
+        process,
+        "probe",
+        lambda cmd, timeout=None: (1, "", "slurm_load_jobs error: Invalid job id specified"),
+    )
+    monkeypatch.setattr(slurm, "job_output_path", lambda j: "")
+    monkeypatch.setattr(slurm, "job_accounting", lambda j: {"state": "COMPLETED"})
+    result = CliRunner().invoke(main, ["jobs", "log", "123"])
+    assert result.exit_code != 0
+    assert "interactive job writes to your terminal" in result.output
+    assert "not found" not in result.output
 
 
 def test_jobs_log_follow(monkeypatch):
@@ -3794,3 +3827,33 @@ def test_entry_restores_the_default_sigpipe_disposition():
         assert signal.getsignal(signal.SIGPIPE) == signal.SIG_DFL
     finally:
         signal.signal(signal.SIGPIPE, original)
+
+
+def test_jobs_list_rejects_a_filter_that_names_nothing(monkeypatch):
+    """squeue answers a mistyped user, partition or account with an empty list."""
+    calls = _capture_stream(monkeypatch)
+    monkeypatch.setattr(slurm, "user_exists", lambda u: False)
+    monkeypatch.setattr(slurm, "partition_exists", lambda p: False)
+    monkeypatch.setattr(slurm, "account_exists", lambda a: False)
+    for flag, value, expected in (
+        ("-u", "nobody", "no such user"),
+        ("-p", "nowhere", "does not exist"),
+        ("-A", "nothing", "does not exist"),
+    ):
+        result = CliRunner().invoke(main, ["jobs", "list", flag, value])
+        assert result.exit_code != 0
+        assert expected in result.output
+    assert calls == []
+
+
+def test_jobs_list_does_not_check_the_default_user(monkeypatch):
+    """The current user always exists, so the common path stays one squeue call."""
+    calls = _capture_stream(monkeypatch)
+    monkeypatch.setattr(slurm, "user_exists", _unexpected)
+    result = CliRunner().invoke(main, ["jobs", "list"])
+    assert result.exit_code == 0
+    assert calls[0][0] == "squeue"
+
+
+def _unexpected(*args, **kwargs):
+    raise AssertionError("no lookup should happen")

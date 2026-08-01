@@ -2,7 +2,7 @@
 
 import pytest
 
-from clustertool import slurm
+from clustertool import process, slurm
 
 
 def test_parse_gpu_count():
@@ -409,3 +409,36 @@ def test_job_state_counts_raises_when_the_query_fails(monkeypatch):
     monkeypatch.setattr(slurm.process, "probe", lambda cmd, timeout=None: (1, "", "down"))
     with pytest.raises(slurm.SlurmError):
         slurm.job_state_counts("alice")
+
+
+def test_job_output_path_assumes_no_default_for_an_interactive_job(monkeypatch):
+    """An interactive allocation writes to the terminal, so it has no file to name."""
+    rows = (
+        "32923082|32923082||/work|bash|mmsh\n"
+        "32923082.extern|32923082.extern|||extern|\n"
+        "32923082.0|32923082.0|||bash|\n"
+    )
+
+    def fake_probe(cmd, timeout=None):
+        if cmd[0] == "scontrol":
+            return 1, "", "Invalid job id specified"
+        return (
+            0,
+            "\n".join("|".join([r.split("|")[0], *r.split("|")]) for r in rows.splitlines()),
+            "",
+        )
+
+    monkeypatch.setattr(process, "probe", fake_probe)
+    assert slurm.job_output_path("32923082") == ""
+
+
+def test_job_output_path_assumes_the_sbatch_default_for_a_batch_job(monkeypatch):
+    """A batch job submitted without -o writes slurm-<jobid>.out in its WorkDir."""
+
+    def fake_probe(cmd, timeout=None):
+        if cmd[0] == "scontrol":
+            return 1, "", "Invalid job id specified"
+        return 0, "77|77||/work|run|mmsh\n77.batch|77.batch|||batch|\n", ""
+
+    monkeypatch.setattr(process, "probe", fake_probe)
+    assert slurm.job_output_path("77") == "/work/slurm-77.out"

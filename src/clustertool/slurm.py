@@ -1,5 +1,6 @@
 """Read-only helpers for querying Slurm."""
 
+import pwd
 import re
 
 from clustertool import process, site
@@ -161,6 +162,38 @@ def account_exists(account: str) -> bool:
         )
     names = {line.strip().lower() for line in out.splitlines() if line.strip()}
     return account.strip().lower() in names
+
+
+def partition_exists(partition: str) -> bool:
+    """Return True if the cluster has this partition, even with no nodes in it.
+
+    Raises if the query fails, so an unreachable controller is not reported as a
+    partition that does not exist.
+    """
+    code, out, err = process.probe(["scontrol", "show", "partition", partition])
+    if code == 0:
+        return True
+    if "not found" in (out + err).lower():
+        return False
+    detail = err.strip() or out.strip() or code
+    raise CommandError(f"could not check whether partition {partition} exists: {detail}")
+
+
+def user_exists(user: str) -> bool:
+    """Return True if the name resolves to an account on this host.
+
+    squeue takes a user name or a numeric uid and resolves it the same way, so a
+    name that does not resolve makes it print an error and an empty list while
+    still exiting 0.
+    """
+    try:
+        if user.isdigit():
+            pwd.getpwuid(int(user))
+        else:
+            pwd.getpwnam(user)
+    except (KeyError, OverflowError, ValueError):
+        return False
+    return True
 
 
 def account_members(account: str) -> list[str]:
@@ -566,8 +599,14 @@ def job_accounting(jobid: str) -> dict:
 
 
 def job_maxrss_mb(jobid: str) -> float:
-    """Return the peak MaxRSS across a job's steps in MB (0 if unknown)."""
-    out = _run(["sacct", "-j", jobid, "-n", "-P", "-o", "MaxRSS"])
+    """Return the peak MaxRSS across a job's steps in MB (0 if unrecorded).
+
+    Raises if accounting could not be read, so a failed query is not reported as
+    a job that used no memory.
+    """
+    code, out, err = process.probe(["sacct", "-j", jobid, "-n", "-P", "-o", "MaxRSS"])
+    if code != 0:
+        raise CommandError(f"could not read job {jobid}'s memory use: {err.strip() or code}")
     return max((_mem_to_mb(row.strip()) for row in out.splitlines()), default=0.0)
 
 
@@ -611,7 +650,10 @@ def job_output_path(jobid: str) -> str:
     Asks the controller first, which holds the expanded path while the job is
     recent, then accounting, which keeps the unexpanded pattern long after
     MinJobAge has purged the job from scontrol. A pattern sacct stores relative is
-    relative to the job's WorkDir, not to the caller's directory.
+    relative to the job's WorkDir, not to the caller's directory. Accounting
+    records no path for a job submitted without one, so the default sbatch writes
+    is assumed only for a job that has a batch step: an interactive allocation
+    writes to the terminal and has no file to name.
     """
     code, out, _ = process.probe(["scontrol", "show", "job", jobid])
     if code == 0:
@@ -620,31 +662,25 @@ def job_output_path(jobid: str) -> str:
             return match.group(1)
 
     code, out, _ = process.probe(
-        [
-            "sacct",
-            "-j",
-            jobid,
-            "-X",
-            "-n",
-            "-P",
-            "-o",
-            "JobIDRaw,StdOut,WorkDir,JobName,User",
-        ]
+        ["sacct", "-j", jobid, "-n", "-P", "-o", "JobID,JobIDRaw,StdOut,WorkDir,JobName,User"]
     )
     if code != 0:
         return ""
-    row = next((line.split("|") for line in out.splitlines() if line.strip()), [])
-    if len(row) < 5:
+    rows = [line.split("|") for line in out.splitlines() if line.strip()]
+    rows = [row for row in rows if len(row) >= 6]
+    row = next((row for row in rows if "." not in row[0]), [])
+    if not row:
         return ""
+    has_batch_step = any(row[0].strip().endswith(".batch") for row in rows)
     fields = {
-        "raw_id": row[0].strip(),
+        "raw_id": row[1].strip(),
         "job_id": jobid,
-        "user": row[4].strip(),
-        "name": row[3].strip(),
+        "user": row[5].strip(),
+        "name": row[4].strip(),
     }
-    workdir = row[2].strip()
-    stdout_path = _expand_log_pattern(row[1].strip(), fields) if row[1].strip() else ""
-    if not stdout_path and workdir:
+    workdir = row[3].strip()
+    stdout_path = _expand_log_pattern(row[2].strip(), fields) if row[2].strip() else ""
+    if not stdout_path and workdir and has_batch_step:
         stdout_path = f"slurm-{fields['raw_id'] or jobid}.out"
     if not stdout_path:
         return ""

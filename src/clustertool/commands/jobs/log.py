@@ -4,7 +4,7 @@ import re
 
 import click
 
-from clustertool import completion, process
+from clustertool import completion, process, slurm
 from clustertool.grouping import keywords
 
 _FIELD = re.compile(r"(StdOut|StdErr)=(\S+)")
@@ -20,6 +20,16 @@ def _unique(values) -> list[str]:
     return seen
 
 
+def _report(stdout: str, stderr: str, follow: bool) -> None:
+    """Print the paths, or tail stdout when following."""
+    if follow:
+        process.passthrough(["tail", "-f", stdout], f"cannot tail {stdout}")
+        return
+    click.echo(f"StdOut: {stdout}")
+    if stderr and stderr != stdout:
+        click.echo(f"StdErr: {stderr}")
+
+
 @keywords("output", "stdout", "stderr", "tail")
 @click.command("log")
 @click.argument("jobid", shell_complete=completion.complete_job_ids)
@@ -27,8 +37,10 @@ def _unique(values) -> list[str]:
 def log(jobid: str, follow: bool) -> None:
     """Show a job's stdout and stderr paths, or tail its output (via scontrol).
 
-    Reads the StdOut and StdErr paths Slurm recorded for the job. With --follow,
-    tails the stdout file live (Ctrl+C to stop).
+    Reads the StdOut and StdErr paths Slurm recorded for the job. The controller
+    drops a job MinJobAge seconds after it ends, so for an older one the path
+    comes from accounting instead, which stores the pattern rather than the
+    expanded name. With --follow, tails the stdout file live (Ctrl+C to stop).
 
     \b
     Use cases:
@@ -42,6 +54,15 @@ def log(jobid: str, follow: bool) -> None:
     """
     code, out, err = process.probe(["scontrol", "show", "job", jobid])
     if code:
+        recorded = slurm.job_output_path(jobid)
+        if recorded:
+            _report(recorded, "", follow)
+            return
+        if slurm.job_accounting(jobid):
+            raise click.ClickException(
+                f"no output path recorded for job {jobid}: an interactive job writes to "
+                "your terminal, not to a file"
+            )
         raise click.ClickException(
             f"job {jobid} not found: {err.strip() or out.strip() or code}. Only running "
             "or recent jobs are in scontrol, and a job you do not own may be hidden"
@@ -64,10 +85,4 @@ def log(jobid: str, follow: bool) -> None:
             f"not filled in the task id ({_UNSTARTED} stands for none). Name an "
             f"element once one starts, for example '{jobid}_0'"
         )
-    if follow:
-        if process.stream(["tail", "-f", stdout]):
-            raise click.ClickException(f"cannot tail {stdout}")
-        return
-    click.echo(f"StdOut: {stdout}")
-    if stderrs and stderrs[0] != stdout:
-        click.echo(f"StdErr: {stderrs[0]}")
+    _report(stdout, stderrs[0] if stderrs else "", follow)

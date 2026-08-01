@@ -2,7 +2,7 @@
 
 import click
 
-from clustertool import completion, process, site
+from clustertool import completion, process, site, slurm
 from clustertool.grouping import ToolCommand, keywords
 
 
@@ -14,7 +14,8 @@ def queue(partition: str) -> None:
 
     Lists the partition's active, waiting, and blocked jobs, with the waiting
     ones ordered by priority so you can see where you sit. Unlike 'jobs list',
-    which shows your own jobs, this covers everyone's.
+    which shows your own jobs, this covers everyone's. A partition the cluster
+    does not have is an error, since showq reports it as an empty queue.
 
     \b
     Use cases:
@@ -25,6 +26,8 @@ def queue(partition: str) -> None:
     Inputs:
       PARTITION  Slurm partition name.
     """
+    if not slurm.partition_exists(partition):
+        raise click.ClickException(f"partition '{partition}' does not exist")
     process.passthrough(
         [site.tool("queue"), "-o", "-p", partition],
         f"'{site.tool('queue')}' failed for partition {partition}",
