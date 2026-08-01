@@ -695,7 +695,10 @@ def job_output_paths(jobid: str) -> tuple[str, str]:
     Asks the controller first, which holds the expanded paths while the job is
     recent, then accounting, which keeps the unexpanded pattern long after
     MinJobAge has purged the job from scontrol. A pattern sacct stores relative is
-    relative to the job's WorkDir, not to the caller's directory.
+    relative to the job's WorkDir, not to the caller's directory. The symbols are
+    expanded against the JobID accounting recorded rather than the string the
+    caller typed, since an array element named by its raw id would otherwise
+    expand %a to the no-task value and name a file that was never written.
 
     Accounting records no path for a job submitted without one, and only then is
     the default sbatch writes assumed, and only for a job that has a batch step:
@@ -734,7 +737,7 @@ def job_output_paths(jobid: str) -> tuple[str, str]:
     has_batch_step = any(other[0].strip().endswith(".batch") for other in rows)
     fields = {
         "raw_id": row[1].strip(),
-        "job_id": jobid,
+        "job_id": row[0].strip() or jobid,
         "user": row[6].strip(),
         "name": row[5].strip(),
         "node": _first_node(row[7].strip()),

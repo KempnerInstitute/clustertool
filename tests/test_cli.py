@@ -483,16 +483,16 @@ def test_job_accounting_parsing(monkeypatch):
 def test_diagnose_oom_and_timeout():
     from clustertool.commands.jobs.debug import _diagnose
 
-    oom = _diagnose({"state": "OUT_OF_MEMORY", "exit_code": "0:0"}, "")
+    oom = _diagnose({"state": "OUT_OF_MEMORY", "exit_code": "0:0"})
     assert any("out of memory" in cause.lower() for cause, _ in oom)
-    timeout = _diagnose({"state": "TIMEOUT", "exit_code": "0:0"}, "")
+    timeout = _diagnose({"state": "TIMEOUT", "exit_code": "0:0"})
     assert any("time limit" in cause.lower() for cause, _ in timeout)
 
 
 def test_diagnose_exit_code_and_log():
     from clustertool.commands.jobs.debug import _diagnose, _log_findings
 
-    findings = _diagnose({"state": "FAILED", "exit_code": "1:0"}, "CUDA out of memory. Tried ...")
+    findings = _diagnose({"state": "FAILED", "exit_code": "1:0"})
     assert any("code 1" in cause for cause, _ in findings)
     assert any("CUDA" in cause for cause, _ in _log_findings("CUDA out of memory. Tried ..."))
 
@@ -501,9 +501,7 @@ def test_log_patterns_do_not_override_a_completed_state():
     """A job Slurm recorded as COMPLETED succeeded, whatever text it printed."""
     from clustertool.commands.jobs.debug import _diagnose
 
-    findings = _diagnose(
-        {"state": "COMPLETED", "exit_code": "0:0"}, "Traceback (most recent call last):\n"
-    )
+    findings = _diagnose({"state": "COMPLETED", "exit_code": "0:0"})
     assert [cause for cause, _ in findings] == ["Completed successfully"]
 
 
@@ -551,7 +549,7 @@ def test_jobs_debug_array_shows_every_state(monkeypatch):
     )
     result = CliRunner().invoke(main, ["jobs", "debug", "9541734"])
     assert result.exit_code == 0
-    assert "array of 177 elements" in result.output
+    assert "an array of 177 elements" in result.output
     assert "96  FAILED" in result.output
     assert "Completed successfully" not in result.output
 

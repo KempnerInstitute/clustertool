@@ -48,7 +48,7 @@ _LOG_RULES = [
 ]
 
 
-def _diagnose(info: dict, log_text: str) -> list[tuple[str, str]]:
+def _diagnose(info: dict) -> list[tuple[str, str]]:
     """Return [(cause, suggestion)] findings from the job's state and exit code."""
     findings: list[tuple[str, str]] = []
     state = info.get("state", "")
@@ -115,7 +115,10 @@ def debug(jobid: str) -> None:
         )
     elements = info.get("element_count", 1)
     if elements > 1:
-        click.echo(f"Job {jobid} is an array of {elements} elements:")
+        heterogeneous = "+" in info.get("first_element", "")
+        noun = "a heterogeneous job of" if heterogeneous else "an array of"
+        unit = "components" if heterogeneous else "elements"
+        click.echo(f"Job {jobid} is {noun} {elements} {unit}:")
         for state, count in sorted(info["states"].items(), key=lambda kv: -kv[1]):
             click.echo(f"  {count:>6}  {state}")
         click.echo("")
@@ -135,15 +138,17 @@ def debug(jobid: str) -> None:
 
     maxrss_mb = slurm.job_maxrss_mb(jobid)
     log_text = slurm.job_output_tail(jobid)
-    findings = _diagnose(info, log_text)
+    findings = _diagnose(info)
     observations = _log_findings(log_text)
 
     click.echo(f"Job {jobid} diagnosis")
     click.echo("")
     click.echo(f"State:    {info['state']} (exit {info['exit_code']})")
-    click.echo(f"Elapsed:  {info['elapsed']} / {info['timelimit']}")
+    limit = info["timelimit"].strip() or "no limit recorded"
+    click.echo(f"Elapsed:  {info['elapsed']} / {limit}")
     peak = "not recorded" if maxrss_mb is None else f"peak {maxrss_mb:.0f} MB used"
-    click.echo(f"Memory:   {peak}, {info['req_mem']} requested")
+    asked = info["req_mem"].strip()
+    click.echo(f"Memory:   {peak}, {asked + ' requested' if asked else 'none recorded'}")
     if info.get("nodelist"):
         click.echo(f"Nodes:    {info['nodelist']}")
     click.echo("")

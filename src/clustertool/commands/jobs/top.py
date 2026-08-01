@@ -5,7 +5,7 @@ import click
 from clustertool import completion, process, site, slurm
 from clustertool.grouping import keywords
 
-_FORMAT = "JobID%-20,AveCPU,AveRSS,MaxRSS,AveVMSize,NTasks"
+_FORMAT = "JobID%-32,AveCPU,AveRSS,MaxRSS,AveVMSize,NTasks"
 _EXTERN = ".extern"
 
 
@@ -44,8 +44,9 @@ def top(jobid: str) -> None:
     report data, so a job that is pending, already finished, or holding a bare
     allocation with no step is an error rather than an empty table: sstat exits 0
     either way, and per man sstat a non-root user cannot read another user's
-    steps at all. Naming an array element reads that element, since sstat matches
-    the element's own job id rather than the array's.
+    steps at all. man sstat documents -j as a job or job.step and says nothing
+    about arrays: it ignores an array task suffix and reports every running
+    element, so naming one element shows them all.
 
     \b
     Use cases:
@@ -71,8 +72,7 @@ def top(jobid: str) -> None:
             f"Use {_finished_hint(jobid)} for a finished job"
         )
 
-    target = record.get("first_element") or jobid
-    code, out, err = process.probe(["sstat", "-a", "-j", target, "--format", _FORMAT])
+    code, out, err = process.probe(["sstat", "-a", "-j", jobid, "--format", _FORMAT])
     rows = _data_rows(out) if code == 0 else []
     if not rows:
         detail = err.strip().splitlines()[0] if err.strip() else ""
