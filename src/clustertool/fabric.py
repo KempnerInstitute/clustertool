@@ -282,9 +282,17 @@ _ERROR_COUNTERS = frozenset(
         "local_link_integrity_errors",
         "excessive_buffer_overrun_errors",
         "VL15_dropped",
-        "port_xmit_wait",
     }
 )
+
+_CONGESTION_COUNTERS = frozenset({"port_xmit_wait"})
+"""Counters that grow on a healthy fabric under load.
+
+port_xmit_wait counts ticks the port had data to send but no credits to send it,
+so it rises with congestion, not with faults. It reads in the billions on a busy
+node whose error counters are all zero, which is why a change in it is reported
+but is not a fault.
+"""
 
 
 def counters_by_port(snapshot: dict) -> dict[str, dict]:
@@ -316,7 +324,8 @@ def counter_deltas(before: dict, after: dict) -> tuple[list[tuple], bool]:
     than treated as zero, which would turn an unreadable baseline into a
     full-magnitude error. An error counter that went backwards was reset
     between the snapshots, so its whole after value is new and unaccounted for;
-    that counts as an error rather than as no growth.
+    that counts as an error rather than as no growth. A congestion counter is
+    listed when it moves but never marked an error.
     """
     a = counters_by_port(before)
     b = counters_by_port(after)

@@ -10,8 +10,8 @@ Probe the local node's GPUs for hardware health (via `nvidia-smi`).
 Reports a tiered OK/WARN/FAIL verdict per GPU and for the node, from ECC and
 row-remap state, clock throttling, and PCIe/NVLink error counters. Read-only and
 hardware-only; for utilization and profiling use `jobs scope`. Run it on a GPU
-node, for example inside an salloc or srun. The exit code is 0 OK, 1 WARN, 2
-FAIL, 3 probe error, so it slots into a health cron or CI check.
+node, for example inside an salloc or srun. The exit code is 0 OK, 1 WARN, 3
+probe error, 4 FAIL, so it slots into a health cron or CI check. 2 is unused throughout the diagnostics, since click exits 2 on a usage error.
 
 **Use cases**
 - Confirm a node's GPUs are healthy before or after a large run.
@@ -39,8 +39,8 @@ only staff can reach the whole partition and an ordinary user sees every host
 unreachable.
 
 Exit codes: 0 every reachable host has all InfiniBand ports ACTIVE, 1 some hosts
-were unreachable or have no InfiniBand ports, 2 at least one port is not ACTIVE,
-3 a partition does not exist.
+were unreachable or have no InfiniBand ports, 3 a partition does not exist, 4 at
+least one port is not ACTIVE. 2 is unused throughout the diagnostics, since click exits 2 on a usage error.
 
 **Use cases**
 - Find nodes with a downed IB link before scheduling a large job.
@@ -57,7 +57,7 @@ Check GPU-to-IB-NIC NUMA affinity (via `nvidia-smi topo -m`).
 Each GPU's best link to an InfiniBand NIC should be `NODE`-level or closer; a
 `SYS` link (across the CPU interconnect) costs 30-50% of cross-node bandwidth.
 Run it on a GPU node. The exit code is 0 all NODE or better, 1 a GPU crosses
-NUMA (WARN), 2 a GPU reaches no NIC (FAIL), 3 probe or parse error.
+NUMA (WARN), 3 probe or parse error, 4 a GPU reaches no NIC (FAIL). 2 is unused throughout the diagnostics, since click exits 2 on a usage error.
 
 **Use cases**
 - Confirm every GPU has a same-NUMA path to an IB NIC before a distributed run.
@@ -73,8 +73,8 @@ Diff two `ib-snapshot` files for InfiniBand error-counter growth.
 Compares the per-port counters in a BEFORE and AFTER snapshot (bracket a run with
 two `diag ib-snapshot` captures). Benign traffic counters are shown but ignored;
 growth on an error-class counter (symbol errors, discards, link recoveries, ...)
-means the fabric hiccupped under load. The exit code is 0 no error growth, 2 an
-error-class counter advanced, 3 a file could not be read.
+means the fabric hiccupped under load. The exit code is 0 no error growth, 3 a
+file could not be read, 4 an error-class counter advanced. 2 is unused throughout the diagnostics, since click exits 2 on a usage error.
 
 **Use cases**
 - Confirm a benchmark did not degrade the fabric.
@@ -117,8 +117,8 @@ Diffs the current snapshot (a fresh probe, or `--current FILE`) against the
 GOLDEN snapshot. Identity fields are compared (GPU inventory, HCA port state and
 rate, netdev mapping, topology); volatile fields (counters, temps) are ignored.
 Driver, kernel, and CUDA changes are informational and count as drift only with
-`--strict`. Bless a baseline with `--save-golden`. The exit code is 0 match, 2
-drift, 3 setup error.
+`--strict`. Bless a baseline with `--save-golden`. The exit code is 0 match, 3
+setup error, 4 drift. 2 is unused throughout the diagnostics, since click exits 2 on a usage error.
 
 **Use cases**
 - Detect a swapped or downgraded HCA, or a changed link rate, on a node.
@@ -141,8 +141,8 @@ drop its page cache, and times create/stat/delete on a batch of small files,
 against a scratch subdirectory of the target. Where the cache cannot be dropped
 the report says so, and the read figure is then memory rather than storage. Run it on a compute node (wrap in `srun`) to probe
 from there. Set `--min-write`, `--min-read`, or `--max-meta-ms` to turn it into a
-pass/fail gate. The exit code is 0 report or pass, 2 a gate missed, 3 setup or IO
-error.
+pass/fail gate. The exit code is 0 report or pass, 3 setup or IO error, 4 a gate
+missed. 2 is unused throughout the diagnostics, since click exits 2 on a usage error.
 
 **Use cases**
 - Spot-check whether a filesystem is responsive from a node.

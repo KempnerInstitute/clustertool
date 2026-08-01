@@ -2261,7 +2261,7 @@ def test_diag_ib(monkeypatch):
         _fake_ib_probe({"n2": (0, "mlx5_0/ports/1 1: DOWN\n" + _IB_OK, "")}),
     )
     result = CliRunner().invoke(main, ["diag", "ib", "kempner_h100"])
-    assert result.exit_code == 2
+    assert result.exit_code == 4
     assert "n2" in result.output
     assert "mlx5_0/ports/1" in result.output
     assert "1 down, 2 ok" in result.output
@@ -2690,10 +2690,10 @@ def test_diag_gpu_health_warn_exits_1(tmp_path):
     assert "node verdict: WARN" in result.output
 
 
-def test_diag_gpu_health_fail_exits_2(tmp_path):
+def test_diag_gpu_health_fail_exits_4(tmp_path):
     path = _write_capture(tmp_path, _smi_xml(_gpu(vol_unc=3)))
     result = CliRunner().invoke(main, ["diag", "gpu-health", "--from-xml", path])
-    assert result.exit_code == 2
+    assert result.exit_code == 4
     assert "node verdict: FAIL (GPU 0)" in result.output
 
 
@@ -3274,7 +3274,7 @@ def test_diag_ib_affinity_warn(monkeypatch):
 def test_diag_ib_affinity_fail(monkeypatch):
     monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, _ib_topo("X"), ""))
     result = CliRunner().invoke(main, ["diag", "ib-affinity"])
-    assert result.exit_code == 2
+    assert result.exit_code == 4
     assert "FAIL" in result.output
 
 
@@ -3333,7 +3333,7 @@ def test_diag_ib_counters_error(tmp_path):
     before = _counter_file(tmp_path, "b.json", 0)
     after = _counter_file(tmp_path, "a.json", 7)
     result = CliRunner().invoke(main, ["diag", "ib-counters", before, after])
-    assert result.exit_code == 2
+    assert result.exit_code == 4
     assert "ERROR" in result.output and "FAIL" in result.output
 
 
@@ -3372,7 +3372,7 @@ def test_diag_ib_verify_drift(tmp_path):
     golden = _verify_file(tmp_path, "g.json", {**base, "gpus": [{"index": 0, "name": "A100"}]})
     current = _verify_file(tmp_path, "c.json", {**base, "gpus": [{"index": 0, "name": "H100"}]})
     result = CliRunner().invoke(main, ["diag", "ib-verify", golden, "--current", current])
-    assert result.exit_code == 2
+    assert result.exit_code == 4
     assert "DRIFT" in result.output
 
 
@@ -3729,7 +3729,7 @@ def test_ib_counters_renders_an_unreadable_counter(tmp_path):
         tmp_path, _counter_snap(symbol_error=None), _counter_snap(symbol_error=5)
     )
     result = CliRunner().invoke(main, ["diag", "ib-counters", before, after])
-    assert result.exit_code == 2
+    assert result.exit_code == 4
     assert "UNREADABLE" in result.output
     assert "Traceback" not in result.output
 
@@ -3740,7 +3740,7 @@ def test_ib_counters_flags_a_reset(tmp_path):
         tmp_path, _counter_snap(symbol_error=900), _counter_snap(symbol_error=3)
     )
     result = CliRunner().invoke(main, ["diag", "ib-counters", before, after])
-    assert result.exit_code == 2
+    assert result.exit_code == 4
     assert "RESET" in result.output
 
 
@@ -3869,3 +3869,74 @@ def test_status_bucket_keeps_the_reason_for_an_already_unavailable_node():
     """drain and resv say the same thing about availability, and name the cause."""
     assert slurm._status_bucket("drain*") == "drain"
     assert slurm._status_bucket("resv*") == "resv"
+
+
+def test_diag_reserves_exit_2_for_usage_errors():
+    """A caller has to tell a mistyped command from a fault the probe found."""
+    for args in (
+        ["diag", "ib", "--no-such-flag"],
+        ["diag", "gpu-health", "--no-such-flag"],
+        ["diag", "io-probe", "--no-such-flag"],
+        ["diag", "ib-counters"],
+    ):
+        result = CliRunner().invoke(main, args)
+        assert result.exit_code == 2, args
+
+
+def test_ib_affinity_separates_corrupt_json_from_the_wrong_shape(tmp_path):
+    """A truncated file and a valid file of the wrong kind need different fixes."""
+    corrupt = tmp_path / "corrupt.json"
+    corrupt.write_text("{not json")
+    result = CliRunner().invoke(main, ["diag", "ib-affinity", "--snapshot", str(corrupt)])
+    assert result.exit_code == 3
+    assert "not valid JSON" in result.output
+
+    wrong = tmp_path / "wrong.json"
+    wrong.write_text('{"a": 1}')
+    result = CliRunner().invoke(main, ["diag", "ib-affinity", "--snapshot", str(wrong)])
+    assert result.exit_code == 3
+    assert "not an ib-snapshot file" in result.output
+
+
+def test_ib_counters_names_the_file_it_could_not_read(tmp_path):
+    """With two snapshot arguments, the error has to say which one failed."""
+    good = tmp_path / "good.json"
+    good.write_text('{"ib": {"hcas": []}}')
+    corrupt = tmp_path / "corrupt.json"
+    corrupt.write_text("{not json")
+
+    result = CliRunner().invoke(main, ["diag", "ib-counters", str(good), str(corrupt)])
+    assert result.exit_code == 3
+    assert "AFTER" in result.output and "corrupt.json" in result.output
+
+    result = CliRunner().invoke(main, ["diag", "ib-counters", str(corrupt), str(good)])
+    assert result.exit_code == 3
+    assert "BEFORE" in result.output and "corrupt.json" in result.output
+
+
+def test_counter_deltas_does_not_fault_a_congestion_counter():
+    """port_xmit_wait reads in the billions on a healthy busy node."""
+
+    def snap(wait, symbol=0):
+        return {
+            "ib": {
+                "hcas": [
+                    {
+                        "name": "mlx5_0",
+                        "ports": [
+                            {
+                                "port": 1,
+                                "link_layer": "InfiniBand",
+                                "counters": {"port_xmit_wait": wait, "symbol_error": symbol},
+                            }
+                        ],
+                    }
+                ]
+            }
+        }
+
+    rows, any_error = fabric.counter_deltas(snap(1000), snap(9_000_000))
+    assert any_error is False
+    assert any(row[1] == "port_xmit_wait" for row in rows)
+    _, any_error = fabric.counter_deltas(snap(1000), snap(9_000_000, symbol=3))
+    assert any_error is True

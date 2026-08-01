@@ -38,7 +38,8 @@ def ib_verify(
     and rate, netdev mapping, topology); volatile fields (counters, temps) are
     ignored. Driver, kernel, and CUDA changes are informational and count as
     drift only with --strict. Bless a baseline with --save-golden. The exit code
-    is 0 match, 2 drift, 3 setup error.
+    is 0 match, 3 setup error, 4 drift. 2 is unused throughout the diagnostics,
+    since click exits 2 on a usage error.
 
     \b
     Use cases:
@@ -93,4 +94,4 @@ def ib_verify(
     else:
         click.echo(fabric.render_drift(findings, strict))
     drift = findings["hardware"] or (strict and findings["informational"])
-    ctx.exit(2 if drift else 0)
+    ctx.exit(4 if drift else 0)

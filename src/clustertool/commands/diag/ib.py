@@ -93,8 +93,9 @@ def ib(ctx: click.Context, partitions: tuple[str, ...], parallel: int) -> None:
     Exit codes:
       0  every reachable host has all InfiniBand ports ACTIVE
       1  some hosts were unreachable, or have no InfiniBand ports
-      2  at least one host has an InfiniBand port that is not ACTIVE
       3  a partition does not exist
+      4  at least one host has an InfiniBand port that is not ACTIVE
+    2 is unused throughout the diagnostics, since click exits 2 on a usage error.
 
     \b
     Use cases:
@@ -145,7 +146,7 @@ def ib(ctx: click.Context, partitions: tuple[str, ...], parallel: int) -> None:
         click.echo()
 
         if down:
-            worst = max(worst, 2)
+            worst = max(worst, 4)
         elif unreachable or no_ib:
             worst = max(worst, 1)
     ctx.exit(worst)

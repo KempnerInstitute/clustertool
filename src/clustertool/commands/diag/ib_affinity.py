@@ -25,7 +25,8 @@ def ib_affinity(ctx: click.Context, snapshot: str | None) -> None:
     Each GPU's best link to an InfiniBand NIC should be NODE-level or closer; a
     SYS link (across the CPU interconnect) costs 30-50% of cross-node bandwidth.
     Run it on a GPU node. The exit code is 0 all NODE or better, 1 a GPU crosses
-    NUMA, 2 a GPU reaches no NIC, 3 probe or parse error.
+    NUMA, 3 probe or parse error, 4 a GPU reaches no NIC. 2 is unused throughout
+    the diagnostics, since click exits 2 on a usage error.
 
     \b
     Use cases:
@@ -42,9 +43,13 @@ def ib_affinity(ctx: click.Context, snapshot: str | None) -> None:
         except OSError as exc:
             click.echo(f"ib-affinity: error: cannot read {snapshot}: {exc}", err=True)
             ctx.exit(3)
-        except (ValueError, KeyError, TypeError):
+        except json.JSONDecodeError as exc:
+            click.echo(f"ib-affinity: error: {snapshot} is not valid JSON: {exc}", err=True)
+            ctx.exit(3)
+        except (KeyError, TypeError):
             click.echo(
-                f"ib-affinity: error: {snapshot} is not an ib-snapshot file (no topology.raw)",
+                f"ib-affinity: error: {snapshot} is valid JSON but not an ib-snapshot "
+                "file (no topology.raw)",
                 err=True,
             )
             ctx.exit(3)
@@ -87,7 +92,7 @@ def ib_affinity(ctx: click.Context, snapshot: str | None) -> None:
 
     if fails:
         click.echo(f"\nFAIL: {fails} GPU(s) reach no NIC")
-        ctx.exit(2)
+        ctx.exit(4)
     if warns:
         click.echo(
             f"\nWARN: {warns} GPU(s) cross a NUMA boundary (expect 30-50% cross-node BW loss)"

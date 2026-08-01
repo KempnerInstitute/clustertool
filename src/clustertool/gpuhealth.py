@@ -25,7 +25,7 @@ NA = "n/a"
 EXIT_ERROR = 3
 
 _SEVERITY = {NA: 0, OK: 0, WARN: 1, FAIL: 2}
-_EXIT_FOR = {OK: 0, WARN: 1, FAIL: 2}
+_EXIT_FOR = {OK: 0, WARN: 1, FAIL: 4}
 
 
 class ProbeError(RuntimeError):
@@ -398,7 +398,12 @@ def render_json(result):
 
 
 def exit_code(verdict):
-    """Return the process exit status for a node verdict (0 OK, 1 WARN, 2 FAIL)."""
+    """Return the process exit status for a node verdict.
+
+    0 OK, 1 WARN, 4 FAIL. 2 is skipped throughout the diagnostics because click
+    exits 2 on a usage error, which a caller must be able to tell from a fault
+    the probe actually found.
+    """
     return _EXIT_FOR[verdict]
 
 
