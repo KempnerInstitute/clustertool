@@ -1,5 +1,6 @@
 """jobs new command."""
 
+import re
 from pathlib import Path
 
 import click
@@ -48,6 +49,23 @@ def _build_script(
         "",
     ]
     return "\n".join(lines) + "\n"
+
+
+_DIRECTIVE_VALUE = re.compile(r"^[A-Za-z0-9._+:@-]+$")
+
+
+def _check_value(option: str, value: str) -> None:
+    """Reject a value sbatch cannot read as one directive argument.
+
+    Per man sbatch a #SBATCH line is read directly by Slurm, so a space ends the
+    argument and a newline both injects a script line and stops every later
+    directive from being processed.
+    """
+    if not _DIRECTIVE_VALUE.match(value or ""):
+        raise click.ClickException(
+            f"{option} must be a single word of letters, digits, and . _ + : @ - ; "
+            f"Slurm reads a #SBATCH line directly, so {value!r} would not survive it"
+        )
 
 
 @keywords("submit", "sbatch", "template", "generate", "wizard", "create")
@@ -131,12 +149,20 @@ def new(
                        already exists.
       --submit         Submit the script with sbatch.
     """
-    if not slurm.GPU_TYPE_PARTITION:
-        raise click.ClickException(
-            "no GPU types are configured for this site; set [gpu_types] in your site "
-            "config (see docs/configuration.md). This command writes GPU jobs only"
-        )
+    _check_value("-J/--name", name)
+    _check_value("-A/--account", account)
+    _check_value("-t/--time", time_limit)
     partition = slurm.GPU_TYPE_PARTITION[gpu_type.lower()]
+    ceiling_cpu, ceiling_mem = slurm.PARTITION_LIMITS.get(partition, (None, None))
+    for option, given, ceiling, unit in (
+        ("--cpus-per-gpu", cpus_per_gpu, ceiling_cpu, "CPU"),
+        ("--mem-per-gpu", mem_per_gpu, ceiling_mem, "MiB"),
+    ):
+        if given is not None and ceiling and given > ceiling:
+            raise click.ClickException(
+                f"{option} {given} is above the {ceiling} {unit} per GPU that "
+                f"{partition} allows, so the job would be rejected at submission"
+            )
     if not slurm.PARTITION_LIMITS.get(partition) and cpus_per_gpu is None and mem_per_gpu is None:
         click.echo(
             f"note: no per-GPU policy is configured for {partition}, so the script "

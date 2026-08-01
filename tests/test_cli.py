@@ -158,6 +158,8 @@ def test_gpu_status_reports_the_configured_partition(monkeypatch):
 def test_gpu_status_empty_names_the_configured_partition(monkeypatch):
     monkeypatch.setattr(site, "requeue_partition", lambda: "gpu_requeue")
     monkeypatch.setattr(slurm, "gpu_node_status", lambda: [])
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, "", ""))
+    monkeypatch.setattr(process, "run", lambda cmd, input_text=None: "")
     result = CliRunner().invoke(main, ["gpu", "status"])
     assert result.exit_code == 0
     assert "No GPU nodes found in gpu_requeue." in result.output
@@ -1021,6 +1023,7 @@ def test_account_fairshare_self(monkeypatch):
 
 def test_account_fairshare_account(monkeypatch):
     calls = _capture_stream(monkeypatch)
+    monkeypatch.setattr(slurm, "account_exists", lambda a: True)
     result = CliRunner().invoke(main, ["account", "fairshare", "kempner_dev"])
     assert result.exit_code == 0
     assert calls[0] == ["sshare", "--account=kempner_dev", "-a", "-m"]
@@ -1052,6 +1055,8 @@ def test_account_usage_account_and_user_error(monkeypatch):
 
 def test_account_limits(monkeypatch):
     calls = _capture_stream(monkeypatch)
+    monkeypatch.setattr(slurm, "account_exists", lambda a: True)
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, "normal\n", ""))
     result = CliRunner().invoke(main, ["account", "limits", "kempner_dev"])
     assert result.exit_code == 0
     assert calls[0][:4] == ["sacctmgr", "show", "assoc", "account=kempner_dev"]
@@ -1252,6 +1257,7 @@ def test_gpu_session_extra_args(monkeypatch):
 
 def test_nodes_down(monkeypatch):
     calls = _capture_stream(monkeypatch)
+    monkeypatch.setattr(qos, "partition_exists", lambda p, cluster=None: True)
     result = CliRunner().invoke(main, ["nodes", "down", "-p", "kempner"])
     assert result.exit_code == 0
     assert calls[0] == ["sinfo", "-R", "-o", "%60E %12u %19H %N", "-p", "kempner"]
@@ -1329,16 +1335,66 @@ def test_nodes_reservations(monkeypatch):
     assert calls[0] == ["scontrol", "show", "reservation"]
 
 
+_SSTAT_ROWS = (
+    "JobID                    AveCPU     AveRSS     MaxRSS  AveVMSize   NTasks \n"
+    "-------------------- ---------- ---------- ---------- ---------- -------- \n"
+    "123.extern           213503982+                                         1 \n"
+    "123.batch              00:00:01       676K       676K          0        1 \n"
+)
+
+
 def test_jobs_top(monkeypatch):
+    calls = []
     monkeypatch.setattr(slurm, "job_accounting", lambda j: {"state": "RUNNING"})
-    calls = _capture_stream(monkeypatch)
+    monkeypatch.setattr(
+        process, "probe", lambda cmd, timeout=None: calls.append(cmd) or (0, _SSTAT_ROWS, "")
+    )
     result = CliRunner().invoke(main, ["jobs", "top", "123"])
     assert result.exit_code == 0
     assert calls[0][:4] == ["sstat", "-a", "-j", "123"]
+    assert "123.batch" in result.output
+
+
+def test_jobs_top_drops_the_extern_sentinel(monkeypatch):
+    """The extern step carries Slurm's unset AveCPU value, not a real figure."""
+    monkeypatch.setattr(slurm, "job_accounting", lambda j: {"state": "RUNNING"})
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, _SSTAT_ROWS, ""))
+    result = CliRunner().invoke(main, ["jobs", "top", "123"])
+    assert "213503982" not in result.output
+    assert ".extern" not in result.output
+
+
+def test_jobs_top_refuses_a_job_whose_steps_it_cannot_read(monkeypatch):
+    """sstat exits 0 after failing, which would leave a bare header behind."""
+    header = "\n".join(_SSTAT_ROWS.splitlines()[:2]) + "\n"
+    monkeypatch.setattr(slurm, "job_accounting", lambda j: {"state": "RUNNING"})
+    monkeypatch.setattr(
+        process,
+        "probe",
+        lambda cmd, timeout=None: (0, header, "sstat: error: ... rc = Invalid user id"),
+    )
+    result = CliRunner().invoke(main, ["jobs", "top", "123"])
+    assert result.exit_code != 0
+    assert "no live step data" in result.output
+
+
+def test_jobs_top_reads_the_named_array_element(monkeypatch):
+    """sstat matches an element by its own job id, not the array's."""
+    calls = []
+    monkeypatch.setattr(
+        slurm, "job_accounting", lambda j: {"state": "RUNNING", "first_element": "7_3"}
+    )
+    monkeypatch.setattr(
+        process, "probe", lambda cmd, timeout=None: calls.append(cmd) or (0, _SSTAT_ROWS, "")
+    )
+    result = CliRunner().invoke(main, ["jobs", "top", "7_3"])
+    assert result.exit_code == 0
+    assert calls[0][3] == "7_3"
 
 
 def test_jobs_queue(monkeypatch):
     calls = _capture_stream(monkeypatch)
+    monkeypatch.setattr(slurm, "partition_exists", lambda p: True)
     result = CliRunner().invoke(main, ["jobs", "queue", "kempner_h100"])
     assert result.exit_code == 0
     assert calls[0] == ["showq", "-o", "-p", "kempner_h100"]
@@ -1744,6 +1800,7 @@ def test_account_qos_default(monkeypatch):
 def test_account_qos_filter(monkeypatch):
     out = "Name Priority\n---- ----\nnormal 0\nkempner_h100_priority 0\n"
     monkeypatch.setattr(process, "run", lambda cmd, input_text=None: out)
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, out, ""))
     result = CliRunner().invoke(main, ["account", "qos", "-f", "kempner"])
     assert result.exit_code == 0
     assert "kempner_h100_priority" in result.output
