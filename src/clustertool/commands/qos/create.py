@@ -21,6 +21,7 @@ def create(
     group_gpu: int | None,
     job_gpu: int | None,
     jobs_per_user: int | None,
+    account_gpu: int | None,
     execute: bool,
     yes: bool,
 ) -> None:
@@ -37,11 +38,14 @@ def create(
     \b
     Inputs:
       QOS_NAME       Name of the QoS to create or update.
-      -g/-n/-G/-j/-J Limit caps (see each option; -1 clears).
+      -g/-n/-A/-G/-j/-J
+                     Limit caps (see each option; -1 clears).
       -x, --execute  Apply the change instead of previewing it.
       -y, --yes      Skip the confirmation prompt.
     """
-    specs = _limits.resolve_specs(gpu_per_user, node_per_user, group_gpu, job_gpu, jobs_per_user)
+    specs = _limits.resolve_specs(
+        gpu_per_user, node_per_user, group_gpu, job_gpu, jobs_per_user, account_gpu
+    )
     if not qoslib.valid_name(qos_name):
         raise click.ClickException(
             f"invalid QoS name {qos_name!r}: use letters, digits, and . _ - only"

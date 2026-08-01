@@ -232,14 +232,20 @@ def test_uncovered_holders_flags_another_cluster(monkeypatch):
 
 def test_build_limit_specs_all():
     specs = qos.build_limit_specs(
-        gpu_per_user=4, node_per_user=1, group_gpu=8, job_gpu=2, jobs_per_user=12
+        gpu_per_user=4, node_per_user=1, group_gpu=8, job_gpu=2, jobs_per_user=12, account_gpu=96
     )
     assert specs == [
         "MaxTRESPU=node=1,gres/gpu=4",
+        "MaxTRESPA=gres/gpu=96",
         "GrpTRES=gres/gpu=8",
         "MaxTRES=gres/gpu=2",
         "MaxJobsPU=12",
     ]
+
+
+def test_build_limit_specs_account_cap_only():
+    """MaxTRESPA is the per-account cap gpu usage reports against."""
+    assert qos.build_limit_specs(account_gpu=96) == ["MaxTRESPA=gres/gpu=96"]
 
 
 def test_build_limit_specs_gpu_only():

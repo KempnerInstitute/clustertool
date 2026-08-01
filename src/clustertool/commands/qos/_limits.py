@@ -8,7 +8,7 @@ from clustertool import qos as qoslib
 
 
 def limit_options(func: Callable) -> Callable:
-    """Attach the five QoS limit options (-g/-n/-G/-j/-J) to a command."""
+    """Attach the six QoS limit options (-g/-n/-A/-G/-j/-J) to a command."""
     options = [
         click.option(
             "-J",
@@ -23,6 +23,13 @@ def limit_options(func: Callable) -> Callable:
             type=int,
             default=None,
             help="Per-job GPU cap (MaxTRES gres/gpu); -1 clears.",
+        ),
+        click.option(
+            "-A",
+            "--account-gpu",
+            type=int,
+            default=None,
+            help="Per-account GPU cap (MaxTRESPA gres/gpu); -1 clears.",
         ),
         click.option(
             "-G",
@@ -57,13 +64,14 @@ def resolve_specs(
     group_gpu: int | None,
     job_gpu: int | None,
     jobs_per_user: int | None,
+    account_gpu: int | None = None,
 ) -> list[str]:
     """Validate the limit flags and build the sacctmgr set specs.
 
     Raises UsageError when no limit is given or a value is neither a positive
     integer nor -1 (the clear sentinel).
     """
-    values = [gpu_per_user, node_per_user, group_gpu, job_gpu, jobs_per_user]
+    values = [gpu_per_user, node_per_user, group_gpu, job_gpu, jobs_per_user, account_gpu]
     if all(value is None for value in values):
         raise click.UsageError("give at least one limit (for example -g 4)")
     for value in values:
@@ -75,4 +83,5 @@ def resolve_specs(
         group_gpu=group_gpu,
         job_gpu=job_gpu,
         jobs_per_user=jobs_per_user,
+        account_gpu=account_gpu,
     )

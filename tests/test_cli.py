@@ -2230,6 +2230,25 @@ def test_qos_create_execute_add_then_modify(monkeypatch):
     ]
 
 
+def test_qos_modify_per_user_only_clears_the_account_cap(monkeypatch):
+    """MaxTRESPA is a per-account cap, so leaving it set contradicts the flag."""
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
+    result = CliRunner().invoke(main, ["qos", "modify", "kemp", "--per-user-only"])
+    assert result.exit_code == 0
+    assert "MaxTRESPA=gres/gpu=-1" in result.output
+    assert "GrpTRES=gres/gpu=-1" in result.output
+    assert "MaxTRES=gres/gpu=-1" in result.output
+
+
+def test_qos_modify_sets_the_account_cap(monkeypatch):
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
+    result = CliRunner().invoke(main, ["qos", "modify", "kemp", "-A", "96"])
+    assert result.exit_code == 0
+    assert "MaxTRESPA=gres/gpu=96" in result.output
+
+
 def test_qos_modify_explicit_clear(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
     monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)

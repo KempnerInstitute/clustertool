@@ -15,7 +15,7 @@ from clustertool.grouping import admin, keywords
 @click.option(
     "--per-user-only",
     is_flag=True,
-    help="Also clear the group and per-job GPU caps, leaving only per-user caps.",
+    help="Also clear the per-account, group, and per-job GPU caps.",
 )
 @click.option("-x", "--execute", is_flag=True, help="Apply the change (default: dry run).")
 @click.option("-y", "--yes", is_flag=True, help="Skip the confirmation prompt.")
@@ -26,6 +26,7 @@ def modify(
     group_gpu: int | None,
     job_gpu: int | None,
     jobs_per_user: int | None,
+    account_gpu: int | None,
     per_user_only: bool,
     execute: bool,
     yes: bool,
@@ -34,19 +35,22 @@ def modify(
 
     Dry run by default: prints the sacctmgr command and changes nothing. Re-run
     with --execute to apply, confirming unless --yes. Only the limits you pass
-    change; a value of -1 clears one. With --per-user-only the group and per-job
-    GPU caps are cleared so only the per-user caps remain. Slurm or system admin only.
+    change; a value of -1 clears one. With --per-user-only the per-account, group,
+    and per-job GPU caps are all cleared, so only the per-user caps remain.
+    Slurm or system admin only.
 
     \b
     Use cases:
       - Raise or lower a QoS's per-user GPU cap.
       - Reduce a QoS to per-user caps only with --per-user-only.
+      - Set the per-account GPU cap that 'gpu usage' reports against, with -A.
 
     \b
     Inputs:
       QOS_NAME        Name of an existing QoS.
-      -g/-n/-G/-j/-J  Limit caps (see each option; -1 clears).
-      --per-user-only Also clear the group and per-job GPU caps.
+      -g/-n/-A/-G/-j/-J
+                      Limit caps (see each option; -1 clears).
+      --per-user-only Also clear the per-account, group, and per-job GPU caps.
       -x, --execute   Apply the change instead of previewing it.
       -y, --yes       Skip the confirmation prompt.
     """
@@ -55,7 +59,11 @@ def modify(
             group_gpu = -1
         if job_gpu is None:
             job_gpu = -1
-    specs = _limits.resolve_specs(gpu_per_user, node_per_user, group_gpu, job_gpu, jobs_per_user)
+        if account_gpu is None:
+            account_gpu = -1
+    specs = _limits.resolve_specs(
+        gpu_per_user, node_per_user, group_gpu, job_gpu, jobs_per_user, account_gpu
+    )
     if not qoslib.qos_exists(qos_name):
         raise click.ClickException(f"QoS {qos_name} does not exist; use 'qos create' to add it")
     plan = [["sacctmgr", "-i", "modify", "qos", qos_name, "set", *specs]]

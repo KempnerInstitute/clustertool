@@ -412,6 +412,7 @@ def build_limit_specs(
     group_gpu: int | None = None,
     job_gpu: int | None = None,
     jobs_per_user: int | None = None,
+    account_gpu: int | None = None,
 ) -> list[str]:
     """Build the sacctmgr `set` specs for QoS limits, in the tool's fixed order.
 
@@ -426,6 +427,8 @@ def build_limit_specs(
         per_user.append(f"gres/gpu={gpu_per_user}")
     if per_user:
         specs.append("MaxTRESPU=" + ",".join(per_user))
+    if account_gpu is not None:
+        specs.append(f"MaxTRESPA=gres/gpu={account_gpu}")
     if group_gpu is not None:
         specs.append(f"GrpTRES=gres/gpu={group_gpu}")
     if job_gpu is not None:

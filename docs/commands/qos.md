@@ -49,6 +49,9 @@ Per-user node and GPU caps merge into one `MaxTRESPU` limit.
 - `QOS_NAME`: Name of the QoS to create or update.
 - `-g, --gpu-per-user`: Per-user GPU cap (`MaxTRESPU gres/gpu`).
 - `-n, --node-per-user`: Per-user node cap (`MaxTRESPU node`).
+- `-A, --account-gpu`: Per-account GPU cap (`MaxTRESPA gres/gpu`). This is the
+  cap `gpu usage` reports each account against when the QoS is the site's base
+  QoS.
 - `-G, --group-gpu`: Total GPU cap for the QoS (`GrpTRES gres/gpu`).
 - `-j, --job-gpu`: Per-job GPU cap (`MaxTRES gres/gpu`).
 - `-J, --jobs-per-user`: Per-user running-job cap (`MaxJobsPU`).
@@ -60,17 +63,19 @@ Per-user node and GPU caps merge into one `MaxTRESPU` limit.
 Change an existing QoS's limits (via `sacctmgr`). Slurm or system admin only.
 
 Dry run by default. Only the limits you pass change; a value of `-1` clears one.
-With `--per-user-only` the group and per-job GPU caps are cleared so only the
-per-user caps remain. Errors if the QoS does not exist (use `qos create`).
+With `--per-user-only` the per-account, group, and per-job GPU caps are all
+cleared, so only the per-user caps remain. Errors if the QoS does not exist (use
+`qos create`).
 
 **Use cases**
 - Raise or lower a QoS's per-user GPU cap.
 - Reduce a QoS to per-user caps only.
+- Set the per-account GPU cap that `gpu usage` reports against, with `-A`.
 
 **Inputs**
 - `QOS_NAME`: Name of an existing QoS.
-- `-g/-n/-G/-j/-J`: Limit caps (as for `qos create`; `-1` clears).
-- `--per-user-only`: Also clear the group and per-job GPU caps.
+- `-g/-n/-A/-G/-j/-J`: Limit caps (as for `qos create`; `-1` clears).
+- `--per-user-only`: Also clear the per-account, group, and per-job GPU caps.
 - `-x, --execute`: Apply the change instead of previewing it.
 - `-y, --yes`: Skip the confirmation prompt.
 
