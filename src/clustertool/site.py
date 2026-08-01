@@ -214,8 +214,15 @@ def tool(key: str) -> str:
 
 
 def tool_available(key: str) -> bool:
-    """Return True if the configured binary for a site tool is on PATH."""
-    return shutil.which(tool(key)) is not None
+    """Return True if the configured binary is on the PATH the child will get.
+
+    Resolved against process._child_env()'s PATH rather than this process's,
+    because that environment drops clustertool's own virtualenv bin. A tool
+    installed there would otherwise pass this check and then fail at exec.
+    """
+    from clustertool import process
+
+    return shutil.which(tool(key), path=process.child_env()["PATH"]) is not None
 
 
 def disabled_commands() -> list[str]:

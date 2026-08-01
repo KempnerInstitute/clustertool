@@ -1692,6 +1692,9 @@ def test_gpu_util_rejects_an_unknown_partition(monkeypatch):
 
 def test_nodes_resume_explicit(monkeypatch):
     calls = _capture_stream(monkeypatch)
+    monkeypatch.setattr(
+        slurm, "resumable_nodes_by_name", lambda names: {names[0]: (names[0], "DOWN", "")}
+    )
     result = CliRunner().invoke(main, ["nodes", "resume", "n1", "n2", "-y"])
     assert result.exit_code == 0
     assert calls[0] == ["scontrol", "update", "NodeName=n1,n2", "State=RESUME"]
@@ -1711,10 +1714,11 @@ def test_nodes_resume_partition(monkeypatch):
 def test_nodes_resume_partition_with_nothing_to_do(monkeypatch):
     """Giving --partition is not a usage error just because the partition is healthy."""
     monkeypatch.setattr(slurm, "resumable_nodes", lambda p: [])
+    monkeypatch.setattr(slurm, "partition_exists", lambda p: True)
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["nodes", "resume", "-p", "bigmem", "-y"])
     assert result.exit_code == 1
-    assert "no drained, down or failing nodes in 'bigmem'" in result.output
+    assert "no drained, down or invalid-registration nodes in 'bigmem'" in result.output
     assert calls == []
 
 
@@ -4395,3 +4399,41 @@ def test_jobs_show_refuses_forms_scontrol_rejects(monkeypatch):
         result = CliRunner().invoke(main, ["jobs", "show", bad])
         assert result.exit_code != 0, bad
     assert calls == []
+
+
+def test_nodes_resume_expands_a_hostlist(monkeypatch):
+    """scontrol expands node[1-4], so the count must be of nodes, not arguments."""
+    calls = _capture_stream(monkeypatch)
+    monkeypatch.setattr(
+        slurm,
+        "resumable_nodes_by_name",
+        lambda names: {"n1": ("n1", "DOWN", "a"), "n2": ("n2", "DOWN+DRAIN", "b")},
+    )
+    result = CliRunner().invoke(main, ["nodes", "resume", "n[1-2]"], input="n\n")
+    assert "Resume 2 node(s)" in result.output
+    assert "n1" in result.output and "n2" in result.output
+    assert calls == []
+
+
+def test_nodes_resume_refuses_a_name_that_resolves_to_nothing(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    monkeypatch.setattr(slurm, "resumable_nodes_by_name", lambda names: {})
+    result = CliRunner().invoke(main, ["nodes", "resume", "nope", "-y"])
+    assert result.exit_code != 0
+    assert "Slurm does not know: nope" in result.output
+    assert calls == []
+
+
+def test_nodes_resume_collapses_a_repeated_name(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    monkeypatch.setattr(slurm, "resumable_nodes_by_name", lambda names: {"n1": ("n1", "DOWN", "")})
+    result = CliRunner().invoke(main, ["nodes", "resume", "n1", "n1", "-y"])
+    assert result.exit_code == 0
+    assert calls[0] == ["scontrol", "update", "NodeName=n1", "State=RESUME"]
+
+
+def test_resumable_states_match_what_slurm_prints():
+    """Slurm prints REBOOT_REQUESTED and REBOOT_ISSUED, never a bare REBOOT."""
+    assert "REBOOT_REQUESTED" in slurm.RESUMABLE_STATES
+    assert "REBOOT_ISSUED" in slurm.RESUMABLE_STATES
+    assert "REBOOT" not in slurm.RESUMABLE_STATES

@@ -73,7 +73,13 @@ def partition_gpu_util(
     return total, unavailable, used, other, free, percent
 
 
-_RESUMABLE_STATES = frozenset({"DRAIN", "DRAINING", "DRAINED", "DOWN", "REBOOT", "INVALID_REG"})
+RESUMABLE_STATES = frozenset({"DRAIN", "DOWN", "REBOOT_REQUESTED", "REBOOT_ISSUED", "INVALID_REG"})
+"""The flags scontrol prints that State=RESUME accepts.
+
+man scontrol names REBOOT, but Slurm only ever prints REBOOT_REQUESTED or
+REBOOT_ISSUED, so a bare REBOOT would match nothing. DRAINED and DRAINING are
+sinfo's spellings; scontrol prints the DRAIN flag.
+"""
 
 
 def resumable_nodes(partition: str) -> list[tuple[str, str, str]]:
@@ -93,7 +99,7 @@ def resumable_nodes(partition: str) -> list[tuple[str, str, str]]:
             continue
         state = kv.get("State", "")
         flags = {flag.strip("*~#!%$@^-") for flag in state.upper().split("+")}
-        if flags & _RESUMABLE_STATES:
+        if flags & RESUMABLE_STATES:
             result.append((name, state, _node_reason(line)))
     return result
 
@@ -111,15 +117,26 @@ def _node_reason(line: str) -> str:
 
 
 def resumable_nodes_by_name(names: tuple[str, ...]) -> dict[str, tuple[str, str, str]]:
-    """Return {name: (name, state, reason)} for the named nodes, for those Slurm knows."""
+    """Return {name: (name, state, reason)} for the named nodes Slurm knows.
+
+    Reads scontrol for the same reason the sweep does, so both paths report the
+    same compound state rather than sinfo's collapsed %T. A name may be a
+    hostlist expression such as node[1-4], which scontrol expands, so the keys
+    are the nodes that were actually matched and not the string typed.
+    """
     if not names:
         return {}
-    out = _run(["sinfo", "-h", "-N", "-o", "%N|%T|%E", "-n", ",".join(names)])
+    code, out, err = process.probe(["scontrol", "show", "node", "-o", ",".join(names)])
+    if code != 0:
+        if "not found" in (out + err).lower() or "invalid" in (out + err).lower():
+            return {}
+        raise CommandError(f"could not read the named nodes: {err.strip() or code}")
     found = {}
     for line in out.splitlines():
-        parts = line.split("|")
-        if len(parts) == 3:
-            found[parts[0].strip()] = (parts[0].strip(), parts[1].strip(), parts[2].strip())
+        kv = _node_kv(line)
+        name = kv.get("NodeName")
+        if name:
+            found[name] = (name, kv.get("State", ""), _node_reason(line))
     return found
 
 

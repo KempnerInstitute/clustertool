@@ -12,14 +12,15 @@ from clustertool.process import CommandError
 
 _run = process.run
 
-_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]*$")
 
 
 def valid_name(name: str) -> bool:
     """Return True if a QoS name is safe to pass to sacctmgr.
 
     Rejects commas and whitespace so a stray name cannot be read as a list and
-    create more than one QoS.
+    create more than one QoS, and a leading dash so sacctmgr cannot read the name
+    as one of its own options.
     """
     return bool(_NAME_RE.match(name))
 
@@ -246,10 +247,23 @@ def jobs_using(qos_name: str, cluster: str | None = None) -> int:
     """Return how many queued or running jobs carry the QoS.
 
     Deleting a QoS that live jobs still reference leaves them pointing at a
-    definition that is gone. Raises if the query fails, so an unreachable
-    controller is never read as 'no jobs'.
+    definition that is gone. The states are named rather than left to squeue's
+    default, which per man squeue covers only pending, running and completing and
+    so would miss a suspended job that will resume still carrying the QoS. Raises
+    if the query fails, so an unreachable controller is never read as 'no jobs'.
     """
-    code, out, err = process.probe(["squeue", "-h", "-M", _cluster(cluster), "-o", "%q"])
+    code, out, err = process.probe(
+        [
+            "squeue",
+            "-h",
+            "-M",
+            _cluster(cluster),
+            "-t",
+            "pending,running,suspended,completing",
+            "-o",
+            "%q",
+        ]
+    )
     if code != 0:
         raise CommandError(f"could not check jobs using QoS {qos_name}: {err.strip() or code}")
     wanted = qos_name.lower()
@@ -353,10 +367,18 @@ def read_assoc(
     """Return (qos_csv, default_qos) for a partition-scoped association, or None.
 
     None means the association does not exist; the qos_csv may be empty when the
-    association exists but carries no QoS.
+    association exists but carries no QoS of its own.
+
+    woplimits and withrawqos ask sacctmgr for what this association sets rather
+    than what it inherits. Without them a QoS pushed down from the parent reads
+    as the association's only entry, and a revoke would then delete the whole
+    association, taking its fairshare, limits and recorded usage with it, to
+    remove a QoS it never held.
     """
     lines = _show(
         "assoc",
+        "woplimits",
+        "withrawqos",
         "where",
         f"user={user}",
         f"account={account}",

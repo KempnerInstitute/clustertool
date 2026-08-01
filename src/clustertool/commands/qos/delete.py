@@ -46,6 +46,10 @@ def delete(qos_name: str, execute: bool, yes: bool) -> None:
       -x, --execute  Apply the change instead of previewing it.
       -y, --yes      Skip the confirmation prompt.
     """
+    if not qoslib.valid_name(qos_name):
+        raise click.ClickException(
+            f"invalid QoS name {qos_name!r}: use letters, digits, and . _ - only"
+        )
     if not qoslib.qos_exists(qos_name):
         click.echo(f"QoS {qos_name} does not exist; nothing to do.")
         return

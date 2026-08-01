@@ -498,3 +498,45 @@ def test_partition_references_names_the_setting(monkeypatch):
         "locked": ["DenyQos"],
     }
     assert qos.partitions_referencing("base_caps") == ["cpu", "gpu", "locked"]
+
+
+def test_read_assoc_reads_only_what_the_association_sets(monkeypatch):
+    """A QoS pushed down from the parent is not the association's own entry."""
+    captured = {}
+
+    def fake_run(cmd, input_text=None):
+        captured["cmd"] = cmd
+        return "alice||\n"
+
+    monkeypatch.setattr(qos, "_run", fake_run)
+    assert qos.read_assoc("alice", "lab", "part", cluster="c") == ("", "")
+    assert "woplimits" in captured["cmd"]
+    assert "withrawqos" in captured["cmd"]
+
+
+def test_revoke_plan_leaves_an_inherited_qos_alone(monkeypatch):
+    """Deleting the association would destroy fairshare, limits and usage."""
+    monkeypatch.setattr(qos, "read_assoc", lambda u, a, p, cluster=None: ("", ""))
+    monkeypatch.setattr(qos, "_cluster", lambda c: "odyssey")
+    assert qos.revoke_plan("alice", "lab", "part", "normal", None) == []
+
+
+def test_revoke_plan_still_deletes_a_sole_explicit_holder(monkeypatch):
+    monkeypatch.setattr(qos, "read_assoc", lambda u, a, p, cluster=None: ("prio", "prio"))
+    monkeypatch.setattr(qos, "_cluster", lambda c: "odyssey")
+    plan = qos.revoke_plan("alice", "lab", "part", "prio", None)
+    assert plan and plan[0][2:4] == ["delete", "user"]
+
+
+def test_jobs_using_names_the_states_it_counts(monkeypatch):
+    """squeue's default omits suspended jobs, which resume still carrying the QoS."""
+    captured = {}
+
+    def fake_probe(cmd, timeout=None):
+        captured["cmd"] = cmd
+        return 0, "prio\nprio\n", ""
+
+    monkeypatch.setattr(process, "probe", fake_probe)
+    assert qos.jobs_using("prio") == 2
+    assert "-t" in captured["cmd"]
+    assert "suspended" in captured["cmd"][captured["cmd"].index("-t") + 1]

@@ -9,6 +9,10 @@ class CommandError(RuntimeError):
     """Raised when a required command is missing or cannot be run."""
 
 
+_SLURM_QUERY_PREFIXES = ("SQUEUE_", "SACCT_", "SINFO_", "SCONTROL_", "SPRIO_", "SSHARE_", "SSTAT_")
+_SLURM_QUERY_VARS = frozenset({"SLURM_TIME_FORMAT", "SLURM_CLUSTERS", "SLURM_BITSTR_LEN"})
+
+
 def _child_env() -> dict[str, str]:
     """Return a child environment with this tool's own virtualenv removed.
 
@@ -18,12 +22,18 @@ def _child_env() -> dict[str, str]:
     wrapped install would otherwise strip exactly the environment the command
     needs, such as the torch env diag nccl asks for.
 
-    SLURM_TIME_FORMAT goes too. Per man sacct it rewrites every timestamp Slurm
-    prints, which would silently defeat the parsing the date arithmetic rests on.
+    The Slurm client tools also read filters and formats from the environment,
+    per each tool's ENVIRONMENT section: SQUEUE_STATES and friends narrow a query
+    the caller never asked to narrow, and SLURM_TIME_FORMAT rewrites the
+    timestamps the date arithmetic parses. Those are dropped, because this tool
+    always passes the flags it means and a guard that reads fewer jobs than exist
+    is worse than no guard.
     """
     env = os.environ.copy()
     env.pop("PYTHONHOME", None)
-    env.pop("SLURM_TIME_FORMAT", None)
+    for name in list(env):
+        if name.startswith(_SLURM_QUERY_PREFIXES) or name in _SLURM_QUERY_VARS:
+            env.pop(name, None)
     if sys.prefix == sys.base_prefix:
         return env
     own = os.path.realpath(sys.prefix)
@@ -36,6 +46,11 @@ def _child_env() -> dict[str, str]:
     ]
     env["PATH"] = os.pathsep.join(parts)
     return env
+
+
+def child_env() -> dict[str, str]:
+    """Return the environment children are run with, for callers that must match it."""
+    return _child_env()
 
 
 def run(cmd: list[str], input_text: str | None = None) -> str:

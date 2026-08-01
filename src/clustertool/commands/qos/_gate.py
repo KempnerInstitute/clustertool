@@ -14,6 +14,12 @@ import click
 
 from clustertool import process
 
+_DESTRUCTIVE_NOTE = (
+    "{count} of these delete an association outright, which takes its fairshare, "
+    "its limits and its recorded usage with it. Per man sacctmgr a recreated "
+    "association does not get that usage back."
+)
+
 
 def apply(
     plan: list[list[str]],
@@ -25,11 +31,17 @@ def apply(
 
     Returns the number of commands that failed (always 0 in a dry run).
     """
+    destructive = [cmd for cmd in plan if cmd[2:4] == ["delete", "user"]]
     if not execute:
         for cmd in plan:
-            click.echo(f"[DRY ] {shlex.join(cmd)}")
+            tag = "[DRY!]" if cmd in destructive else "[DRY ]"
+            click.echo(f"{tag} {shlex.join(cmd)}")
+        if destructive:
+            click.echo(_DESTRUCTIVE_NOTE.format(count=len(destructive)))
         click.echo("Dry run - nothing changed. Re-run with --execute to apply.")
         return 0
+    if destructive:
+        click.echo(_DESTRUCTIVE_NOTE.format(count=len(destructive)))
     if not assume_yes:
         if not sys.stdin.isatty():
             raise click.ClickException(
@@ -37,11 +49,18 @@ def apply(
             )
         click.confirm(summary, abort=True)
     failures = 0
-    for cmd in plan:
+    for index, cmd in enumerate(plan):
         click.echo(f"[EXEC] {shlex.join(cmd)}")
         code, _out, err = process.probe(cmd)
         if code != 0:
             failures += 1
             click.echo(f"[WARN] command failed (exit {code}): {err.strip()}", err=True)
+            remaining = len(plan) - index - 1
+            if remaining:
+                click.echo(
+                    f"[WARN] stopped after command {index + 1} of {len(plan)}; "
+                    f"{remaining} not attempted, so the change is half applied",
+                    err=True,
+                )
             break
     return failures

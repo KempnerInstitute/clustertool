@@ -86,3 +86,28 @@ def test_stream_reports_a_closed_pipe_as_sigpipe(tmp_path):
 def test_sigpipe_exit_matches_the_shell_convention():
     """128 + SIGPIPE(13), the code a shell reports for a child killed by a closed pipe."""
     assert process.SIGPIPE_EXIT == 141
+
+
+def test_child_env_drops_the_slurm_query_variables(monkeypatch):
+    """SQUEUE_STATES and friends narrow a query the caller never asked to narrow."""
+    for name in (
+        "SQUEUE_USERS",
+        "SQUEUE_STATES",
+        "SACCT_FORMAT",
+        "SINFO_FORMAT",
+        "SLURM_TIME_FORMAT",
+        "SLURM_CLUSTERS",
+    ):
+        monkeypatch.setenv(name, "x")
+    monkeypatch.setenv("SLURM_JOB_ID", "123")
+    env = process._child_env()
+    for name in (
+        "SQUEUE_USERS",
+        "SQUEUE_STATES",
+        "SACCT_FORMAT",
+        "SINFO_FORMAT",
+        "SLURM_TIME_FORMAT",
+        "SLURM_CLUSTERS",
+    ):
+        assert name not in env, name
+    assert env["SLURM_JOB_ID"] == "123"

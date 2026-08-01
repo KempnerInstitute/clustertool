@@ -22,10 +22,13 @@ def resume(nodes: tuple[str, ...], partition: str | None, yes: bool) -> None:
     """Return drained or down nodes to service (via scontrol). Slurm or system admin only.
 
     Give explicit node names, or --partition to sweep a whole partition. The sweep
-    covers every state man scontrol lists RESUME as accepting: drained, draining,
-    down and rebooting, plus a node whose registration Slurm marked invalid. Each
-    node is listed with its state and the scheduler's reason before you confirm.
-    Prompts for confirmation unless -y.
+    covers the states man scontrol lists RESUME as accepting and Slurm actually
+    prints: drained, down, reboot requested or issued, and a registration Slurm
+    marked invalid. A powering-down node is left alone rather than fought with
+    power save. Each node is listed with its state and the scheduler's reason
+    before you confirm, including one named through a hostlist expression, which
+    is expanded first so the count is of nodes rather than of arguments. Prompts
+    for confirmation unless -y.
 
     \b
     Use cases:
@@ -39,22 +42,44 @@ def resume(nodes: tuple[str, ...], partition: str | None, yes: bool) -> None:
     """
     if not nodes and not partition:
         raise click.UsageError("Give one or more NODEs, or --partition.")
+    if partition and not slurm.partition_exists(partition):
+        raise click.ClickException(f"partition '{partition}' does not exist")
     swept = slurm.resumable_nodes(partition) if partition else []
     if partition and not swept and not nodes:
-        raise click.ClickException(f"no drained, down or failing nodes in '{partition}'")
-    listed = list(swept)
+        raise click.ClickException(
+            f"no drained, down or invalid-registration nodes in '{partition}'"
+        )
+
+    listed: list[tuple[str, str, str]] = []
+    seen: set[str] = set()
     if nodes:
         by_name = {name: (name, state, reason) for name, state, reason in swept}
-        known = slurm.resumable_nodes_by_name(nodes)
-        listed = [by_name.get(name) or known.get(name) or (name, "?", "") for name in nodes] + [
-            row for row in swept if row[0] not in nodes
-        ]
+        resolved: dict[str, tuple[str, str, str]] = {}
+        unknown = []
+        for argument in nodes:
+            found = slurm.resumable_nodes_by_name((argument,))
+            if not found:
+                unknown.append(argument)
+            resolved.update(found)
+        if unknown:
+            raise click.ClickException(
+                f"Slurm does not know: {', '.join(unknown)}. A name may be a hostlist "
+                "expression such as node[1-4], but it has to resolve to real nodes"
+            )
+        for name in sorted(resolved):
+            listed.append(by_name.get(name) or resolved[name])
+            seen.add(name)
+    for row in swept:
+        if row[0] not in seen:
+            listed.append(row)
+            seen.add(row[0])
     targets = [row[0] for row in listed]
     nodelist = ",".join(targets)
     click.echo(f"Nodes to resume{f' in {partition}' if partition else ''}:")
     for name, state, reason in listed:
-        note = " (not responding)" if state.endswith("*") else ""
-        click.echo(f"  {name:<20} {state:<12}{note}  {reason or '-'}")
+        flags = {flag.strip("*~#!%$@^-") for flag in state.upper().split("+")}
+        note = "" if flags & slurm.RESUMABLE_STATES else "  (not in a resumable state)"
+        click.echo(f"  {name:<20} {state:<26}{note}  {reason or '-'}")
     click.echo(
         "Resuming a node whose reason is unresolved puts it straight back "
         "into service, where it can start failing jobs again."
