@@ -241,7 +241,7 @@ from resource wait.
 
 **Inputs**
 - `-u, --user`: User to report (default: current user).
-- `-A, --account`: Report an account (others' need `AdminLevel=Admin`, root/SlurmUser, or coordinator of it).
+- `-A, --account`: Report an account (others' jobs need `AdminLevel=Operator` or above, or coordinator of it; without it the result covers only your own jobs).
 - `-p, --partition`: Report a partition.
 - `-d, --days`: Window length in days (default 7).
 - `--since` / `--until`: Explicit window, `YYYY-mm-ddTHH:MM:SS`.
@@ -259,7 +259,7 @@ users, and incident nodes.
 
 **Inputs**
 - `-u, --user`: User to report (default: current user).
-- `-A, --account`: Report an account (others' need `AdminLevel=Admin`, root/SlurmUser, or coordinator of it).
+- `-A, --account`: Report an account (others' jobs need `AdminLevel=Operator` or above, or coordinator of it; without it the result covers only your own jobs).
 - `-p, --partition`: Report a partition.
 - `-d, --days`: Window length in days (default 7).
 - `--since` / `--until`: Explicit window, `YYYY-mm-ddTHH:MM:SS`.
@@ -319,8 +319,11 @@ to 0, which keeps the job held if it is later requeued.
 ## `jobs release JOBID...`
 
 Release held jobs so they can be scheduled (via `scontrol release`). Undoes
-`jobs hold`. You can release your own hold, but a hold placed by an operator or
-admin needs one of them to lift it.
+`jobs hold`. Per `man scontrol` the rule is the kind of hold, not who placed it:
+an owner or an account coordinator may release a user-hold, while only a
+privileged user may release an admin-hold. Note that `jobs hold` run by an
+operator or admin records an admin-hold the owner cannot lift, which
+`scontrol uhold` exists to avoid.
 
 **Use cases**
 - Let a previously held job start.

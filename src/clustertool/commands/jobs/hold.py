@@ -32,6 +32,8 @@ def hold(jobids: tuple[str, ...]) -> None:
     Inputs:
       JOBID...  One or more Slurm job ids.
     """
+    if any(not jobid.strip() for jobid in jobids):
+        raise click.UsageError("JOBID may not be empty.")
     process.passthrough(
         ["scontrol", "hold", ",".join(jobids)],
         f"could not hold one or more of {', '.join(jobids)}; see the messages above for which",

@@ -26,8 +26,10 @@ def usage(account: str | None, days: int, user: str | None, efficiency: bool) ->
 
     Sums usage over the last --days. With --efficiency, show the seff-account
     efficiency summary instead. With an ACCOUNT, report that account (querying
-    accounts you do not belong to needs AdminLevel=Admin, root/SlurmUser, or
-    coordinator of the account); otherwise report you.
+    another user's jobs, including other members of your own account, needs
+    AdminLevel=Operator or above or coordinator of that account, and without it
+    the report silently covers only your own jobs and still exits 0); otherwise
+    report you.
 
     \b
     Use cases:

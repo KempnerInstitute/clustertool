@@ -1001,6 +1001,9 @@ def test_jobs_release(monkeypatch):
 
 def test_jobs_requeue(monkeypatch):
     calls = _capture_stream(monkeypatch)
+    monkeypatch.setattr(
+        process, "probe", lambda cmd, timeout=None: (0, f"PENDING {_ME} 0:00\n", "")
+    )
     result = CliRunner().invoke(main, ["jobs", "requeue", "111"])
     assert result.exit_code == 0
     assert calls[0] == ["scontrol", "requeue", "111"]
@@ -4213,3 +4216,54 @@ def test_jobs_violators_checks_the_partition_even_when_both_norms_are_given(monk
     )
     assert result.exit_code != 0
     assert "does not exist" in result.output
+
+
+def _requeue_stub(monkeypatch, state="RUNNING", owner=None, elapsed="01:00:00"):
+    owner = owner if owner is not None else _ME
+    row = f"{state} {owner} {elapsed}\n" if state else ""
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, row, ""))
+
+
+def test_jobs_requeue_refuses_another_users_job(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    _requeue_stub(monkeypatch, owner="someone-else")
+    result = CliRunner().invoke(main, ["jobs", "requeue", "123"])
+    assert result.exit_code != 0
+    assert "belong to another user" in result.output
+    assert calls == []
+
+
+def test_jobs_requeue_refuses_a_job_not_in_the_queue(monkeypatch):
+    """scontrol requeue on a purged id reports only 'Invalid job id specified'."""
+    calls = _capture_stream(monkeypatch)
+    _requeue_stub(monkeypatch, state="")
+    result = CliRunner().invoke(main, ["jobs", "requeue", "123"])
+    assert result.exit_code != 0
+    assert "not in the queue" in result.output
+    assert calls == []
+
+
+def test_jobs_requeue_prompts_for_a_running_job(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    _requeue_stub(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "requeue", "123"], input="n\n")
+    assert result.exit_code != 0
+    assert "that work will be discarded" in result.output
+    assert calls == []
+
+
+def test_jobs_requeue_does_not_prompt_for_a_pending_job(monkeypatch):
+    """A pending job has no work to lose, so the prompt would be noise."""
+    calls = _capture_stream(monkeypatch)
+    _requeue_stub(monkeypatch, state="PENDING", elapsed="0:00")
+    result = CliRunner().invoke(main, ["jobs", "requeue", "123"])
+    assert result.exit_code == 0
+    assert calls[0] == ["scontrol", "requeue", "123"]
+
+
+def test_jobs_requeue_yes_skips_the_prompt(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    _requeue_stub(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "requeue", "123", "-y"])
+    assert result.exit_code == 0
+    assert calls[0] == ["scontrol", "requeue", "123"]
