@@ -910,6 +910,7 @@ def test_nodes_reservations(monkeypatch):
 
 
 def test_jobs_top(monkeypatch):
+    monkeypatch.setattr(slurm, "job_accounting", lambda j: {"state": "RUNNING"})
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "top", "123"])
     assert result.exit_code == 0
@@ -949,6 +950,7 @@ def test_jobs_log_missing(monkeypatch):
 
 
 def test_jobs_script(monkeypatch):
+    monkeypatch.setattr(slurm, "job_accounting", lambda j: {"state": "COMPLETED"})
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "script", "123"])
     assert result.exit_code == 0
@@ -999,6 +1001,7 @@ def test_jobs_setprio_alias(monkeypatch):
 
 
 def test_jobs_priorities(monkeypatch):
+    monkeypatch.setattr(slurm, "partition_nodes", lambda p: [("n1", "idle")])
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "priorities", "kempner_h100"])
     assert result.exit_code == 0
@@ -2375,7 +2378,7 @@ def test_diag_ib_verify_no_golden(tmp_path):
 
 
 def test_jobs_why_missing_job_errors(monkeypatch):
-    monkeypatch.setattr(slurm, "_run", lambda cmd: "")
+    monkeypatch.setattr(process, "run", lambda cmd, input_text=None: "")
     _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "why", "999999999"])
     assert result.exit_code != 0
