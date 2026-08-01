@@ -12,7 +12,7 @@ from clustertool.grouping import ToolCommand, keywords
     "-f", "--filter", "name_filter", default=None, help="Only show rows containing this text."
 )
 def load(name_filter: str | None) -> None:
-    """Show per-node load and free CPU/GPU/memory (via lsload).
+    """Show per-node load and free CPU/GPU/memory (via the site tool).
 
     \b
     Use cases:
@@ -23,11 +23,15 @@ def load(name_filter: str | None) -> None:
     Inputs:
       -f, --filter  Only show rows containing this text (the header is kept).
     """
+    tool = site.tool("node_load")
     if not name_filter:
-        if process.stream([site.tool("node_load")]):
-            raise click.ClickException(f"'{site.tool('node_load')}' failed")
+        if process.stream([tool]):
+            raise click.ClickException(f"'{tool}' failed")
         return
-    lines = process.run([site.tool("node_load")]).splitlines()
+    code, out, err = process.probe([tool])
+    if code:
+        raise click.ClickException(f"'{tool}' failed: {err.strip() or code}")
+    lines = out.splitlines()
     if lines:
         click.echo(lines[0])
         for line in lines[1:]:

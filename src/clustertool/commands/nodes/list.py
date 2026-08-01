@@ -2,7 +2,7 @@
 
 import click
 
-from clustertool import completion, slurm
+from clustertool import completion, qos, slurm
 from clustertool.grouping import keywords
 
 
@@ -19,8 +19,11 @@ def list_nodes(partitions: tuple[str, ...]) -> None:
     """List node names and states for one or more partitions.
 
     States are Slurm's own short codes: idle is free, mix is partly allocated,
-    alloc is full, resv is held by a reservation, drain and drng take no new work,
-    and down is offline. A trailing * means the node is not responding.
+    alloc is full, comp is finishing a job, resv is held by a reservation, drain
+    and drng take no new work, down is offline, inval registered resources that do
+    not match its configuration, and plnd is reserved by the backfill scheduler
+    for a higher-priority job. Two flags can follow: * means the node is not
+    responding, and - that backfill has planned it for a higher-priority job.
 
     \b
     Use cases:
@@ -35,11 +38,18 @@ def list_nodes(partitions: tuple[str, ...]) -> None:
         rows = slurm.partition_nodes(partition)
         click.echo(f"== {partition} ==")
         if not rows:
-            click.echo("  (no nodes; unknown or empty partition)")
+            if not qos.partition_exists(partition):
+                raise click.ClickException(f"partition '{partition}' does not exist")
+            click.echo("  (no nodes)")
             click.echo()
             continue
         for node, state in rows:
-            note = "  (not responding)" if state.endswith("*") else ""
-            click.echo(f"  {node:<20} {state}{note}")
+            notes = []
+            if state.endswith("*"):
+                notes.append("not responding")
+            if state.endswith("-"):
+                notes.append("planned by backfill")
+            note = f"  ({', '.join(notes)})" if notes else ""
+            click.echo(f"  {node:<20} {state:<8}{note}")
         click.echo(f"  ({len(rows)} node(s))")
         click.echo()

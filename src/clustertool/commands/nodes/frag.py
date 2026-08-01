@@ -2,7 +2,7 @@
 
 import click
 
-from clustertool import completion, slurm
+from clustertool import completion, qos, slurm
 from clustertool.grouping import keywords
 
 _SHAPES = (1, 2, 4)
@@ -32,7 +32,11 @@ _FALLBACK_SHAPE = (8, 65536)
 def frag(partition: str | None, cpus_per_gpu: int | None, mem_per_gpu: int | None) -> None:
     """Show free GPU shards per partition and how many N-GPU jobs could start now.
 
-    Reads one scontrol pass. Nodes in down, drain, or maint states are excluded.
+    Reads one scontrol pass, over the GPU nodes only. A node that cannot take a
+    new job is excluded: down, drained, reserved, in maintenance, completing,
+    failing, powered down, not responding, or registered with invalid resources.
+    A node the backfill scheduler has planned for a higher-priority job is kept,
+    though its free capacity may only admit a job short enough to finish first.
     For each partition it prints the free-GPU distribution (0/1/2/3/4+ per node)
     and how many 1-, 2-, and 4-GPU jobs of the given shape could start right now.
 
@@ -60,9 +64,13 @@ def frag(partition: str | None, cpus_per_gpu: int | None, mem_per_gpu: int | Non
     if mem_per_gpu is None:
         mem_per_gpu = limits[1] if limits else _FALLBACK_SHAPE[1]
 
-    nodes = slurm.node_capacity()
+    nodes = [row for row in slurm.node_capacity() if row["gpu_tot"]]
     if partition:
         nodes = [n for n in nodes if partition in n["partitions"]]
+        if not nodes:
+            if not qos.partition_exists(partition):
+                raise click.ClickException(f"partition '{partition}' does not exist")
+            raise click.ClickException(f"partition '{partition}' has no GPU nodes")
 
     per_part: dict[str, dict] = {}
     for node in nodes:
@@ -93,21 +101,24 @@ def frag(partition: str | None, cpus_per_gpu: int | None, mem_per_gpu: int | Non
         f"(job shape: {cpus_per_gpu} CPU + {mem_per_gpu} MB per GPU{source})"
     )
     click.echo()
+    width = max(24, *(len(part) for part in per_part)) + 1 if per_part else 24
     click.echo(
-        f"  {'Partition':<24}{'Nodes':>6}  {'FreeGPUs(0/1/2/3/4+)':<22}"
+        f"  {'Partition':<{width}}{'Nodes':>6}  {'FreeGPUs(0/1/2/3/4+)':<22}"
         f"{'Fit1':>6}{'Fit2':>6}{'Fit4':>6}"
     )
     for part in sorted(per_part):
         stats = per_part[part]
         dist = "/".join(str(stats["dist"][k]) for k in (0, 1, 2, 3, "4+"))
         click.echo(
-            f"  {part:<24}{stats['nodes']:>6}  {dist:<22}"
+            f"  {part:<{width}}{stats['nodes']:>6}  {dist:<22}"
             f"{stats['fit'][1]:>6}{stats['fit'][2]:>6}{stats['fit'][4]:>6}"
         )
     if not per_part:
         click.echo("  (no available nodes)")
     if unavailable:
         click.echo()
-        click.echo(f"  {len(unavailable)} node(s) unavailable (down/drain/maint), excluded")
+        click.echo(f"  {len(unavailable)} GPU node(s) not accepting new work, excluded")
         for node in unavailable[:10]:
             click.echo(f"    {node['name']} ({node['state']})")
+        if len(unavailable) > 10:
+            click.echo(f"    ... and {len(unavailable) - 10} more")

@@ -779,13 +779,23 @@ def test_nodes_partitions_default(monkeypatch):
 
 def test_nodes_partitions_filter(monkeypatch):
     monkeypatch.setattr(
-        process, "run", lambda cmd, input_text=None: "HEADER\nkempner row\nother row\n"
+        process, "probe", lambda cmd, timeout=None: (0, "HEADER\nkempner row\nother row\n", "")
     )
     result = CliRunner().invoke(main, ["nodes", "partitions", "--filter", "kempner"])
     assert result.exit_code == 0
     assert "HEADER" in result.output
     assert "kempner row" in result.output
     assert "other row" not in result.output
+
+
+def test_nodes_partitions_filter_reports_a_failed_tool(monkeypatch):
+    """A filtered run that swallows the failure reads as a genuine no-match."""
+    monkeypatch.setattr(
+        process, "probe", lambda cmd, timeout=None: (1, "", "spart: cannot contact slurmctld")
+    )
+    result = CliRunner().invoke(main, ["nodes", "partitions", "--filter", "kempner"])
+    assert result.exit_code != 0
+    assert "cannot contact slurmctld" in result.output
 
 
 def test_storage_vast_usage(monkeypatch):
@@ -956,7 +966,7 @@ def test_nodes_down(monkeypatch):
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["nodes", "down", "-p", "kempner"])
     assert result.exit_code == 0
-    assert calls[0] == ["sinfo", "-R", "-p", "kempner"]
+    assert calls[0] == ["sinfo", "-R", "-o", "%60E %12u %19H %N", "-p", "kempner"]
 
 
 def test_nodes_load_default(monkeypatch):
@@ -967,11 +977,61 @@ def test_nodes_load_default(monkeypatch):
 
 
 def test_nodes_load_filter(monkeypatch):
-    monkeypatch.setattr(process, "run", lambda cmd, input_text=None: "HEADER\nholygpu row\nother\n")
+    monkeypatch.setattr(
+        process, "probe", lambda cmd, timeout=None: (0, "HEADER\nholygpu row\nother\n", "")
+    )
     result = CliRunner().invoke(main, ["nodes", "load", "-f", "holygpu"])
     assert result.exit_code == 0
     assert "HEADER" in result.output and "holygpu row" in result.output
     assert "other" not in result.output
+
+
+def test_nodes_frag_skips_gpu_less_partitions(monkeypatch):
+    """A CPU-only partition has no GPU fragmentation to report."""
+    nodes = [
+        {
+            "name": "cpu1",
+            "partitions": ["bigmem"],
+            "state": "IDLE",
+            "available": True,
+            "cpu_free": 64,
+            "mem_free_mb": 500000,
+            "gpu_tot": 0,
+            "gpu_free": 0,
+        },
+        {
+            "name": "g1",
+            "partitions": ["kempner_h100"],
+            "state": "IDLE",
+            "available": True,
+            "cpu_free": 96,
+            "mem_free_mb": 900000,
+            "gpu_tot": 4,
+            "gpu_free": 4,
+        },
+    ]
+    monkeypatch.setattr(slurm, "node_capacity", lambda: nodes)
+    result = CliRunner().invoke(main, ["nodes", "frag"])
+    assert result.exit_code == 0
+    assert "kempner_h100" in result.output
+    assert "bigmem" not in result.output
+
+
+def test_nodes_frag_rejects_an_unknown_partition(monkeypatch):
+    monkeypatch.setattr(slurm, "node_capacity", lambda: [])
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: False)
+    result = CliRunner().invoke(main, ["nodes", "frag", "-p", "no_such_partition"])
+    assert result.exit_code != 0
+    assert "does not exist" in result.output
+
+
+def test_nodes_frag_distinguishes_a_cpu_only_partition(monkeypatch):
+    """bigmem exists; saying it might not would send the user looking for a typo."""
+    monkeypatch.setattr(slurm, "node_capacity", lambda: [])
+    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
+    result = CliRunner().invoke(main, ["nodes", "frag", "-p", "bigmem"])
+    assert result.exit_code != 0
+    assert "has no GPU nodes" in result.output
 
 
 def test_nodes_reservations(monkeypatch):
@@ -1140,12 +1200,37 @@ def test_nodes_resume_explicit(monkeypatch):
 
 def test_nodes_resume_partition(monkeypatch):
     monkeypatch.setattr(
-        slurm, "drained_nodes", lambda p: [("n3", "drained", "GPU error"), ("n4", "draining", "")]
+        slurm, "resumable_nodes", lambda p: [("n3", "drained", "GPU error"), ("n4", "down", "")]
     )
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["nodes", "resume", "-p", "kempner_requeue", "-y"])
     assert result.exit_code == 0
     assert calls[0] == ["scontrol", "update", "NodeName=n3,n4", "State=RESUME"]
+    assert "GPU error" in result.output
+
+
+def test_nodes_resume_partition_with_nothing_to_do(monkeypatch):
+    """Giving --partition is not a usage error just because the partition is healthy."""
+    monkeypatch.setattr(slurm, "resumable_nodes", lambda p: [])
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["nodes", "resume", "-p", "bigmem", "-y"])
+    assert result.exit_code == 1
+    assert "no drained, down or failing nodes in 'bigmem'" in result.output
+    assert calls == []
+
+
+def test_nodes_resume_explicit_shows_the_reason(monkeypatch):
+    """The hand-typed path is the riskier one, so it must show the reason too."""
+    monkeypatch.setattr(slurm, "resumable_nodes", lambda p: [])
+    monkeypatch.setattr(
+        slurm, "resumable_nodes_by_name", lambda names: {"n9": ("n9", "drained", "NHC failure")}
+    )
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["nodes", "resume", "n9", "-y"])
+    assert result.exit_code == 0
+    assert "NHC failure" in result.output
+    assert "unresolved" in result.output
+    assert calls[0] == ["scontrol", "update", "NodeName=n9", "State=RESUME"]
 
 
 def test_nodes_resume_needs_target(monkeypatch):
@@ -1793,7 +1878,7 @@ def test_nodes_frag(monkeypatch):
         main, ["nodes", "frag", "--cpus-per-gpu", "8", "--mem-per-gpu", "65536"]
     )
     assert result.exit_code == 0
-    assert "1 node(s) unavailable" in result.output
+    assert "1 GPU node(s) not accepting new work" in result.output
     row = next(line for line in result.output.splitlines() if "kempner_h100" in line)
     fields = row.split()
     assert fields[1] == "2"

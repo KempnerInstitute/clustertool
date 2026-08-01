@@ -73,18 +73,39 @@ def partition_gpu_util(
     return total, unavailable, used, free, percent
 
 
-def drained_nodes(partition: str) -> list[tuple[str, str, str]]:
-    """Return (name, state, reason) for the drained or draining nodes in a partition.
+_RESUMABLE_STATES = ("drain", "down", "fail", "reboot")
 
-    A trailing star on the state marks a node that is not responding.
+
+def resumable_nodes(partition: str) -> list[tuple[str, str, str]]:
+    """Return (name, state, reason) for the nodes in a partition that RESUME accepts.
+
+    Per man scontrol, State=RESUME moves a node out of DRAIN, DRAINING, DOWN or
+    REBOOT, so all of those belong in a sweep. A trailing star on the state marks a
+    node that is not responding.
     """
     result = []
     out = _run(["sinfo", "-h", "-N", "-o", "%N|%T|%E", "-p", partition])
     for line in out.splitlines():
         parts = line.split("|")
-        if len(parts) == 3 and "drain" in parts[1].lower():
+        if len(parts) != 3:
+            continue
+        state = parts[1].strip().lower()
+        if any(bad in state for bad in _RESUMABLE_STATES):
             result.append((parts[0].strip(), parts[1].strip(), parts[2].strip()))
     return result
+
+
+def resumable_nodes_by_name(names: tuple[str, ...]) -> dict[str, tuple[str, str, str]]:
+    """Return {name: (name, state, reason)} for the named nodes, for those Slurm knows."""
+    if not names:
+        return {}
+    out = _run(["sinfo", "-h", "-N", "-o", "%N|%T|%E", "-n", ",".join(names)])
+    found = {}
+    for line in out.splitlines():
+        parts = line.split("|")
+        if len(parts) == 3:
+            found[parts[0].strip()] = (parts[0].strip(), parts[1].strip(), parts[2].strip())
+    return found
 
 
 def account_cap() -> int | None:
@@ -292,13 +313,17 @@ def _tres_mem_mb(tres: str) -> float:
 
 
 def node_free_resources(node: str) -> tuple[int, int, float]:
-    """Return (free_gpu, free_cpu, free_mem_mb) for a node."""
+    """Return (free_gpu, free_cpu, free_mem_mb) for a node.
+
+    Free memory excludes MemSpecLimit, which is reserved for system use.
+    """
     out = _run(["scontrol", "show", "node", node])
     cfg = re.search(r"CfgTRES=(\S+)", out)
     alloc = re.search(r"AllocTRES=(\S+)", out)
     cfg_tres = cfg.group(1) if cfg else ""
     alloc_tres = alloc.group(1) if alloc else ""
-    free_mem = _tres_mem_mb(cfg_tres) - _tres_mem_mb(alloc_tres)
+    reserved = _int_field(_field(out, "MemSpecLimit"))
+    free_mem = _tres_mem_mb(cfg_tres) - reserved - _tres_mem_mb(alloc_tres)
     return (
         parse_gpu_count(cfg_tres) - parse_gpu_count(alloc_tres),
         _tres_int(cfg_tres, "cpu") - _tres_int(alloc_tres, "cpu"),
@@ -476,8 +501,10 @@ def _int_field(value: str | None) -> int:
 def node_capacity() -> list[dict]:
     """Return free CPU/GPU/memory and partitions per node from one scontrol pass.
 
-    Each row has name, partitions, state, available (False for down/drain/maint
-    nodes), cpu_free, mem_free_mb, gpu_tot, and gpu_free.
+    Each row has name, partitions, state, available (False for a node that cannot
+    take a new job), cpu_free, mem_free_mb, gpu_tot, and gpu_free. Free memory
+    excludes MemSpecLimit, which slurm.conf reserves for system use and does not
+    make available to jobs.
     """
     out = _run(["scontrol", "show", "node", "-o"])
     rows: list[dict] = []
@@ -498,7 +525,12 @@ def node_capacity() -> list[dict]:
                 "state": state,
                 "available": not any(bad in state.upper() for bad in _BAD_NODE_STATES),
                 "cpu_free": _int_field(kv.get("CPUTot")) - _int_field(kv.get("CPUAlloc")),
-                "mem_free_mb": _int_field(kv.get("RealMemory")) - _int_field(kv.get("AllocMem")),
+                "mem_free_mb": max(
+                    0,
+                    _int_field(kv.get("RealMemory"))
+                    - _int_field(kv.get("MemSpecLimit"))
+                    - _int_field(kv.get("AllocMem")),
+                ),
                 "gpu_tot": gpu_tot,
                 "gpu_free": max(0, gpu_tot - gpu_alloc),
             }

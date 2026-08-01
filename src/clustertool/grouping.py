@@ -10,7 +10,7 @@ from clustertool import site
 
 
 def admin(command: click.Command) -> click.Command:
-    """Mark a command as operator-only so help lists it under Admin Commands."""
+    """Mark a command as admin-only so help lists it under Admin Commands."""
     command.scope = "admin"
     return command
 

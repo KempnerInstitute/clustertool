@@ -12,7 +12,7 @@ from clustertool.grouping import ToolCommand, keywords
     "-f", "--filter", "name_filter", default=None, help="Only show rows containing this text."
 )
 def partitions(name_filter: str | None) -> None:
-    """List partitions with cores, GPUs, memory, and time limits (via spart).
+    """List partitions with cores, GPUs, memory, and time limits (via the site tool).
 
     \b
     Use cases:
@@ -23,11 +23,15 @@ def partitions(name_filter: str | None) -> None:
     Inputs:
       -f, --filter  Only show rows containing this text (the header is kept).
     """
+    tool = site.tool("partitions")
     if not name_filter:
-        if process.stream([site.tool("partitions")]):
-            raise click.ClickException(f"'{site.tool('partitions')}' failed")
+        if process.stream([tool]):
+            raise click.ClickException(f"'{tool}' failed")
         return
-    lines = process.run([site.tool("partitions")]).splitlines()
+    code, out, err = process.probe([tool])
+    if code:
+        raise click.ClickException(f"'{tool}' failed: {err.strip() or code}")
+    lines = out.splitlines()
     if lines:
         click.echo(lines[0])
         for line in lines[1:]:
