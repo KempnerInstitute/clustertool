@@ -1,6 +1,6 @@
 """Tests for storage command construction."""
 
-from cluster_tools import storage
+from clustertool import storage
 
 
 def test_parse_du_top():
@@ -85,7 +85,7 @@ def test_fleet_targets(tmp_path):
 
 
 def test_user_groups(monkeypatch):
-    from cluster_tools import process
+    from clustertool import process
 
     monkeypatch.setattr(process, "run", lambda cmd: "kempner_dev kempner_shared\n")
     assert storage.user_groups("alice") == ["kempner_dev", "kempner_shared"]

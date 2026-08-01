@@ -3,9 +3,9 @@
 import click
 from click.testing import CliRunner
 
-from cluster_tools import process, site
-from cluster_tools.cli import main
-from cluster_tools.commands.jobs import jobs as jobs_group
+from clustertool import process, site
+from clustertool.cli import main
+from clustertool.commands.jobs import jobs as jobs_group
 
 
 def test_tool_defaults():

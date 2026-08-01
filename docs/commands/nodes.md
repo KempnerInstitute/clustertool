@@ -1,6 +1,6 @@
 # nodes
 
-Node and partition status, load, and reservations. Run `clustertools nodes --help` to list these commands.
+Node and partition status, load, and reservations. Run `clustertool nodes --help` to list these commands.
 
 ## `nodes list PARTITION...`
 

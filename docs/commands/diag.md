@@ -1,7 +1,7 @@
 # diag
 
-Cluster diagnostics and benchmarks. Run `clustertools diag --help` to list these commands,
-or `clustertools diag <command> --help` for one.
+Cluster diagnostics and benchmarks. Run `clustertool diag --help` to list these commands,
+or `clustertool diag <command> --help` for one.
 
 ## `diag gpu-health [--json [FILE]] [--from-xml FILE]`
 

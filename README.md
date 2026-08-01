@@ -1,18 +1,18 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="_static/clustertools-logo-dark.svg">
-    <img src="_static/clustertools-logo-light.svg" alt="ClusterTools" width="440">
+    <source media="(prefers-color-scheme: dark)" srcset="_static/clustertool-logo-dark.svg">
+    <img src="_static/clustertool-logo-light.svg" alt="ClusterTool" width="440">
   </picture>
 </p>
 
 # Cluster Tools
 
-A single umbrella CLI (`clustertools`) that centralizes the Slurm cluster
+A single umbrella CLI (`clustertool`) that centralizes the Slurm cluster
 scripts used by both researchers and the engineering team, so common tasks live
 in one place with consistent help and behavior. It is built at the Kempner
 Institute and adapts to other clusters through a site config.
 
-Every task is a subcommand under a group (for example `clustertools gpu ...`).
+Every task is a subcommand under a group (for example `clustertool gpu ...`).
 Each command has `--help` explaining what it does, its use cases, and its
 inputs.
 
@@ -38,7 +38,7 @@ a command needs only the tools it actually calls:
   and `nvtop` (`gpu nvtop`), `nvcc` and NCCL (`diag nvlink`), `torch`
   (`diag nccl`), and `ncdu` (`storage home --ncdu`).
 
-Two tools ship with clustertools and install automatically. `jobs scope` uses
+Two tools ship with clustertool and install automatically. `jobs scope` uses
 `jobscope`, whose GPU views also read a Prometheus endpoint discovered from the
 cluster's `jobstats` install. `gpu pulse` uses `kempnerpulse`; run it on a GPU
 node, where it reads counters through `dcgmi`, or from a dcgm-exporter Prometheus
@@ -49,62 +49,62 @@ endpoint with `--backend prometheus`.
 Install as a tool from the repository:
 
 ```bash
-uv tool install git+https://github.com/KempnerInstitute/cluster-tools
+uv tool install git+https://github.com/KempnerInstitute/clustertool
 ```
 
 Or work from a clone:
 
 ```bash
-git clone https://github.com/KempnerInstitute/cluster-tools
-cd cluster-tools
+git clone https://github.com/KempnerInstitute/clustertool
+cd clustertool
 uv sync
-uv run clustertools --help
+uv run clustertool --help
 ```
 
 Enable tab completion for your shell (bash, zsh, fish), then restart it:
 
 ```bash
-clustertools completion --install
+clustertool completion --install
 ```
 
 ## Usage
 
 ```bash
 # Discover
-clustertools --help      # list command groups
-clustertools gpu --help  # list a group's commands
-clustertools search fairshare  # find a command by keyword (also: find, lookup)
-clustertools me                # your jobs, GPUs, and fairshare at a glance
-clustertools me --access       # also: accounts, partitions, and QoS you can submit under
+clustertool --help      # list command groups
+clustertool gpu --help  # list a group's commands
+clustertool search fairshare  # find a command by keyword (also: find, lookup)
+clustertool me                # your jobs, GPUs, and fairshare at a glance
+clustertool me --access       # also: accounts, partitions, and QoS you can submit under
 
 # GPU
-clustertools gpu usage                   # rank every lab by base-partition GPU usage
-clustertools gpu usage kempner_sham_lab  # one lab's usage, by user and partition
-clustertools gpu avail kempner_h100      # nodes with allocatable GPUs (ratio-capped)
-clustertools gpu session a100 -A LAB     # interactive single-GPU shell (a100/h100/h200/rtx)
-clustertools gpu monitor-job 1234567     # live per-node GPU/CPU/memory/network table
-clustertools gpu pulse                   # live per-GPU dashboard (on a GPU node)
-clustertools gpu pulse --node holygpu123 # ...or launch it on a remote GPU node
+clustertool gpu usage                   # rank every lab by base-partition GPU usage
+clustertool gpu usage kempner_sham_lab  # one lab's usage, by user and partition
+clustertool gpu avail kempner_h100      # nodes with allocatable GPUs (ratio-capped)
+clustertool gpu session a100 -A LAB     # interactive single-GPU shell (a100/h100/h200/rtx)
+clustertool gpu monitor-job 1234567     # live per-node GPU/CPU/memory/network table
+clustertool gpu pulse                   # live per-GPU dashboard (on a GPU node)
+clustertool gpu pulse --node holygpu123 # ...or launch it on a remote GPU node
 
 # Jobs
-clustertools jobs list           # your queued and running jobs
-clustertools jobs why 1234567    # why a job is pending, and its priority
-clustertools jobs debug 1234567  # why a finished job failed, with a suggested fix
-clustertools jobs stats 1234567  # utilization for a job
-clustertools jobs scope -D 3     # efficiency of your completed jobs (last 3 days)
-clustertools jobs new            # build a correct GPU sbatch script (prompts, or --submit)
+clustertool jobs list           # your queued and running jobs
+clustertool jobs why 1234567    # why a job is pending, and its priority
+clustertool jobs debug 1234567  # why a finished job failed, with a suggested fix
+clustertool jobs stats 1234567  # utilization for a job
+clustertool jobs scope -D 3     # efficiency of your completed jobs (last 3 days)
+clustertool jobs new            # build a correct GPU sbatch script (prompts, or --submit)
 
 # Accounts and nodes
-clustertools account fairshare            # your fairshare and priority standing
-clustertools account members kempner_dev  # users in a fairshare account
-clustertools nodes partitions -f kempner  # partitions, GPUs, and limits
-clustertools nodes list kempner_h100      # nodes and states in a partition
+clustertool account fairshare            # your fairshare and priority standing
+clustertool account members kempner_dev  # users in a fairshare account
+clustertool nodes partitions -f kempner  # partitions, GPUs, and limits
+clustertool nodes list kempner_h100      # nodes and states in a partition
 
 # Storage
-clustertools storage quota netscratch  # your quota on a filesystem (-g LAB for a lab)
-clustertools storage quota --all       # every lab dir you belong to, as a usage table
-clustertools storage scratch           # netscratch usage and the 90-day purge reminder
-clustertools storage home              # home directory usage and quota
+clustertool storage quota netscratch  # your quota on a filesystem (-g LAB for a lab)
+clustertool storage quota --all       # every lab dir you belong to, as a usage table
+clustertool storage scratch           # netscratch usage and the 90-day purge reminder
+clustertool storage home              # home directory usage and quota
 ```
 
 ## Commands
@@ -113,15 +113,15 @@ Most commands live in a group; a few are top-level (`search`, `completion`,
 `me`). The table below lists each group's commands. For the full reference of
 what each does, its use cases, and inputs, see the linked
 [`docs/commands/<group>.md`](docs/commands/) file, or run
-`clustertools <group> <command> --help`.
+`clustertool <group> <command> --help`.
 
 A flat, greppable index of every command, with its scope (user or admin) and the
 host tool it wraps, is in
-[`clustertools-commands-index.md`](clustertools-commands-index.md).
+[`clustertool-commands-index.md`](clustertool-commands-index.md).
 
-Not sure which command you need? `clustertools search <words>` (also `find` or
-`lookup`) ranks commands by relevance, for example `clustertools search
-fairshare` or `clustertools search gpu reservation`.
+Not sure which command you need? `clustertool search <words>` (also `find` or
+`lookup`) ranks commands by relevance, for example `clustertool search
+fairshare` or `clustertool search gpu reservation`.
 
 | Group | Commands | Scope |
 | --- | --- | --- |
@@ -135,7 +135,7 @@ fairshare` or `clustertools search gpu reservation`.
 
 ## Configuration
 
-clustertools defaults to the Kempner AI Cluster. The cluster-specific values
+clustertool defaults to the Kempner AI Cluster. The cluster-specific values
 (partitions, per-GPU limits, GPU types, account conventions, storage paths) live
 in a config file, so another center runs the same commands by supplying its own.
 See [`docs/configuration.md`](docs/configuration.md) for the config reference and
@@ -144,7 +144,7 @@ See [`docs/configuration.md`](docs/configuration.md) for the config reference an
 ## Project layout
 
 ```
-src/cluster_tools/
+src/clustertool/
   cli.py              # umbrella group, registers command groups
   process.py          # subprocess helpers (capture / stream)
   slurm.py            # read-only Slurm query and parse helpers

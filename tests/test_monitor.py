@@ -1,6 +1,6 @@
 """Tests for the monitor module."""
 
-from cluster_tools import monitor
+from clustertool import monitor
 
 
 def test_parse_sample():

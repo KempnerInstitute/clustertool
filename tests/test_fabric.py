@@ -1,6 +1,6 @@
 """Tests for the fabric (InfiniBand) helpers."""
 
-from cluster_tools import fabric
+from clustertool import fabric
 
 REAL_TOPO = (
     "\tGPU0\tNIC0\tNIC1\tNIC2\tCPU Affinity\tNUMA Affinity\tGPU NUMA ID\n"

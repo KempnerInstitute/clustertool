@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from cluster_tools import gpuhealth as gh
+from clustertool import gpuhealth as gh
 
 _THROTTLE = ("sw_power_cap", "sw_thermal_slowdown", "hw_thermal_slowdown", "hw_slowdown")
 

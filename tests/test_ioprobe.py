@@ -5,8 +5,8 @@ import os
 
 from click.testing import CliRunner
 
-from cluster_tools import ioprobe
-from cluster_tools.cli import main
+from clustertool import ioprobe
+from clustertool.cli import main
 
 METRICS = {
     "write_mbs": 500.0,
