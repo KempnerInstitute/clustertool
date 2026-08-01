@@ -42,8 +42,10 @@ def retire(
     still holding it would not be revoked by this sweep, such as an account-level
     one, one with no partition, or one on another cluster; it lists them. The
     delete runs only after every revoke in the plan succeeded. Dry run by default;
-    re-run with --execute to apply, confirming unless --yes. Slurm or system admin
-    only.
+    re-run with --execute to apply, confirming unless --yes.
+    Needs AdminLevel=Operator or above, or
+    root/SlurmUser: SchedMD documents an operator as able to add, modify and
+    remove any database object, and a QoS is one.
 
     \b
     Use cases:

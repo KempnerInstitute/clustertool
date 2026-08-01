@@ -12,11 +12,9 @@ commands and change nothing. Re-run with `--execute` to apply, confirming unless
 They need two different privilege levels.
 
 Changing a QoS *definition* (`create`, `modify`, `delete`, `retire`) needs at
-least `AdminLevel=Operator`, or root/SlurmUser. SchedMD's own documentation
-describes an operator as able to "add, modify, and remove any database object",
-and a QoS is one; some Slurm builds nonetheless require
-`AdminLevel=Administrator` for QoS definitions, so if an operator's write is
-refused, that is why. A coordinator never has QoS-definition rights, so
+least `AdminLevel=Operator`, or root/SlurmUser. SchedMD's `user_permissions`
+page describes an operator as able to "add, modify, and remove any database
+object", and a QoS is one. A coordinator never has QoS-definition rights, so
 `DisableCoordDBD` does not apply to these four.
 
 *Assigning* an existing QoS (`grant`, `revoke`, `sync`) only edits associations,
@@ -90,7 +88,7 @@ cleared, so only the per-user caps remain. Errors if the QoS does not exist (use
 ## `qos delete QOS_NAME [-x] [-y]`
 
 Delete a QoS definition, refusing while it is still referenced (via `sacctmgr`).
-Slurm or system admin only.
+Slurm operator or admin.
 
 Dry run by default. Refuses while the QoS is still in force: if any association
 on any cluster still lists it, if a partition's `QoS`, `AllowQos`, or `DenyQos`
@@ -155,7 +153,7 @@ default.
 ## `qos retire QOS_NAME -p PART|all [-c CLUSTER] [-r REGEX] [-x] [-y]`
 
 Remove a QoS from all its holders on a partition, then delete it (via
-`sacctmgr`). Slurm or system admin only, because it deletes the definition.
+`sacctmgr`). Slurm operator or admin, because it deletes the definition.
 
 Revokes the QoS from every holder, then deletes the QoS definition. Where the QoS
 is an association's only one, the revoke deletes that association outright rather

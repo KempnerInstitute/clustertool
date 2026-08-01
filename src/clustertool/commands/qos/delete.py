@@ -20,7 +20,10 @@ def delete(qos_name: str, execute: bool, yes: bool) -> None:
     with --execute to apply, confirming unless --yes. Refuses while the QoS is
     still in force: if any association on any cluster lists it, if any partition's
     QoS, AllowQos, or DenyQos setting names it, or if any queued or running job
-    carries it. Clear those first. Slurm or system admin only.
+    carries it. Clear those first.
+    Needs AdminLevel=Operator or above, or
+    root/SlurmUser: SchedMD documents an operator as able to add, modify and
+    remove any database object, and a QoS is one.
 
     \b
     Use cases:
