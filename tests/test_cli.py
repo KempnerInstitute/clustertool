@@ -3574,3 +3574,45 @@ def test_gpu_pulse_forwards_unknown_args(monkeypatch):
     assert job is None
     assert forward == ["--once", "--gpus", "0,1"]
     assert dry_run is False
+
+
+def _counter_snap(**counters):
+    return {"ib": {"hcas": [{"name": "mlx5_0", "ports": [{"port": 1, "counters": counters}]}]}}
+
+
+def _write_snaps(tmp_path, before, after):
+    (tmp_path / "b.json").write_text(json.dumps(before))
+    (tmp_path / "a.json").write_text(json.dumps(after))
+    return str(tmp_path / "b.json"), str(tmp_path / "a.json")
+
+
+def test_ib_counters_renders_an_unreadable_counter(tmp_path):
+    """A None delta must not reach a +format, which raises TypeError."""
+    before, after = _write_snaps(
+        tmp_path, _counter_snap(symbol_error=None), _counter_snap(symbol_error=5)
+    )
+    result = CliRunner().invoke(main, ["diag", "ib-counters", before, after])
+    assert result.exit_code == 2
+    assert "UNREADABLE" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_ib_counters_flags_a_reset(tmp_path):
+    """A counter that went backwards was reset, so its new value is unaccounted for."""
+    before, after = _write_snaps(
+        tmp_path, _counter_snap(symbol_error=900), _counter_snap(symbol_error=3)
+    )
+    result = CliRunner().invoke(main, ["diag", "ib-counters", before, after])
+    assert result.exit_code == 2
+    assert "RESET" in result.output
+
+
+def test_ib_counters_clean_window(tmp_path):
+    before, after = _write_snaps(
+        tmp_path,
+        _counter_snap(symbol_error=0, port_rcv_data=100),
+        _counter_snap(symbol_error=0, port_rcv_data=200),
+    )
+    result = CliRunner().invoke(main, ["diag", "ib-counters", before, after])
+    assert result.exit_code == 0
+    assert "OK: no error-class counter growth" in result.output

@@ -9,6 +9,11 @@ from clustertool import fabric
 from clustertool.grouping import keywords
 
 
+def _num(value) -> str:
+    """Render a counter, or ? when the snapshot could not read it."""
+    return "?" if value is None else str(value)
+
+
 @keywords("infiniband", "counters", "errors", "delta", "diff")
 @click.command("ib-counters")
 @click.argument("before", type=click.Path(dir_okay=False))
@@ -18,7 +23,8 @@ def ib_counters(ctx: click.Context, before: str, after: str) -> None:
     """Diff two ib-snapshot files for InfiniBand error-counter growth.
 
     Compares the per-port counters in a BEFORE and AFTER snapshot (from diag
-    ib-snapshot, bracketing a run). Benign traffic counters are ignored; growth
+    ib-snapshot, bracketing a run). Benign traffic counters are shown but do not
+    fail the check; growth
     on an error-class counter (symbol errors, discards, link recoveries, ...)
     means the fabric hiccupped. The exit code is 0 no error growth, 2 an
     error-class counter advanced, 3 a file could not be read.
@@ -43,11 +49,21 @@ def ib_counters(ctx: click.Context, before: str, after: str) -> None:
     rows, any_error = fabric.counter_deltas(before_snap, after_snap)
     click.echo(f"{'PORT':<20} {'COUNTER':<40} {'BEFORE':>12} {'AFTER':>12} {'DELTA':>12}")
     for port, counter, before_v, after_v, delta, is_error in rows:
-        tag = " ERROR" if is_error else ""
-        click.echo(f"{port:<20} {counter:<40} {before_v:>12} {after_v:>12} {delta:>+12}{tag}")
+        if delta is None:
+            tag = " UNREADABLE" if is_error else " unreadable"
+            shown = "?"
+        elif delta < 0:
+            tag = " RESET" if is_error else " reset"
+            shown = f"{delta:+}"
+        else:
+            tag = " ERROR" if is_error else ""
+            shown = f"{delta:+}"
+        click.echo(
+            f"{port:<20} {counter:<40} {_num(before_v):>12} {_num(after_v):>12} {shown:>12}{tag}"
+        )
 
     if any_error:
-        click.echo("\nFAIL: error-class counters advanced during the window")
+        click.echo("\nFAIL: an error-class counter advanced, reset, or could not be read")
         ctx.exit(2)
     click.echo("\nOK: no error-class counter growth")
     ctx.exit(0)
