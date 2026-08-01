@@ -35,10 +35,12 @@ def retire(
     """Remove a QoS from all its holders on a partition, then delete it.
 
     Revokes the QoS from every holder on the partition (or all partitions), then
-    deletes the QoS definition. The delete runs only if every revoke succeeded,
-    so a QoS still held elsewhere (an account-level or out-of-scope association)
-    is left in place. Dry run by default; re-run with --execute to apply,
-    confirming unless --yes. Slurm or system admin only.
+    deletes the QoS definition. Refuses up front if the QoS is named in any
+    partition's configuration, or if an association still holds it that this
+    sweep would not revoke, such as an account-level one or one on another
+    partition. The delete runs only after every revoke in the plan succeeded.
+    Dry run by default; re-run with --execute to apply, confirming unless --yes.
+    Slurm or system admin only.
 
     \b
     Use cases:
@@ -60,9 +62,23 @@ def retire(
     if not qoslib.qos_exists(qos_name):
         click.echo(f"QoS {qos_name} does not exist; nothing to do.")
         return
+    referencing = qoslib.partitions_referencing(qos_name)
+    if referencing:
+        raise click.ClickException(
+            f"QoS {qos_name} is configured on partition(s) {', '.join(referencing)}; "
+            "deleting it would drop the limits those partitions apply. Remove it "
+            "from the partition configuration first"
+        )
     plan = qoslib.revoke_targets_plan(
         qos_name, ["all"], partition, cluster=cluster, account_regex=account_regex
     )
+    holders = qoslib.any_holders(qos_name)
+    if holders and not plan:
+        raise click.ClickException(
+            f"QoS {qos_name} is held by {len(holders)} association(s) that this sweep "
+            "does not cover, such as an account-level one or another partition. "
+            "Revoke those first, or widen --partition and --account-regex"
+        )
     plan.append(["sacctmgr", "-i", "delete", "qos", qos_name])
     summary = f"Revoke QoS {qos_name} from all holders on {partition} and delete it?"
     if _gate.apply(plan, execute, yes, summary):

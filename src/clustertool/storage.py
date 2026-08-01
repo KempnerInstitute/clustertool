@@ -79,17 +79,32 @@ def parse_quota_row(output: str) -> tuple[str, str, str, str] | None:
     Handles the 5-column NFS shape and the 9-column Lustre shape, reading the
     first data row (a line for a filesystem path). Returns None when none is
     present.
+
+    The Lustre shape carries a soft quota and a hard limit. A site that sets only
+    the hard limit leaves the soft one at 0, so the soft column alone would report
+    no quota for a filesystem that is about to refuse writes. The effective limit
+    is the soft quota when it is set, and the hard limit otherwise.
     """
     for line in output.splitlines():
         fields = line.split()
         if len(fields) < 5 or not fields[0].startswith("/"):
             continue
-        used, quota = fields[1], fields[2]
-        files, files_quota = (fields[5], fields[6]) if len(fields) >= 9 else (fields[3], fields[4])
+        used = fields[1]
+        if len(fields) >= 9:
+            quota = _effective_limit(fields[2], fields[3])
+            files, files_quota = fields[5], _effective_limit(fields[6], fields[7])
+        else:
+            quota = fields[2]
+            files, files_quota = fields[3], fields[4]
         disk_pct = _percent(_to_bytes(used), _to_bytes(quota), quota)
         files_pct = _percent(_count(files), _count(files_quota), files_quota)
         return used, quota, disk_pct, files_pct
     return None
+
+
+def _effective_limit(soft: str, hard: str) -> str:
+    """Return the limit actually in force, preferring a set soft quota."""
+    return hard if _to_bytes(soft) == 0 and _to_bytes(hard) > 0 else soft
 
 
 def percent_value(text: str) -> float:

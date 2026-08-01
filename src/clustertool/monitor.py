@@ -11,9 +11,7 @@ _SSH_OPTS = [
     "-o",
     "ConnectTimeout=3",
     "-o",
-    "StrictHostKeyChecking=no",
-    "-o",
-    "UserKnownHostsFile=/dev/null",
+    "StrictHostKeyChecking=accept-new",
     "-o",
     "LogLevel=ERROR",
 ]
@@ -59,13 +57,22 @@ def parse_sample(raw: str):
     return gpus, cpu, mem, net
 
 
-def _colorize(value: str, low: float, high: float, unit: str = "") -> str:
-    """Wrap a value in a green/yellow/red color by threshold."""
+def _colorize(
+    value: str, low: float, high: float, unit: str = "", idle_is_bad: bool = False
+) -> str:
+    """Wrap a value in a green/yellow/red color by threshold.
+
+    Pass idle_is_bad for a metric you want to be high, such as GPU utilization,
+    where a low reading means the allocation is going to waste.
+    """
     try:
         num = float(str(value).rstrip("%"))
     except ValueError:
         return f"{value}{unit}"
-    color = _RED if num > high else _YELLOW if num > low else _GREEN
+    if idle_is_bad:
+        color = _RED if num < low else _YELLOW if num < high else _GREEN
+    else:
+        color = _RED if num > high else _YELLOW if num > low else _GREEN
     return f"{color}{value}{unit}{_RESET}"
 
 
@@ -109,7 +116,7 @@ def _row(host: str, raw: str, gpus: int) -> str:
     for i in range(gpus):
         if i < len(gpu_cells):
             gu, mu = gpu_cells[i]
-            cell = _colorize(gu, 50, 80, "%") + "/" + _colorize(mu, 60, 90, "%")
+            cell = _colorize(gu, 50, 80, "%", idle_is_bad=True) + "/" + _colorize(mu, 60, 90, "%")
             row += _pad(cell, f"{gu}%/{mu}%", 20)
         else:
             row += _pad("N/A/N/A", "N/A/N/A", 20)
@@ -121,9 +128,11 @@ def _row(host: str, raw: str, gpus: int) -> str:
 
 def run_monitor(title: str, hosts: list[str], interval: int) -> None:
     """Render a live refreshing table of per-node stats until interrupted."""
-    gpus = num_gpus(hosts[0])
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(hosts), 32)) as pool:
+        counts = list(pool.map(num_gpus, hosts))
+    gpus = max(counts, default=0)
     if gpus < 1:
-        raise CommandError(f"could not detect GPUs on {hosts[0]}")
+        raise CommandError(f"could not detect GPUs on any of the {len(hosts)} host(s)")
 
     print(_header(title, gpus, interval))
     for _ in hosts:

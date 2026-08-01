@@ -79,8 +79,9 @@ per-user caps remain. Errors if the QoS does not exist (use `qos create`).
 Delete a QoS definition, refusing while it is still referenced (via `sacctmgr`).
 Slurm or system admin only.
 
-Dry run by default. Refuses if any association still lists the QoS; remove it
-from those associations first. A QoS that does not exist is a no-op.
+Dry run by default. Refuses if any association still lists the QoS, or if the
+QoS is named in a partition's configuration, where it applies limits without any
+association mentioning it. A QoS that does not exist is a no-op.
 
 **Use cases**
 - Retire a QoS definition that is no longer assigned to anyone.
@@ -138,9 +139,11 @@ default.
 Remove a QoS from all its holders on a partition, then delete it (via
 `sacctmgr`). Slurm or system admin only, because it deletes the definition.
 
-Revokes the QoS from every holder, then deletes the QoS definition. The delete
-runs only if every revoke succeeded, so a QoS still held elsewhere (an
-account-level or out-of-scope association) is left in place. Dry run by default.
+Revokes the QoS from every holder, then deletes the QoS definition. Refuses up
+front if the QoS is named in any partition's configuration, or if an association
+still holds it that this sweep would not revoke, such as an account-level one or
+one on another partition. The delete runs only after every revoke in the plan
+succeeded. Dry run by default.
 
 **Use cases**
 - Fully decommission a priority QoS in one step.

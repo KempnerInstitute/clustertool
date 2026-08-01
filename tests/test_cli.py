@@ -806,7 +806,7 @@ def test_storage_lfs_stripe_get(monkeypatch):
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["storage", "lfs-stripe", "/n/holylfs06/x"])
     assert result.exit_code == 0
-    assert calls[0] == ["lfs", "getstripe", "/n/holylfs06/x"]
+    assert calls[0] == ["lfs", "getstripe", "-d", "/n/holylfs06/x"]
 
 
 def test_storage_lfs_stripe_set(monkeypatch):
@@ -1970,6 +1970,7 @@ def test_qos_delete_held(monkeypatch):
 def test_qos_delete_dry_run(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
     monkeypatch.setattr(qos, "any_holders", lambda name: [])
+    monkeypatch.setattr(qos, "partitions_referencing", lambda name: [])
     ran = []
     monkeypatch.setattr(process, "probe", lambda cmd: ran.append(cmd) or (0, "", ""))
     result = CliRunner().invoke(main, ["qos", "delete", "kemp"])
@@ -1981,6 +1982,7 @@ def test_qos_delete_dry_run(monkeypatch):
 def test_qos_execute_non_tty_requires_yes(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
     monkeypatch.setattr(qos, "any_holders", lambda name: [])
+    monkeypatch.setattr(qos, "partitions_referencing", lambda name: [])
     ran = []
     monkeypatch.setattr(process, "probe", lambda cmd: ran.append(cmd) or (0, "", ""))
     result = CliRunner().invoke(main, ["qos", "delete", "kemp", "--execute"], input="y\n")
@@ -2034,6 +2036,7 @@ def test_qos_execute_stops_after_failure(monkeypatch):
 def test_qos_execute_reports_failure(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
     monkeypatch.setattr(qos, "any_holders", lambda name: [])
+    monkeypatch.setattr(qos, "partitions_referencing", lambda name: [])
     monkeypatch.setattr(process, "probe", lambda cmd: (1, "", "sacctmgr: boom"))
     result = CliRunner().invoke(main, ["qos", "delete", "kemp", "--execute", "--yes"])
     assert result.exit_code == 1
@@ -2104,6 +2107,8 @@ def test_qos_revoke_dry_run(monkeypatch):
 
 def test_qos_retire_appends_delete(monkeypatch):
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partitions_referencing", lambda name: [])
+    monkeypatch.setattr(qos, "any_holders", lambda name: [])
     monkeypatch.setattr(qos, "revoke_targets_plan", lambda *a, **k: [])
     result = CliRunner().invoke(main, ["qos", "retire", "kemp", "-p", "kempner_h100"])
     assert result.exit_code == 0
@@ -2398,3 +2403,32 @@ def test_jobs_top_missing_job_errors(monkeypatch):
     result = CliRunner().invoke(main, ["jobs", "top", "999999999"])
     assert result.exit_code != 0
     assert calls == []
+
+
+def test_qos_delete_refuses_a_partition_referenced_qos(monkeypatch):
+    """A QoS named in partition config holds real limits even with no association."""
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "any_holders", lambda name: [])
+    monkeypatch.setattr(qos, "partitions_referencing", lambda name: ["gpu", "gpu_big"])
+    result = CliRunner().invoke(main, ["qos", "delete", "base_caps", "--execute", "--yes"])
+    assert result.exit_code != 0
+    assert "gpu, gpu_big" in result.output
+
+
+def test_qos_retire_refuses_a_partition_referenced_qos(monkeypatch):
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partitions_referencing", lambda name: ["gpu"])
+    result = CliRunner().invoke(main, ["qos", "retire", "base_caps", "-p", "all", "-x", "-y"])
+    assert result.exit_code != 0
+    assert "gpu" in result.output
+
+
+def test_qos_retire_refuses_when_holders_are_outside_the_sweep(monkeypatch):
+    """Revoking nothing while holders remain must not still delete the QoS."""
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partitions_referencing", lambda name: [])
+    monkeypatch.setattr(qos, "revoke_targets_plan", lambda *a, **k: [])
+    monkeypatch.setattr(qos, "any_holders", lambda name: ["odyssey|lab|bob|"])
+    result = CliRunner().invoke(main, ["qos", "retire", "kemp", "-p", "kempner_h100", "-x", "-y"])
+    assert result.exit_code != 0
+    assert "does not cover" in result.output

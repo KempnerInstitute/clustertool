@@ -5,7 +5,7 @@ import click
 from clustertool import completion, process, slurm
 from clustertool.grouping import keywords
 
-_SSH_OPTS = "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -t"
+_SSH_OPTS = "-o StrictHostKeyChecking=accept-new -t"
 
 
 def _build_session(session: str, hosts: list[str]) -> None:

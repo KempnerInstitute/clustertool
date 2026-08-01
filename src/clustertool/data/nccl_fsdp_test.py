@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader, DistributedSampler
 rank = int(os.environ["SLURM_PROCID"])
 world_size = int(os.environ["WORLD_SIZE"])
 gpus_per_node = int(os.environ["SLURM_GPUS_ON_NODE"])
-device = rank % gpus_per_node
+device = int(os.environ["SLURM_LOCALID"])
 torch.cuda.set_device(device)
 init_process_group(backend="nccl", rank=rank, world_size=world_size)
 

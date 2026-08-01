@@ -39,6 +39,13 @@ def delete(qos_name: str, execute: bool, yes: bool) -> None:
             f"QoS {qos_name} is still held by {len(holders)} association(s); "
             "remove it from those associations first"
         )
+    partitions = qoslib.partitions_referencing(qos_name)
+    if partitions:
+        raise click.ClickException(
+            f"QoS {qos_name} is configured on partition(s) {', '.join(partitions)}; "
+            "deleting it would drop the limits those partitions apply. Remove it "
+            "from the partition configuration first"
+        )
     plan = [["sacctmgr", "-i", "delete", "qos", qos_name]]
     if _gate.apply(plan, execute, yes, f"Delete QoS {qos_name}?"):
         raise SystemExit(1)
