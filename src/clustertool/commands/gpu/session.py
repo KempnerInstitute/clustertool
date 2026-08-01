@@ -48,7 +48,7 @@ def session(
     jupyter: bool,
     port: int,
 ) -> None:
-    """Start an interactive single-GPU session on a Kempner partition (via salloc).
+    """Start an interactive single-GPU session on a base partition (via salloc).
 
     GPU_TYPE selects the base partition, and the session requests one GPU plus
     the CPU and memory that partition enforces per GPU. Drops you into a shell
@@ -60,12 +60,9 @@ def session(
     override or add any salloc flag (salloc uses the last value), for example
     'gpu session a100 -A LAB --mem=500000' or '... -J devshell'.
 
-    \b
-    Per-GPU resources (one GPU each):
-      a100  kempner        16 CPU, 240000 MB
-      h100  kempner_h100   24 CPU, 360000 MB
-      h200  kempner_h200   16 CPU, 360000 MB
-      rtx   kempner_rtx    16 CPU, 180000 MB
+    The GPU types listed above are the ones your site defines under [gpu_types],
+    each mapped to a partition whose per-GPU CPU and memory come from
+    [partitions.limits]. Run 'nodes partitions' to see that mapping.
 
     \b
     Use cases:

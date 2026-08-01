@@ -15,7 +15,7 @@ def usage(account: str | None) -> None:
     Without ACCOUNT, rank every account by base-partition GPU usage (the usage
     that counts toward each account's cap), highest first. With ACCOUNT, break
     that account's usage down by user and partition, plus additive priority and
-    kempner_requeue usage that does not count toward the cap.
+    requeue usage that does not count toward the cap.
 
     \b
     Use cases:
@@ -75,7 +75,7 @@ def _one_lab(account: str) -> None:
         cap=cap,
     )
     _section(
-        "kempner_requeue - additive (outside the cap)",
+        f"{slurm.REQUEUE_PARTITION} - additive (outside the cap)",
         account,
         [slurm.REQUEUE_PARTITION],
         in_cap=False,

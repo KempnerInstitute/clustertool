@@ -64,7 +64,7 @@ def test_slurm_error_is_clean(monkeypatch):
     assert "not found" in result.output
 
 
-def test_kempner_gpu_node_status_parsing(monkeypatch):
+def test_gpu_node_status_parsing(monkeypatch):
     sample = "\n".join(
         [
             "hg1|idle|amd,gpu,h100,cc9.0",
@@ -77,13 +77,13 @@ def test_kempner_gpu_node_status_parsing(monkeypatch):
         ]
     )
     monkeypatch.setattr(slurm, "_run", lambda cmd, input_text=None: sample)
-    rows = dict(slurm.kempner_gpu_node_status())
+    rows = dict(slurm.gpu_node_status())
     assert rows["H100"] == {"idle": 1, "mixed": 1, "alloc": 0, "resv": 0, "drain": 1, "down": 0}
     assert rows["H200"]["alloc"] == 1
     assert rows["A100"]["down"] == 1
     assert rows["A100 MIG"]["mixed"] == 1
     assert rows["RTX"]["resv"] == 1
-    assert [label for label, _ in slurm.kempner_gpu_node_status()] == [
+    assert [label for label, _ in slurm.gpu_node_status()] == [
         "A100",
         "A100 MIG",
         "H100",
@@ -125,7 +125,7 @@ def test_status_bucket_covers_all_states():
 def test_gpu_status_command(monkeypatch):
     monkeypatch.setattr(
         slurm,
-        "kempner_gpu_node_status",
+        "gpu_node_status",
         lambda: [
             ("A100", {"idle": 1, "mixed": 20, "alloc": 6, "resv": 0, "drain": 1, "down": 0}),
             ("H100", {"idle": 0, "mixed": 72, "alloc": 20, "resv": 2, "drain": 1, "down": 1}),
@@ -137,6 +137,27 @@ def test_gpu_status_command(monkeypatch):
     assert "A100" in result.output
     assert "28" in result.output
     assert "TOTAL" in result.output
+
+
+def test_gpu_status_reports_the_configured_partition(monkeypatch):
+    monkeypatch.setattr(site, "requeue_partition", lambda: "gpu_requeue")
+    monkeypatch.setattr(
+        slurm,
+        "gpu_node_status",
+        lambda: [("A100", {"idle": 1, "mixed": 0, "alloc": 0, "resv": 0, "drain": 0, "down": 0})],
+    )
+    result = CliRunner().invoke(main, ["gpu", "status"])
+    assert result.exit_code == 0
+    assert "gpu_requeue" in result.output
+    assert "kempner" not in result.output
+
+
+def test_gpu_status_empty_names_the_configured_partition(monkeypatch):
+    monkeypatch.setattr(site, "requeue_partition", lambda: "gpu_requeue")
+    monkeypatch.setattr(slurm, "gpu_node_status", lambda: [])
+    result = CliRunner().invoke(main, ["gpu", "status"])
+    assert result.exit_code == 0
+    assert "No GPU nodes found in gpu_requeue." in result.output
 
 
 def test_nodes_list(monkeypatch):
@@ -1377,6 +1398,33 @@ def test_account_members_all(monkeypatch):
     assert "kempner_dev,alice,Alice_A" in result.output
     assert "kempner_x_lab,carol,Carol_C" in result.output
     assert "other_acct" not in result.output
+
+
+def test_account_members_all_uses_site_config(monkeypatch):
+    asked = []
+    monkeypatch.setattr(site, "roster_partition", lambda: "gpu")
+    monkeypatch.setattr(site, "lab_account_prefix", lambda: "lab_")
+    monkeypatch.setattr(
+        slurm,
+        "partition_accounts",
+        lambda p: asked.append(p) or ["lab_alpha", "kempner_dev", "other"],
+    )
+    monkeypatch.setattr(slurm, "account_members", lambda a: ["u1"] if a == "lab_alpha" else [])
+    monkeypatch.setattr(slurm, "user_fullnames", lambda users: {"u1": "User_One"})
+    result = CliRunner().invoke(main, ["account", "members", "--all"])
+    assert result.exit_code == 0
+    assert asked == ["gpu"]
+    assert "lab_alpha,u1,User_One" in result.output
+    assert "kempner_dev" not in result.output
+
+
+def test_account_members_all_names_the_configured_partition(monkeypatch):
+    monkeypatch.setattr(site, "roster_partition", lambda: "gpu")
+    monkeypatch.setattr(site, "lab_account_prefix", lambda: "lab_")
+    monkeypatch.setattr(slurm, "partition_accounts", lambda p: [])
+    result = CliRunner().invoke(main, ["account", "members", "--all"])
+    assert result.exit_code != 0
+    assert "'gpu' partition" in result.output
 
 
 def test_account_members_needs_account():

@@ -4,6 +4,21 @@ clustertool ships tuned for the Kempner AI Cluster, but nothing in the commands
 is hardwired to it. Another Slurm site adopts it in a few steps. See
 [configuration.md](configuration.md) for the full config reference.
 
+```mermaid
+flowchart LR
+    s1["<b>1. install</b><br/>uv tool install"]
+    s2["<b>2. describe your cluster</b><br/>partitions, per-GPU limits,<br/>QoS, account naming, paths"]
+    s3["<b>3. map or drop<br/>the site tools</b><br/>point the tools table at your own,<br/>or leave them absent"]
+    s4["<b>4. disable what<br/>you do not want</b><br/>the commands disable list"]
+    s5["<b>5. add your own</b><br/>plugin entry point,<br/>or a pull request"]
+
+    s1 --> s2 --> s3 --> s4 --> s5
+```
+
+Steps 1 and 2 are enough to get a working tool: most commands are generic Slurm
+and need no configuration at all. Steps 3 through 5 are refinements you can make
+whenever they become worth it.
+
 ## 1. Install
 
     uv tool install git+https://github.com/KempnerInstitute/clustertool

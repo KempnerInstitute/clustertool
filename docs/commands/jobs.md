@@ -306,7 +306,7 @@ mail flags all work. Run `sbatch --help` for the full list.
 
 ## `jobs new`
 
-Build a Kempner GPU sbatch script and print, save, or submit it. Prompts for the
+Build a GPU sbatch script and print, save, or submit it. Prompts for the
 GPU type and account if not given, sizes CPUs and memory to the partition's
 enforced per-GPU limits, and writes a correct sbatch header. Prints the script
 by default; `-o` saves it and `--submit` submits it.

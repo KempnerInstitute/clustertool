@@ -155,10 +155,10 @@ def _status_bucket(state: str) -> str:
     return "down"
 
 
-def kempner_gpu_node_status() -> list[tuple[str, dict[str, int]]]:
-    """Return [(gpu_type, {bucket: count})] for kempner_requeue nodes.
+def gpu_node_status() -> list[tuple[str, dict[str, int]]]:
+    """Return [(gpu_type, {bucket: count})] for the site requeue partition.
 
-    Each node in the requeue partition (which spans every Kempner GPU node) is
+    Each node in the requeue partition (which spans every GPU node) is
     mapped to a GPU type from its features and a status bucket from its state.
     Types come back in a fixed order, omitting any with no nodes.
     """

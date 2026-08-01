@@ -25,9 +25,10 @@ def avail(partition: str, cpus_per_gpu: int | None, mem_per_gpu: int | None) -> 
     """List nodes with GPUs you can actually allocate, most first.
 
     Available GPUs per node are the free GPUs, capped by how many the free CPU
-    and memory support at the enforced per-GPU ratio (kempner: 16 CPU / 240 GB;
-    kempner_h100: 24 / 360; kempner_h200: 16 / 360; kempner_rtx: 16 / 180). Other
-    partitions show raw free GPUs unless --cpus-per-gpu / --mem-per-gpu are given.
+    and memory support at the per-GPU ratio your site enforces for that
+    partition, from [partitions.limits] in the site config. A partition with no
+    configured ratio shows raw free GPUs unless --cpus-per-gpu / --mem-per-gpu
+    are given. Run 'nodes partitions' to see the configured ratios.
 
     \b
     Use cases:

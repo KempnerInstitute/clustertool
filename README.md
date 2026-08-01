@@ -25,6 +25,39 @@ Every task is a subcommand under a group (for example `clustertool gpu ...`).
 Each command has `--help` explaining what it does, its use cases, and its
 inputs.
 
+## How it works
+
+```mermaid
+flowchart TB
+    you["<b>you</b><br/>clustertool gpu usage"]
+    cli["<b>clustertool</b><br/>75 commands: 7 groups plus 3 top-level<br/>no daemon, no database, no stored state"]
+    cfg["<b>site config</b> (TOML)<br/>partitions · per-GPU limits · QoS · account naming<br/>tool names · storage roots · disabled commands"]
+    out["<b>your terminal</b><br/>tables, verdicts, exit codes"]
+
+    subgraph host["tools your cluster already runs"]
+        direction LR
+        slurm["<b>Slurm</b><br/>squeue · sinfo · sacct<br/>sacctmgr · sshare · scontrol"]
+        wrappers["<b>site wrappers</b><br/>showq · spart · lsload<br/>stotal · quota"]
+        fsys["<b>filesystem</b><br/>lfs · getent"]
+    end
+
+    you --> cli
+    cfg -. "supplies every site-specific value" .-> cli
+    cli --> host
+    host --> out
+```
+
+Nothing runs as a service and nothing is cached: each command shells out to the
+tools your cluster already provides and formats what they return. That makes
+adoption mostly a matter of description rather than integration. **The site
+config is the only place a cluster's specifics live**, so another center points
+those keys at its own partitions, limits, paths, and tool names and keeps the
+same commands. A command whose site wrapper is missing hides itself from help
+instead of failing, so a center that has no `showq` simply has no `jobs queue`.
+
+See [`docs/configuration.md`](docs/configuration.md) for every key and
+[`docs/porting.md`](docs/porting.md) for a step-by-step adoption guide.
+
 ## Requirements
 
 **To install:** Python 3.10 or newer, plus one of [uv](https://docs.astral.sh/uv/)

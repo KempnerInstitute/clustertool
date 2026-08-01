@@ -6,8 +6,10 @@ Account membership, fairshare, usage, and limits. Run `clustertool account --hel
 
 List the users in a Slurm fairshare account.
 
-With `--all`, list every Kempner lab account (from the kempner partition's
-allowed accounts) and its members as CSV: `account,username,full_name`.
+With `--all`, list every lab account and its members as CSV:
+`account,username,full_name`. Lab accounts are the ones allowed on the site's
+roster partition whose name carries the site's lab prefix, both set under
+`[accounts]` in the site config.
 
 **Use cases**
 - See who belongs to a lab's Slurm account.
@@ -15,7 +17,7 @@ allowed accounts) and its members as CSV: `account,username,full_name`.
 
 **Inputs**
 - `ACCOUNT`: Slurm account name (e.g. `kempner_dev`). Omit when using `--all`.
-- `--all`: List all Kempner lab accounts and members as CSV.
+- `--all`: List all lab accounts and members as CSV.
 
 ## `account fairshare [ACCOUNT] [-u USER]`
 
