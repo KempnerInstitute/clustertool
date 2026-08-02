@@ -179,7 +179,7 @@ Saturate a node's NVLink fabric with continuous NCCL all-reduce.
 
 Builds the bundled CUDA/NCCL benchmark (needs nvcc and NCCL on PATH, e.g. after
 `module load nvhpc`) and runs it until Ctrl+C, reporting sustained aggregate
-algorithm bandwidth. Uses every GPU on the node (2-8) unless `--gpus` limits it.
+algorithm bandwidth. Runs on the GPUs of the job step it is in, read from `CUDA_VISIBLE_DEVICES` (at least 2, no upper bound). Outside a job step it refuses rather than loading GPUs another job may hold; `--all-gpus` takes the whole node anyway unless `--gpus` limits it.
 
 **Use cases**
 - Stress-test or burn-in the NVLink/NVSwitch fabric on a GPU node.
@@ -189,10 +189,13 @@ algorithm bandwidth. Uses every GPU on the node (2-8) unless `--gpus` limits it.
 - `BYTES_PER_GPU`: Bytes per GPU (default 2147483648 = 2 GiB).
 - `WARMUP`: Warmup iterations (default 20).
 - `REPORT_EVERY`: Report interval in iterations (default 200).
-- `--gpus`: Number of GPUs to use (default: all on the node).
+- `--gpus`: Number of GPUs to use (default: every GPU in the job step).
 - `--nvcc`: nvcc used to build the benchmark.
 - `--rebuild`: Force rebuild of the cached binary.
+- `--all-gpus`: Outside a job step, take every GPU on the node.
 - `--dry-run`: Print the build and run commands instead of running.
+
+Every failure is a `ClickException`, so the exit codes are 0 on success and 1 on any error. 2 is unused, as elsewhere in the diagnostics, since click exits 2 on a usage error.
 
 ## `diag scheduler`
 

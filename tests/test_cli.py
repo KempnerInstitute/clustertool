@@ -7,6 +7,7 @@ import re
 import shutil
 import sys
 
+import click
 import pytest
 from click.testing import CliRunner
 from test_gpuhealth import ECC_DISABLED, HEALTHY, _gpu, _nvlink, _smi_xml
@@ -2648,10 +2649,10 @@ def test_diag_nvlink_dry_run():
     assert "nvlink_saturate_forever.cu" in result.output
     assert "2147483648 20 200" in result.output
     assert "NCCL_IB_DISABLE=1" in result.output
-    assert "all GPUs on the node" in result.output
 
 
-def test_diag_nvlink_dry_run_gpus():
+def test_diag_nvlink_dry_run_gpus(monkeypatch):
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1,2,3,4,5,6,7")
     result = CliRunner().invoke(
         main, ["diag", "nvlink", "1024", "5", "50", "--gpus", "4", "--dry-run"]
     )
@@ -2668,14 +2669,42 @@ def test_diag_nvlink_run_all_gpus(monkeypatch, tmp_path):
     monkeypatch.setattr(
         process, "stream", lambda cmd, extra_env=None: calls.append((cmd, extra_env)) or 0
     )
-    result = CliRunner().invoke(main, ["diag", "nvlink"])
+    result = CliRunner().invoke(main, ["diag", "nvlink", "--all-gpus"])
     assert result.exit_code == 0
     run_env = [env for cmd, env in calls if env is not None][0]
     assert run_env["CUDA_VISIBLE_DEVICES"] == "0,1,2,3,4,5,6,7"
     assert "8 GPU(s)" in result.output
 
 
+def test_diag_nvlink_refuses_the_whole_node_outside_a_job_step(monkeypatch, tmp_path):
+    """With no CUDA_VISIBLE_DEVICES there is no allocation to narrow."""
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    monkeypatch.setattr(process, "run", lambda cmd, input_text=None: _fake_nvidia_smi_l(8))
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/nvcc")
+    calls = []
+    monkeypatch.setattr(
+        process, "stream", lambda cmd, extra_env=None: calls.append((cmd, extra_env)) or 0
+    )
+    result = CliRunner().invoke(main, ["diag", "nvlink"])
+    assert result.exit_code == 1
+    assert "no allocation to narrow" in result.output
+    assert calls == []
+
+
+def test_diag_nvlink_counts_the_devices_it_will_pass(monkeypatch, tmp_path):
+    """--gpus is checked against nvidia-smi, but the binary sees the device list."""
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "3")
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
+    monkeypatch.setattr(process, "run", lambda cmd, input_text=None: _fake_nvidia_smi_l(8))
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/nvcc")
+    result = CliRunner().invoke(main, ["diag", "nvlink", "--gpus", "4"])
+    assert result.exit_code == 1
+    assert "this step has 1" in result.output
+
+
 def test_diag_nvlink_gpus_override(monkeypatch, tmp_path):
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1,2,3,4,5,6,7")
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
     monkeypatch.setattr(process, "run", lambda cmd, input_text=None: _fake_nvidia_smi_l(8))
     monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/nvcc")
@@ -2697,6 +2726,7 @@ def test_diag_nvlink_gpus_exceeds(monkeypatch):
 
 
 def test_diag_nvlink_too_few_gpus(monkeypatch):
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0")
     monkeypatch.setattr(process, "run", lambda cmd, input_text=None: _fake_nvidia_smi_l(1))
     result = CliRunner().invoke(main, ["diag", "nvlink"])
     assert result.exit_code != 0
@@ -2711,6 +2741,7 @@ def test_diag_nvlink_no_gpus(monkeypatch):
 
 
 def test_diag_nvlink_no_nvcc(monkeypatch):
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "0,1,2,3,4,5,6,7")
     monkeypatch.setattr(process, "run", lambda cmd, input_text=None: _fake_nvidia_smi_l(8))
     monkeypatch.setattr(shutil, "which", lambda name: None)
     result = CliRunner().invoke(main, ["diag", "nvlink"])
@@ -4093,10 +4124,12 @@ def test_nvlink_narrows_the_slurm_allocation(monkeypatch):
     nv = importlib.import_module("clustertool.commands.diag.nvlink")
 
     monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "4,5,6,7")
-    assert nv._device_list(2) == "4,5"
-    assert nv._device_list(4) == "4,5,6,7"
+    assert nv._device_list(2, False) == ["4", "5"]
+    assert nv._device_list(4, False) == ["4", "5", "6", "7"]
     monkeypatch.delenv("CUDA_VISIBLE_DEVICES")
-    assert nv._device_list(2) == "0,1"
+    with pytest.raises(click.ClickException):
+        nv._device_list(2, False)
+    assert nv._device_list(2, True) == ["0", "1"]
 
 
 def test_entry_restores_the_default_sigpipe_disposition():
