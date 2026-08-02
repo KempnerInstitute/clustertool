@@ -2,7 +2,7 @@
 
 import click
 
-from clustertool import completion, process, site
+from clustertool import completion, process, site, slurm
 from clustertool.commands.account import _write
 from clustertool.grouping import admin, keywords
 
@@ -29,6 +29,12 @@ def add_user(
     'qos grant' gives the associations it creates. Prompts for confirmation unless
     -y.
 
+    The user and the account are both checked first. sacctmgr does warn about a
+    name with no uid, but only at the confirmation prompt that -i skips, and it
+    reports an account that does not exist and a user who is already a member
+    with the same text, so a typo would otherwise create a junk association or
+    read as a missing account.
+
     Slurm operator, or a coordinator of the account; a site that sets
     DisableCoordDBD in slurmdbd.conf restricts this to operators.
 
@@ -44,11 +50,27 @@ def add_user(
       -c, --cluster  Slurm cluster (default: the site cluster).
       -y, --yes      Skip the confirmation prompt.
     """
-    _write.check_names(user=user, account=account)
-    share = fairshare or site.qos_grant_fairshare()
+    _write.check_names(user=user, account=account, cluster=cluster)
+    share = fairshare if fairshare is not None else site.qos_grant_fairshare()
     _write.check_fairshare(share)
+    if not slurm.user_exists(user):
+        raise click.ClickException(
+            f"no such user on this host: {user}. sacctmgr would create an association "
+            "for a name with no uid, and the person would still have no access"
+        )
+    if not slurm.account_exists(account):
+        raise click.ClickException(f"account '{account}' does not exist")
+    if _write.associations(user, account, cluster):
+        raise click.ClickException(
+            f"{user} is already a member of account {account}. To change their "
+            f"fairshare, use 'clustertool account set-fairshare {user} {account}'"
+        )
+    scope = _write.cluster_scope(cluster)
+    where = scope.split("=", 1)[1]
     if not yes:
-        click.confirm(f"Add user {user} to account {account} (fairshare={share})?", abort=True)
+        click.confirm(
+            f"Add user {user} to account {account} on {where} (fairshare={share})?", abort=True
+        )
     cmd = [
         "sacctmgr",
         "-i",
@@ -56,7 +78,7 @@ def add_user(
         "user",
         f"name={user}",
         f"account={account}",
-        _write.cluster_scope(cluster),
+        scope,
         f"fairshare={share}",
     ]
     process.passthrough(cmd, f"failed to add {user} to {account}")

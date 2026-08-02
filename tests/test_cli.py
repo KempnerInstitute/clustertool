@@ -13,6 +13,7 @@ from test_gpuhealth import ECC_DISABLED, HEALTHY, _gpu, _nvlink, _smi_xml
 
 from clustertool import completion, fabric, gpuhealth, process, qos, search, site, slurm, storage
 from clustertool.cli import main
+from clustertool.commands.account import _write
 
 
 def test_usage_all_labs(monkeypatch):
@@ -1830,7 +1831,14 @@ def test_account_qos_long(monkeypatch):
     assert "Flags" in fmt and "Preempt" in fmt and "UsageFactor" in fmt and "MaxSubmitPU" in fmt
 
 
+def _stub_add_user_prechecks(monkeypatch, member=False):
+    monkeypatch.setattr(slurm, "user_exists", lambda user: True)
+    monkeypatch.setattr(slurm, "account_exists", lambda account: True)
+    monkeypatch.setattr(_write, "associations", lambda u, a, c: [("", "normal")] if member else [])
+
+
 def test_account_add_user(monkeypatch):
+    _stub_add_user_prechecks(monkeypatch)
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["account", "add-user", "alice", "kempner_dev", "-y"])
     assert result.exit_code == 0
@@ -1849,10 +1857,74 @@ def test_account_add_user(monkeypatch):
 def test_account_add_user_uses_the_site_fairshare(monkeypatch):
     """[qos].grant_fairshare is the site's convention for a new association."""
     monkeypatch.setattr(site, "qos_grant_fairshare", lambda: "1000")
+    _stub_add_user_prechecks(monkeypatch)
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["account", "add-user", "alice", "kempner_dev", "-y"])
     assert result.exit_code == 0
     assert "fairshare=1000" in calls[0]
+
+
+def test_account_add_user_refuses_a_name_with_no_uid(monkeypatch):
+    """-i skips the only prompt at which sacctmgr warns about this."""
+    _stub_add_user_prechecks(monkeypatch)
+    monkeypatch.setattr(slurm, "user_exists", lambda user: False)
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["account", "add-user", "nosuch", "kempner_dev", "-y"])
+    assert result.exit_code == 1
+    assert "no such user on this host" in result.output
+    assert calls == []
+
+
+def test_account_add_user_refuses_an_account_that_does_not_exist(monkeypatch):
+    _stub_add_user_prechecks(monkeypatch)
+    monkeypatch.setattr(slurm, "account_exists", lambda account: False)
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["account", "add-user", "alice", "nosuch", "-y"])
+    assert result.exit_code == 1
+    assert "does not exist" in result.output
+    assert calls == []
+
+
+def test_account_add_user_refuses_an_existing_member(monkeypatch):
+    """sacctmgr reports this and a missing account with the same text."""
+    _stub_add_user_prechecks(monkeypatch, member=True)
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["account", "add-user", "alice", "kempner_dev", "-y"])
+    assert result.exit_code == 1
+    assert "already a member" in result.output
+    assert calls == []
+
+
+def test_account_add_user_refuses_a_comma_in_the_cluster(monkeypatch):
+    """man sacctmgr reads cluster= as a list, so a comma widens the write."""
+    _stub_add_user_prechecks(monkeypatch)
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(
+        main, ["account", "add-user", "alice", "kempner_dev", "-c", "a,b", "-y"]
+    )
+    assert result.exit_code == 1
+    assert "invalid CLUSTER" in result.output
+    assert calls == []
+
+
+def test_account_add_user_names_the_cluster_in_the_prompt(monkeypatch):
+    """-c is the one thing that changes the write, so it cannot be the one thing hidden."""
+    _stub_add_user_prechecks(monkeypatch)
+    _capture_stream(monkeypatch)
+    result = CliRunner().invoke(
+        main, ["account", "add-user", "alice", "kempner_dev", "-c", "elsewhere"], input="n\n"
+    )
+    assert "on elsewhere" in result.output
+
+
+def test_account_add_user_keeps_an_explicit_empty_fairshare(monkeypatch):
+    _stub_add_user_prechecks(monkeypatch)
+    _capture_stream(monkeypatch)
+    result = CliRunner().invoke(
+        main, ["account", "add-user", "alice", "kempner_dev", "--fairshare", "", "-y"]
+    )
+    assert result.exit_code == 1
+    assert "invalid fairshare" in result.output
 
 
 def test_account_writes_reject_a_comma(monkeypatch):
