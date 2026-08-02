@@ -15,14 +15,19 @@ from clustertool.tui import data
 from clustertool.tui.panels.jobs import JobsPanel
 from clustertool.tui.panels.status import StatusBar
 
-SIDE_BY_SIDE = 48
+SIDE_BY_SIDE = 80
 """Narrowest terminal that still holds the jobs panel and the side column together.
 
-The side column's width floor in app.tcss, plus as much again for the jobs panel.
 Below it the side column is hidden rather than drawn past the right edge. The
 jobs panel carries no floor of its own: a floor cannot make a panel fit a
 terminal narrower than itself, it only pushes the panel off the right edge, which
 is the very thing this constant exists to prevent.
+
+80 rather than the sum of the floors, which was 48: bringing the side column back
+costs the jobs table the side column's whole width at once, and at 48 that took
+the table from five columns to two, so widening the terminal by one lost three
+headings. 80 is the first width where the table keeps every column it had at 79,
+measured across 30 to 130 columns.
 """
 
 HELP = """\

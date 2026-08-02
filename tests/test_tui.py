@@ -295,10 +295,17 @@ async def test_the_jobs_panel_keeps_a_usable_width_when_narrow():
 
 
 async def test_storage_panel_keeps_a_usable_width_when_narrow():
-    """Without a floor the storage column collapses to its border and shows nothing."""
+    """Without a floor the storage column collapses to its border and shows nothing.
+
+    Measured at the narrowest width that shows it at all, which is where the floor
+    is the thing deciding its width rather than its share of the row.
+    """
+    from clustertool.tui.app import SIDE_BY_SIDE
+
     app = _app()
-    async with app.run_test(size=(60, 20)) as pilot:
+    async with app.run_test(size=(SIDE_BY_SIDE, 20)) as pilot:
         await pilot.pause()
+        assert app.query_one("#storage").display
         assert app.query_one("#storage").region.width >= 24
 
 
@@ -609,6 +616,70 @@ async def test_no_panel_is_drawn_off_the_right_edge(size):
                 assert widget.region.right <= size[0], (panel, size)
         table = app.query_one("#jobs-table")
         assert table.virtual_size.width <= table.size.width, size
+
+
+async def test_a_resize_repaints_the_cells_not_just_the_headings():
+    """A column left to size itself is recomputed on a later refresh.
+
+    Until that refresh the table painted every column at its heading width, with
+    the cells chopped to it and no ellipsis, so 36754908 read as 36. Asserting on
+    the rendered cell rather than on the column width, which was already right.
+    """
+    from clustertool.tui.panels.jobs import JobsPanel
+
+    app = _app()
+    async with app.run_test(size=(120, 24)) as pilot:
+        await pilot.pause()
+        app.query_one(JobsPanel).show(_wide_rows())
+        await pilot.pause()
+        await pilot.resize_terminal(80, 24)
+        await pilot.pause()
+        table = app.query_one("#jobs-table")
+        painted = [str(cell) for cell in table.get_row_at(0)]
+        assert any(len(cell) > 4 for cell in painted), painted
+        for cell in painted:
+            assert cell == cell.rstrip() or "…" in cell, painted
+        widths = [column.get_render_width(table) for column in table.columns.values()]
+        assert sum(widths) <= table.size.width, widths
+
+
+async def test_widening_the_terminal_never_costs_the_table_a_column():
+    """The side column returns all at once, and took three headings with it."""
+    from clustertool.tui.app import SIDE_BY_SIDE
+    from clustertool.tui.panels.jobs import JobsPanel, layout
+
+    app = _app()
+    async with app.run_test(size=(SIDE_BY_SIDE - 1, 20)) as pilot:
+        await pilot.pause()
+        app.query_one(JobsPanel).show(_wide_rows())
+        await pilot.pause()
+        before = len(layout(app.query_one("#jobs-table").size.width))
+        await pilot.resize_terminal(SIDE_BY_SIDE, 20)
+        await pilot.pause()
+        assert app.query_one("#storage").display
+        after = len(layout(app.query_one("#jobs-table").size.width))
+        assert after >= before, (before, after)
+
+
+def test_the_elapsed_column_holds_a_run_of_over_ten_days():
+    """Nothing else shows elapsed, so a cut here loses the figure at every width."""
+    from clustertool.tui.panels.jobs import COLUMNS, elide
+
+    ceiling = {name: high for name, _, high in COLUMNS}["ELAP"]
+    assert elide("13-06:20:29", ceiling) == "13-06:20:29"
+    assert elide("99-23:59:59", ceiling) == "99-23:59:59"
+
+
+async def test_the_detail_names_the_elapsed_time():
+    from clustertool.tui.panels.jobs import JobsPanel
+
+    app = _app()
+    async with app.run_test(size=(100, 26)) as pilot:
+        await pilot.pause()
+        panel = app.query_one(JobsPanel)
+        panel.show([_row("1", elapsed="13-06:20:29")])
+        await pilot.pause()
+        assert "13-06:20:29" in panel._detail_text()
 
 
 def test_layout_drops_columns_before_it_starves_the_ones_that_stay():

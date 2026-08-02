@@ -10,6 +10,7 @@ import codecs
 import fcntl
 import os
 import pty
+import re
 import select
 import signal
 import struct
@@ -18,6 +19,14 @@ import termios
 import time
 
 import pyte
+
+EARLY = float(os.environ.get("TUI_EARLY", "0.35"))
+"""How long after a resize the first screen is taken, to catch a frame that heals.
+
+Small on purpose. A frame that lands wrong and is corrected a second later looks
+perfect to anything that waits for the screen to settle, so this samples before
+the correction can arrive.
+"""
 
 
 def _resize(fd, cols, rows):
@@ -48,21 +57,27 @@ def run(binary, sizes, settle=2.0):
     if pid == 0:
         os.environ["TERM"] = "xterm-256color"
         os.execv(binary, [binary, "me"])
-    screen = pyte.Screen(first[0], first[1])
-    stream = pyte.Stream(screen)
     decoder = codecs.getincrementaldecoder("utf-8")("replace")
+    screen = pyte.Screen(first[0], first[1])
     _resize(fd, *first)
-    _drain(fd, stream, settle + 1, decoder)
+    _drain(fd, pyte.Stream(screen), settle + 1, decoder)
     for cols, rows in sizes:
-        screen.resize(rows, cols)
+        nudge = max(rows - 1, 2)
+        _resize(fd, cols, nudge)
+        os.kill(pid, signal.SIGWINCH)
+        _drain(fd, pyte.Stream(pyte.Screen(cols, nudge)), 0.4, decoder)
+        screen = pyte.Screen(cols, rows)
+        stream = pyte.Stream(screen)
         _resize(fd, cols, rows)
         os.kill(pid, signal.SIGWINCH)
-        _drain(fd, stream, settle, decoder)
-        report(screen, cols, rows)
+        _drain(fd, stream, EARLY, decoder)
+        early = [line.rstrip() for line in screen.display]
+        _drain(fd, stream, max(settle - EARLY, 0.1), decoder)
+        report(screen, cols, rows, early)
     os.kill(pid, signal.SIGKILL)
 
 
-def report(screen, cols, rows):
+def report(screen, cols, rows, early):
     """Print the whole screen with its geometry checks.
 
     Every row is printed: a first attempt showed only the top six, which put the
@@ -70,15 +85,27 @@ def report(screen, cols, rows):
     two defects it was written to catch were all in that region. Corners are
     counted wherever they fall rather than only at the start of a line, since the
     right-hand panel never starts one.
+
+    The early screen is compared against the settled one, because a resize that
+    lands wrong and is corrected a second later looks perfect to anything that
+    only waits. Ignore the clock, which is meant to change.
     """
     lines = [line.rstrip() for line in screen.display]
     over = [(n, len(line)) for n, line in enumerate(lines) if len(line) > cols]
     corners = {glyph: sum(line.count(glyph) for line in lines) for glyph in "╭╮╰╯"}
     balanced = len(set(corners.values())) == 1
+    paired = enumerate(zip(early, lines, strict=False))
+    settling = [n for n, (a, b) in paired if _steady(a) != _steady(b)]
     print(f"=== {cols}x{rows}")
     print(f"  overflow={over or 'none'}  corners={corners} balanced={balanced}")
+    print(f"  rows still changing after {EARLY}s: {settling or 'none'}")
     for n, line in enumerate(lines):
         print(f"  {n:3d}|{line}")
+
+
+def _steady(line):
+    """Return a line with the parts that are meant to change taken out."""
+    return re.sub(r"\d+[-:]?[\d:]*", "N", line)
 
 
 if __name__ == "__main__":

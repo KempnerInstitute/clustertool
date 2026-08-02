@@ -7,14 +7,19 @@ from textual.widgets import DataTable, Static
 from clustertool.tui import data
 
 COLUMNS = (
-    ("ID", 12, 18),
-    ("PART", 6, 13),
+    ("ID", 12, 31),
+    ("PART", 6, 30),
     ("ST", 2, 2),
     ("GPU", 3, 3),
-    ("ELAP", 7, 10),
-    ("NODE", 6, 20),
+    ("ELAP", 7, 11),
+    ("NODE", 6, 30),
 )
-"""Each column as (heading, narrowest useful width, width worth growing to).
+"""Each column as (heading, narrowest useful width, widest worth growing to).
+
+The ceilings are the widest value each field actually takes on this cluster, so a
+wide terminal spends its room on the table rather than leaving it blank. ELAP is
+11 for DD-HH:MM:SS up to 99 days: the detail pane has no elapsed line to fall
+back on, so a job past ten days could otherwise never show how long it has run.
 
 A partition list, and a pending reason such as ReqNodeNotAvail with its node
 list, both run long enough on their own to push the table past any terminal, and
@@ -126,13 +131,20 @@ class JobsPanel(Vertical):
         self._paint(rows, previous)
 
     def _paint(self, rows: list[data.JobRow] | None = None, previous: str | None = None) -> None:
-        """Draw the table at the current width, restoring the cursor onto previous."""
+        """Draw the table at the current width, restoring the cursor onto previous.
+
+        Each column is given its width outright rather than left to size itself
+        from its content. An automatic width is recomputed on a later refresh, so
+        after a resize the table painted every column at its heading width, with
+        cells chopped to it and no ellipsis, until something else forced a redraw.
+        """
         table = self.query_one("#jobs-table", DataTable)
         if rows is None:
             rows, previous = self._rows, self.selected.jobid if self.selected else None
         columns = layout(table.size.width or 80)
         table.clear(columns=True)
-        table.add_columns(*(name for name, _ in columns))
+        for name, width in columns:
+            table.add_column(name, width=width)
         for row in rows:
             cells = self._cells(row)
             table.add_row(*(elide(cells[name], width) for name, width in columns), key=row.jobid)
@@ -189,6 +201,8 @@ class JobsPanel(Vertical):
             parts.append(f"{row.jobid}  {row.state}  on {row.partition}")
             if row.pending:
                 parts.append(f"waiting: {row.reason}")
+            else:
+                parts.append(f"elapsed: {row.elapsed}")
             parts.append(f"holds: {row.tres or 'nothing recorded'}")
             parts.append(f"nodes: {_nodes(row)}")
         return "\n".join(p for p in parts if p)

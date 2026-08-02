@@ -258,8 +258,14 @@ on a throwaway job of my own, submitted and cancelled deliberately.
 1. `--interval` and `--plain`.
 2. Color that works on light and dark terminals, and with `NO_COLOR`.
 3. Narrow-terminal behavior: below 100 columns the right column moves below the
-   jobs panel; below 80, the panels stack.
-4. `docs/commands/me.md`, the README row, and the command index.
+   jobs panel; below 80, the panels stack. Phase 2 hides the side column below 80
+   rather than stacking it, which is the cheap half of this.
+4. Give a jobs column no more width than its widest value needs. Phase 2 shares
+   spare width round by round against a per-column ceiling, so at 100 columns ID
+   takes 18 for a 9-character id while NODE is cut to 9 from 47. Capping growth at
+   the widest value in the current rows spends that width where it is read,
+   at the cost of columns that shift when the data does.
+5. `docs/commands/me.md`, the README row, and the command index.
 
 Verification: snapshots at 80, 100 and 160 columns; a `NO_COLOR` snapshot; the
 doc audit from `CONTRIBUTING.md` step 7.
