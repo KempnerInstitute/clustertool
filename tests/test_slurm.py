@@ -92,7 +92,7 @@ def test_account_members(monkeypatch):
         " kempner_dev|alice|parent|0.0003|0|0.002|0.008\n"
         " kempner_dev|bob|20|0.00003|1|0.0002|0.004\n"
     )
-    monkeypatch.setattr(slurm, "_run", lambda cmd: sample)
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, sample, ""))
     assert slurm.account_members("kempner_dev") == ["alice", "bob"]
 
 
@@ -467,3 +467,10 @@ def test_first_node_takes_the_head_of_a_range():
     assert slurm._first_node("holygpu8a[10301-10302]") == "holygpu8a10301"
     assert slurm._first_node("holy8a26602") == "holy8a26602"
     assert slurm._first_node("None assigned") == ""
+
+
+def test_account_members_raises_when_sshare_fails(monkeypatch):
+    """An empty list reads as an account with no members, which a failure is not."""
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (1, "", "no plugin"))
+    with pytest.raises(slurm.CommandError):
+        slurm.account_members("lab")

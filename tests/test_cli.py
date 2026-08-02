@@ -1927,7 +1927,7 @@ def test_account_remove_user(monkeypatch):
         "-i",
         "remove",
         "user",
-        "alice",
+        "name=alice",
         "account=kempner_dev",
         "cluster=odyssey",
     ]
@@ -1982,6 +1982,7 @@ def test_account_remove_user_with_no_association(monkeypatch):
 
 def test_account_set_fairshare(monkeypatch):
     calls = _capture_stream(monkeypatch)
+    monkeypatch.setattr(qos, "show_assoc_rows", lambda u, a, c=None: ["|normal"])
     result = CliRunner().invoke(
         main, ["account", "set-fairshare", "alice", "kempner_dev", "50", "-y"]
     )

@@ -49,7 +49,7 @@ def remove_user(
       -c, --cluster    Slurm cluster (default: the site cluster).
       -y, --yes        Skip the confirmation prompt.
     """
-    _write.check_names(user=user, account=account)
+    _write.check_names(user=user, account=account, partition=partition, cluster=cluster)
     if partition is not None:
         _write.check_names(partition=partition)
     rows = _write.associations(user, account, cluster)
@@ -64,9 +64,14 @@ def remove_user(
 
     click.echo(f"Associations to remove for {user} in {account}:")
     _write.describe(rows)
+    click.echo(
+        "Removing an association destroys its recorded usage; per man sacctmgr a "
+        "recreated association does not get it back, so the user's fairshare "
+        "standing restarts from zero."
+    )
     if not yes:
         click.confirm(f"Remove {len(rows)} association(s)?", abort=True)
-    cmd = ["sacctmgr", "-i", "remove", "user", user, f"account={account}"]
+    cmd = ["sacctmgr", "-i", "remove", "user", f"name={user}", f"account={account}"]
     cmd.append(_write.cluster_scope(cluster))
     if partition is not None:
         cmd.append(f"partition={partition}")

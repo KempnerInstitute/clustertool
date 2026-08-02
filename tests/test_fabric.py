@@ -194,3 +194,20 @@ def test_collect_snapshot_has_no_errors_when_every_probe_works(monkeypatch, tmp_
     monkeypatch.setattr(fabric.process, "probe", lambda cmd, timeout=None: (0, "", ""))
     snapshot = fabric.collect_snapshot(ib_root=str(tmp_path), timestamp="2026-08-01T00:00:00+00:00")
     assert snapshot["probe_errors"] == {}
+
+
+def test_require_snapshot_rejects_the_wrong_shape():
+    """json.loads accepts anything well-formed, including a list or a bare string."""
+    import pytest
+
+    for bad in ([1, 2], None, "text", {"ib": None}, {"ib": {"hcas": {}}}):
+        with pytest.raises(ValueError):
+            fabric.require_snapshot(bad, "BEFORE x.json")
+    with pytest.raises(ValueError):
+        fabric.require_snapshot({"ib": {"hcas": [{"ports": []}]}}, "BEFORE x.json")
+
+
+def test_require_snapshot_accepts_a_real_one():
+    snap = {"ib": {"hcas": [{"name": "mlx5_0", "ports": []}]}}
+    assert fabric.require_snapshot(snap, "BEFORE x.json") is snap
+    assert fabric.require_snapshot({"gpus": []}, "AFTER y.json") == {"gpus": []}

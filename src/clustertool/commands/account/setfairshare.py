@@ -19,9 +19,12 @@ def set_fairshare(user: str, account: str, share: str, cluster: str | None, yes:
     """Set a user's fairshare in an account (via sacctmgr).
 
     SHARE is an integer number of raw shares, or 'parent' to inherit the account's
-    shares. This changes the user's base association in the account, and their
-    partition-scoped associations inherit it where they are set to parent. Prompts
-    for confirmation unless -y.
+    shares. man sacctmgr identifies an association by account, cluster, partition
+    and user, so a condition naming three of those matches every value of the
+    fourth: this sets the shares on the user's base association in the account and
+    on every partition-scoped one they hold there, overwriting a partition
+    association currently set to parent rather than leaving it to inherit. Each is
+    listed with its current shares before you confirm. Prompts unless -y.
 
     Slurm operator, or a coordinator of the account; a site that sets
     DisableCoordDBD in slurmdbd.conf restricts this to operators.
@@ -38,10 +41,16 @@ def set_fairshare(user: str, account: str, share: str, cluster: str | None, yes:
       -c, --cluster  Slurm cluster (default: the site cluster).
       -y, --yes      Skip the confirmation prompt.
     """
-    _write.check_names(user=user, account=account)
+    _write.check_names(user=user, account=account, cluster=cluster)
     _write.check_fairshare(share)
+    rows = _write.associations(user, account, cluster)
+    if not rows:
+        raise click.ClickException(f"{user} has no association with account {account}")
+    click.echo(f"Associations to set to fairshare {share} for {user} in {account}:")
+    for partition, current_qos in rows:
+        click.echo(f"  {partition or '(no partition)':<28} QoS: {current_qos or '-'}")
     if not yes:
-        click.confirm(f"Set {user} fairshare to {share} in account {account}?", abort=True)
+        click.confirm(f"Set fairshare on {len(rows)} association(s)?", abort=True)
     cmd = [
         "sacctmgr",
         "-i",

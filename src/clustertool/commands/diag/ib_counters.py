@@ -51,7 +51,29 @@ def ib_counters(ctx: click.Context, before: str, after: str) -> None:
             click.echo(f"ib-counters: error: {label} {path} is not valid JSON: {exc}", err=True)
             ctx.exit(3)
     before_snap, after_snap = snapshots
+    for label, path, snap in (("BEFORE", before, before_snap), ("AFTER", after, after_snap)):
+        try:
+            fabric.require_snapshot(snap, f"{label} {path}")
+        except ValueError as exc:
+            click.echo(f"ib-counters: error: {exc}", err=True)
+            ctx.exit(3)
+    hosts = {snap.get("hostname") for snap in (before_snap, after_snap) if snap.get("hostname")}
+    if len(hosts) > 1:
+        listed = ", ".join(sorted(hosts))
+        click.echo(
+            f"ib-counters: error: the snapshots are from different hosts ({listed}); "
+            "HCA names repeat across nodes, so diffing them compares unrelated ports",
+            err=True,
+        )
+        ctx.exit(3)
 
+    if not (fabric.counters_by_port(before_snap) or fabric.counters_by_port(after_snap)):
+        click.echo(
+            "ib-counters: error: neither snapshot has an InfiniBand port to compare, "
+            "so this run measured nothing",
+            err=True,
+        )
+        ctx.exit(3)
     rows, any_error = fabric.counter_deltas(before_snap, after_snap)
     click.echo(f"{'PORT':<20} {'COUNTER':<40} {'BEFORE':>12} {'AFTER':>12} {'DELTA':>12}")
     for port, counter, before_v, after_v, delta, is_error in rows:

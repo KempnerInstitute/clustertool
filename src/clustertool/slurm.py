@@ -204,8 +204,15 @@ def user_exists(user: str) -> bool:
 
 
 def account_members(account: str) -> list[str]:
-    """Return the sorted unique users in a fairshare account."""
-    out = _run(["sshare", "-P", "--all", f"--account={account}"])
+    """Return the sorted unique users in a fairshare account.
+
+    Raises if sshare fails, since an empty list reads as an account with no
+    members: sshare exits nonzero when the multifactor plugin is absent or the
+    controller is unreachable, and neither is an empty account.
+    """
+    code, out, err = process.probe(["sshare", "-P", "--all", f"--account={account}"])
+    if code != 0:
+        raise CommandError(f"could not list the members of {account}: {err.strip() or code}")
     members: set[str] = set()
     for line in out.splitlines()[1:]:
         parts = line.split("|")

@@ -295,6 +295,27 @@ but is not a fault.
 """
 
 
+def require_snapshot(snapshot, label: str) -> dict:
+    """Return the snapshot, or raise ValueError naming which argument is not one.
+
+    json.loads accepts anything well-formed, so a file of the wrong shape would
+    otherwise reach the comparison and fail with a traceback and an exit code the
+    command does not document.
+    """
+    if not isinstance(snapshot, dict):
+        raise ValueError(f"{label} is not an ib-snapshot: expected an object")
+    ib = snapshot.get("ib")
+    if "ib" in snapshot and not isinstance(ib, dict):
+        raise ValueError(f"{label} is not an ib-snapshot: its ib section is not an object")
+    hcas = (ib or {}).get("hcas")
+    if hcas is not None and not isinstance(hcas, list):
+        raise ValueError(f"{label} is not an ib-snapshot: its hcas field is not a list")
+    for hca in hcas or []:
+        if not isinstance(hca, dict) or "name" not in hca:
+            raise ValueError(f"{label} is not an ib-snapshot: an hca entry has no name")
+    return snapshot
+
+
 def counters_by_port(snapshot: dict) -> dict[str, dict]:
     """Return {hca/portN: counters} from an ib-snapshot, InfiniBand ports only.
 

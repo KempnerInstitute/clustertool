@@ -88,6 +88,12 @@ def ib_verify(
         )
         ctx.exit(3)
 
+    for label, snap in (("GOLDEN", golden_snap), ("the current snapshot", current)):
+        try:
+            fabric.require_snapshot(snap, label)
+        except ValueError as exc:
+            click.echo(f"ib-verify: error: {exc}", err=True)
+            ctx.exit(3)
     findings = fabric.compare_snapshots(golden_snap, current)
     if as_json:
         click.echo(json.dumps(findings, indent=2))
