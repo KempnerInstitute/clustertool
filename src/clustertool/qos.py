@@ -391,7 +391,25 @@ def read_assoc(
     parts = lines[0].split("|")
     if len(parts) != 3 or not parts[0]:
         return None
-    return parts[1], parts[2]
+    return ",".join(_held_qos(parts[1])), parts[2]
+
+
+def _held_qos(raw: str) -> list[str]:
+    """Return the QoS names an association holds, from sacctmgr's raw list.
+
+    withrawqos prefixes each name with nothing, + or -, per man sacctmgr, where
+    a minus records a QoS filtered out rather than held. Callers compare plain
+    names, so the sign is resolved here: without this an already-granted QoS
+    reads as absent and the grant plans a change sacctmgr answers with "Nothing
+    modified" and exit 1, which aborts the rest of the plan.
+    """
+    held = []
+    for entry in raw.split(","):
+        entry = entry.strip()
+        if not entry or entry.startswith("-"):
+            continue
+        held.append(entry.removeprefix("+"))
+    return held
 
 
 def _strip_names(partition: str) -> list[str]:

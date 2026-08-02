@@ -540,3 +540,27 @@ def test_jobs_using_names_the_states_it_counts(monkeypatch):
     assert qos.jobs_using("prio") == 2
     assert "-t" in captured["cmd"]
     assert "suspended" in captured["cmd"][captured["cmd"].index("-t") + 1]
+
+
+def test_read_assoc_resolves_the_raw_qos_sigils(monkeypatch):
+    """withrawqos prefixes each name with nothing, + or -; a minus is not held."""
+    monkeypatch.setattr(
+        qos, "_run", lambda cmd, input_text=None: "alice|+prio,+other,-normal|prio\n"
+    )
+    assert qos.read_assoc("alice", "lab", "part", cluster="c") == ("prio,other", "prio")
+
+
+def test_grant_plan_is_idempotent_against_a_delta_stored_list(monkeypatch):
+    """Every association this tool has already granted is stored in delta form."""
+    monkeypatch.setattr(qos, "_run", lambda cmd, input_text=None: "alice|+prio,-normal|prio\n")
+    monkeypatch.setattr(qos, "_cluster", lambda c: "odyssey")
+    monkeypatch.setattr(qos, "_strip_names", lambda p: ["normal"])
+    assert qos.grant_plan("alice", "lab", "part", "prio", "prio", None) == []
+
+
+def test_grant_plan_strips_a_catch_all_that_is_still_held(monkeypatch):
+    monkeypatch.setattr(qos, "_run", lambda cmd, input_text=None: "alice|+prio,+normal|prio\n")
+    monkeypatch.setattr(qos, "_cluster", lambda c: "odyssey")
+    monkeypatch.setattr(qos, "_strip_names", lambda p: ["normal"])
+    plan = qos.grant_plan("alice", "lab", "part", "prio", "prio", None)
+    assert any("QOS-=normal" in cmd[-1] for cmd in plan)
