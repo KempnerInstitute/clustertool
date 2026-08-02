@@ -118,8 +118,13 @@ partition has no configured ratio, no CPU or memory request is made and Slurm
 applies that partition's own defaults.
 
 Any extra arguments are forwarded to `salloc` after these defaults, so you can
-override or add flags (salloc uses the last value): for example
+override or add a flag (salloc uses the last value): for example
 `gpu session a100 -A LAB --mem=500000`, `... -J devshell`, or `... --x11`.
+
+The per-GPU forms are the exception. `man salloc` makes `--mem-per-gpu` and
+`--mem-per-cpu` mutually exclusive with `--mem`, and `--cpus-per-gpu`
+incompatible with `--cpus-per-task`, so passing one of those drops the matching
+default rather than layering on top of it.
 
 **Use cases**
 - Grab one GPU for interactive development or debugging.
