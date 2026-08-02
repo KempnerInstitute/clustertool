@@ -71,7 +71,7 @@ current serial implementation rather than of the quota service.
 │  fairshare 0.000445   4 of 96 GPU on the cap                    │
 │  last 7d: 41 jobs  CPU 38%  GPU 71%  mem 22%   2 OOM, 1 timeout │
 ├─────────────────────────────────────────────────────────────────┤
-│ mmsh (Max Shad) @ holy8a24209   odyssey   Sun 2026-08-02 14:32  │
+│ jdoe (Jane Doe) @ holy8a24209   odyssey   Sun 2026-08-02 14:32  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 

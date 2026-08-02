@@ -59,7 +59,7 @@ def test_parse_quota_row_none():
 
 def test_parse_quota_row_ignores_a_df_table():
     out = (
-        "command: df -h /n/home14/mmsh\n"
+        "command: df -h /n/home14/alice\n"
         "Filesystem Size Used Avail Use% Mounted on\n"
         "/dev/mapper/vg-home 1.8T 1.2T 500G 71% /home\n"
     )

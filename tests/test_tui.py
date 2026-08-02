@@ -306,19 +306,21 @@ def test_fit_keeps_the_clock_and_the_user_at_any_width():
     """The bar exists to say who and when, so those two survive every other field."""
     from clustertool.tui.panels.status import fit
 
-    who = data.Identity("mmsh", "Maria Fernanda Gutierrez", "holy8a26105", "Kempner AI Cluster")
+    who = data.Identity(
+        "mgutierrez", "Maria Fernanda Gutierrez", "holy8a26105", "Kempner AI Cluster"
+    )
     stamp = "Sun 2026-08-02 14:32"
     for width in (120, 100, 80, 60, 45, 40):
         line = fit(who, stamp, width)
         assert len(line) <= width, (width, line)
         assert stamp in line, (width, line)
-        assert "mmsh" in line, (width, line)
+        assert "mgutierrez" in line, (width, line)
 
 
 def test_fit_sheds_the_site_name_before_the_full_name():
     from clustertool.tui.panels.status import fit
 
-    who = data.Identity("mmsh", "A Name", "host01", "A Very Long Site Name Indeed")
+    who = data.Identity("mgutierrez", "A Name", "host01", "A Very Long Site Name Indeed")
     line = fit(who, "Sun 2026-08-02 14:32", 60)
     assert "A Name" in line
     assert "Very Long Site" not in line
