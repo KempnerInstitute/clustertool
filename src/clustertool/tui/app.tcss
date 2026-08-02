@@ -24,12 +24,17 @@ Screen {
 }
 
 #standing {
-    dock: bottom;
     height: 7;
     max-height: 40%;
     border: round $panel-lighten-2;
     border-title-align: left;
     padding: 0 1;
+}
+
+#jobs:focus,
+#storage:focus,
+#standing:focus {
+    border: round $accent;
 }
 
 #status {
@@ -40,16 +45,13 @@ Screen {
     padding: 0 1;
 }
 
-.panel:focus-within {
-    border: round $accent;
-}
-
 #help {
     align: center middle;
 }
 
 #help-body {
-    width: 60;
+    width: auto;
+    max-width: 90%;
     height: auto;
     border: round $accent;
     background: $surface;

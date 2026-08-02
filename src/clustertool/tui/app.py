@@ -1,6 +1,7 @@
 """The me dashboard application."""
 
 import datetime
+from collections.abc import Callable
 
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
@@ -46,7 +47,7 @@ class MeApp(App):
     def __init__(
         self,
         identity: data.Identity | None = None,
-        clock=datetime.datetime.now,
+        clock: Callable[[], datetime.datetime] = datetime.datetime.now,
     ) -> None:
         super().__init__()
         self._identity = identity or data.identity()
@@ -71,7 +72,7 @@ class MeApp(App):
         self.query_one("#jobs", Static).focus()
 
     def action_help(self) -> None:
-        """Show the key reference."""
+        """Open the key reference, which is the only discovery route for the bindings."""
         self.push_screen(HelpScreen())
 
 

@@ -243,3 +243,68 @@ def test_help_lists_only_keys_that_are_bound():
     }
     unbound = {aliases.get(key, key) for key in listed} - bound
     assert unbound == set(), f"help lists unbound keys: {unbound}"
+
+
+async def test_status_bar_sets_a_refresh_timer(monkeypatch):
+    """Without the timer the clock freezes at whatever it read when the app started."""
+    from clustertool.tui.panels.status import StatusBar
+
+    intervals = []
+    monkeypatch.setattr(
+        StatusBar, "set_interval", lambda self, interval, callback: intervals.append(interval)
+    )
+    app = _app()
+    async with app.run_test(size=(100, 24)) as pilot:
+        await pilot.pause()
+    assert intervals == [1.0]
+
+
+async def test_storage_panel_keeps_a_usable_width_when_narrow():
+    """Without a floor the storage column collapses to its border and shows nothing."""
+    app = _app()
+    async with app.run_test(size=(60, 20)) as pilot:
+        await pilot.pause()
+        assert app.query_one("#storage").region.width >= 24
+
+
+def test_fit_keeps_the_clock_and_the_user_at_any_width():
+    """The bar exists to say who and when, so those two survive every other field."""
+    from clustertool.tui.panels.status import fit
+
+    who = data.Identity("mmsh", "Maria Fernanda Gutierrez", "holy8a26105", "Kempner AI Cluster")
+    stamp = "Sun 2026-08-02 14:32"
+    for width in (120, 100, 80, 60, 45, 40):
+        line = fit(who, stamp, width)
+        assert len(line) <= width, (width, line)
+        assert stamp in line, (width, line)
+        assert "mmsh" in line, (width, line)
+
+
+def test_fit_sheds_the_site_name_before_the_full_name():
+    from clustertool.tui.panels.status import fit
+
+    who = data.Identity("mmsh", "A Name", "host01", "A Very Long Site Name Indeed")
+    line = fit(who, "Sun 2026-08-02 14:32", 60)
+    assert "A Name" in line
+    assert "Very Long Site" not in line
+
+
+@pytest.mark.parametrize(
+    "hostile",
+    ["Ann [Bo] Cee", "[bold red]Boom[/]", "Ann [/] Cee", "[/bold]"],
+)
+async def test_a_bracket_in_a_name_does_not_break_the_bar(hostile):
+    """A full name comes from GECOS and a site name from config, so neither is trusted.
+
+    An unmatched closing tag raised while painting, which took down the app at
+    startup, so this has to reach the compositor rather than only call render.
+    """
+    from clustertool.tui.app import MeApp
+
+    app = MeApp(
+        identity=data.Identity("alice", hostile, "node01", "Cluster [/prod]"),
+        clock=lambda: FIXED_CLOCK,
+    )
+    async with app.run_test(size=(100, 12)) as pilot:
+        await pilot.pause()
+        assert hostile in str(app.query_one("#status").render())
