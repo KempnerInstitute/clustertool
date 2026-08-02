@@ -1000,6 +1000,7 @@ def test_jobs_cancel_none_errors(monkeypatch):
 
 
 def test_jobs_hold(monkeypatch):
+    monkeypatch.setattr(slurm, "job_owner", lambda j: "")
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "hold", "111", "222"])
     assert result.exit_code == 0
@@ -1609,6 +1610,7 @@ def test_diag_scheduler(monkeypatch):
 
 
 def test_jobs_set_priority(monkeypatch):
+    monkeypatch.setattr(slurm, "job_owner", lambda j: "")
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "set-priority", "123", "5000", "-y"])
     assert result.exit_code == 0
@@ -1616,6 +1618,7 @@ def test_jobs_set_priority(monkeypatch):
 
 
 def test_jobs_set_priority_prompts(monkeypatch):
+    monkeypatch.setattr(slurm, "job_owner", lambda j: "")
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "set-priority", "123", "5000"], input="y\n")
     assert result.exit_code == 0
@@ -1623,6 +1626,7 @@ def test_jobs_set_priority_prompts(monkeypatch):
 
 
 def test_jobs_set_priority_abort(monkeypatch):
+    monkeypatch.setattr(slurm, "job_owner", lambda j: "")
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "set-priority", "123", "5000"], input="n\n")
     assert result.exit_code != 0
@@ -1630,6 +1634,7 @@ def test_jobs_set_priority_abort(monkeypatch):
 
 
 def test_jobs_setprio_alias(monkeypatch):
+    monkeypatch.setattr(slurm, "job_owner", lambda j: "")
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "setprio", "123", "5000", "-y"])
     assert result.exit_code == 0
@@ -1730,6 +1735,7 @@ def test_nodes_resume_explicit(monkeypatch):
 
 
 def test_nodes_resume_partition(monkeypatch):
+    monkeypatch.setattr(slurm, "partition_exists", lambda p: True)
     monkeypatch.setattr(
         slurm, "resumable_nodes", lambda p: [("n3", "drained", "GPU error"), ("n4", "down", "")]
     )
@@ -2112,11 +2118,14 @@ def test_account_set_fairshare(monkeypatch):
     ]
 
 
-def test_storage_lfs_inodes(monkeypatch):
+def test_storage_lfs_inodes(monkeypatch, tmp_path):
+    """The bare name is completed with the site prefix, and the path must exist."""
+    monkeypatch.setattr(site, "path_prefix", lambda: str(tmp_path))
+    (tmp_path / "holylfs06").mkdir()
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["storage", "lfs-inodes", "holylfs06"])
     assert result.exit_code == 0
-    assert calls[0] == ["lfs", "df", "-i", "/n/holylfs06"]
+    assert calls[0] == ["lfs", "df", "-i", str(tmp_path / "holylfs06")]
 
 
 def test_gpu_pulse_passthrough(monkeypatch):
@@ -2163,6 +2172,7 @@ def test_gpu_pulse_node_dry_run():
 
 
 def test_gpu_pulse_job_resolves_node(monkeypatch):
+    monkeypatch.setattr(slurm, "job_owner", lambda j: "")
     monkeypatch.setattr(slurm, "job_nodes", lambda j: ["nodeA", "nodeB"])
     result = CliRunner().invoke(main, ["gpu", "pulse", "--job", "1234567", "--dry-run"])
     assert result.exit_code == 0
@@ -2170,6 +2180,7 @@ def test_gpu_pulse_job_resolves_node(monkeypatch):
 
 
 def test_gpu_pulse_job_no_nodes(monkeypatch):
+    monkeypatch.setattr(slurm, "job_owner", lambda j: "")
     monkeypatch.setattr(slurm, "job_nodes", lambda j: [])
     result = CliRunner().invoke(main, ["gpu", "pulse", "--job", "999"])
     assert result.exit_code != 0
@@ -2621,6 +2632,7 @@ def test_diag_ib_rejects_an_unknown_partition(monkeypatch):
 def test_gpu_monitor_job(monkeypatch):
     from clustertool import monitor
 
+    monkeypatch.setattr(slurm, "job_owner", lambda j: "")
     monkeypatch.setattr(slurm, "job_nodes", lambda j: ["n1", "n2"])
     captured = {}
     monkeypatch.setattr(
@@ -2635,6 +2647,7 @@ def test_gpu_monitor_job(monkeypatch):
 
 
 def test_gpu_monitor_job_no_nodes(monkeypatch):
+    monkeypatch.setattr(slurm, "job_owner", lambda j: "")
     monkeypatch.setattr(slurm, "job_nodes", lambda j: [])
     result = CliRunner().invoke(main, ["gpu", "monitor-job", "99999"])
     assert result.exit_code != 0
@@ -2705,6 +2718,7 @@ def test_gpu_nvtop_refuses_another_users_job(monkeypatch):
 
 
 def test_gpu_nvtop_no_nodes(monkeypatch):
+    monkeypatch.setattr(slurm, "job_owner", lambda j: "")
     monkeypatch.setattr(slurm, "job_nodes", lambda j: [])
     result = CliRunner().invoke(main, ["gpu", "nvtop", "9", "--no-attach"])
     assert result.exit_code != 0
@@ -5263,7 +5277,7 @@ def test_qos_create_prompt_names_the_limits(monkeypatch):
 def test_qos_retire_says_how_to_clear_an_account_level_holder(monkeypatch):
     """A sweep over partitions cannot reach an association with an empty partition."""
     monkeypatch.setattr(qos, "qos_exists", lambda name: True)
-    monkeypatch.setattr(qos, "partitions_referencing", lambda name, cluster=None: [])
+    monkeypatch.setattr(qos, "partition_references", lambda name, cluster=None: {})
     monkeypatch.setattr(qos, "jobs_using", lambda name, cluster=None: 0)
     monkeypatch.setattr(qos, "revoke_targets_plan", lambda *a, **k: [])
     monkeypatch.setattr(qos, "uncovered_holders", lambda name, plan: ["odyssey|lab|alice|"])
