@@ -93,9 +93,15 @@ def retire(
         raise click.ClickException(
             f"QoS {qos_name} is held by {len(uncovered)} association(s) that this sweep "
             f"would not revoke (Cluster|Account|User|Partition):\n{shown}{more}\n"
-            "Revoke those first, or widen --partition and --account-regex"
+            "An association with an empty partition is account-level, which a sweep "
+            "over partitions cannot reach: clear it with "
+            f"'sacctmgr modify user where account=ACCOUNT set QOS-={qos_name}', or "
+            "revoke the others first and widen --partition and --account-regex"
         )
     plan.append(["sacctmgr", "-i", "delete", "qos", qos_name])
-    summary = f"Revoke QoS {qos_name} from all holders on {partition} and delete it?"
+    where = f"on {partition}"
+    if cluster:
+        where += f" ({cluster})"
+    summary = f"Revoke QoS {qos_name} from all holders {where} and delete the definition?"
     if _gate.apply(plan, execute, yes, summary):
         raise SystemExit(1)

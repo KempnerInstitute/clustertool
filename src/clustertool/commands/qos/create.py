@@ -53,11 +53,13 @@ def create(
         raise click.ClickException(
             f"invalid QoS name {qos_name!r}: use letters, digits, and . _ - only"
         )
-    if qoslib.qos_exists(qos_name):
+    exists = qoslib.qos_exists(qos_name)
+    if exists:
         plan = [["sacctmgr", "-i", "modify", "qos", qos_name, "set", *specs]]
     else:
         plan = [["sacctmgr", "-i", "add", "qos", qos_name, *specs]]
-    summary = f"Create or update QoS {qos_name} with {len(specs)} limit(s)?"
+    verb = "Update" if exists else "Create"
+    summary = f"{verb} QoS {qos_name} with {', '.join(specs)}?"
     if _gate.apply(plan, execute, yes, summary):
         raise SystemExit(1)
     if execute:

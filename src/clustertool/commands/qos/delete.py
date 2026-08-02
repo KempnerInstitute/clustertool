@@ -29,7 +29,10 @@ def delete(qos_name: str, execute: bool, yes: bool) -> None:
     with --execute to apply, confirming unless --yes. Refuses while the QoS is
     still in force: if any association on any cluster lists it, if any partition's
     QoS, AllowQos, or DenyQos setting names it, or if any queued or running job
-    carries it. Clear those first. The refusal names which setting, since QoS and
+    carries it. Clear those first. The association check covers every cluster;
+    the partition and job checks cover the one named by [qos].cluster, since a
+    QoS object is global to slurmdbd while partitions and jobs belong to a
+    cluster. The refusal names which setting, since QoS and
     AllowQos let jobs use it while DenyQos bars them, and an association that sets
     no QoS list of its own inherits its parent's.
     Needs AdminLevel=Administrator, or root/SlurmUser. slurmdbd gates a QoS

@@ -5248,3 +5248,26 @@ def test_jobs_new_refuses_a_time_limit_sbatch_would_misread(monkeypatch):
             main, ["jobs", "new", "--gpu-type", "h100", "-A", "lab", "-t", good]
         )
         assert result.exit_code == 0, good
+
+
+def test_qos_create_prompt_names_the_limits(monkeypatch):
+    """The count merged node and gpu into one spec, so it under-reported the change."""
+    monkeypatch.setattr(qos, "qos_exists", lambda name: False)
+    result = CliRunner().invoke(
+        main, ["qos", "create", "myqos", "-g", "4", "-n", "2", "-J", "8"], input="n\n"
+    )
+    assert "MaxTRESPU" in result.output
+    assert "MaxJobsPU=8" in result.output
+
+
+def test_qos_retire_says_how_to_clear_an_account_level_holder(monkeypatch):
+    """A sweep over partitions cannot reach an association with an empty partition."""
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partitions_referencing", lambda name, cluster=None: [])
+    monkeypatch.setattr(qos, "jobs_using", lambda name, cluster=None: 0)
+    monkeypatch.setattr(qos, "revoke_targets_plan", lambda *a, **k: [])
+    monkeypatch.setattr(qos, "uncovered_holders", lambda name, plan: ["odyssey|lab|alice|"])
+    result = CliRunner().invoke(main, ["qos", "retire", "prio", "-p", "all"])
+    assert result.exit_code == 1
+    assert "account-level" in result.output
+    assert "QOS-=prio" in result.output

@@ -73,7 +73,7 @@ def modify(
     if not qoslib.qos_exists(qos_name):
         raise click.ClickException(f"QoS {qos_name} does not exist; use 'qos create' to add it")
     plan = [["sacctmgr", "-i", "modify", "qos", qos_name, "set", *specs]]
-    summary = f"Modify QoS {qos_name} ({len(specs)} limit change(s))?"
+    summary = f"Modify QoS {qos_name}: {', '.join(specs)}?"
     if _gate.apply(plan, execute, yes, summary):
         raise SystemExit(1)
     if execute:
