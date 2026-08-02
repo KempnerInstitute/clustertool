@@ -57,9 +57,19 @@ def ib_counters(ctx: click.Context, before: str, after: str) -> None:
         except ValueError as exc:
             click.echo(f"ib-counters: error: {exc}", err=True)
             ctx.exit(3)
-    hosts = {snap.get("hostname") for snap in (before_snap, after_snap) if snap.get("hostname")}
+    named = [("BEFORE", before_snap.get("hostname")), ("AFTER", after_snap.get("hostname"))]
+    missing = [label for label, host in named if not host]
+    if missing:
+        click.echo(
+            f"ib-counters: error: {' and '.join(missing)} records no hostname, so this "
+            "cannot tell whether the two snapshots are from the same node. HCA names "
+            "repeat across nodes, and diffing two of them compares unrelated ports",
+            err=True,
+        )
+        ctx.exit(3)
+    hosts = {host.split(".")[0] for _, host in named}
     if len(hosts) > 1:
-        listed = ", ".join(sorted(hosts))
+        listed = ", ".join(sorted(host for _, host in named))
         click.echo(
             f"ib-counters: error: the snapshots are from different hosts ({listed}); "
             "HCA names repeat across nodes, so diffing them compares unrelated ports",
@@ -75,6 +85,7 @@ def ib_counters(ctx: click.Context, before: str, after: str) -> None:
         )
         ctx.exit(3)
     rows, any_error = fabric.counter_deltas(before_snap, after_snap)
+    saturated = False
     click.echo(f"{'PORT':<20} {'COUNTER':<40} {'BEFORE':>12} {'AFTER':>12} {'DELTA':>12}")
     for port, counter, before_v, after_v, delta, is_error in rows:
         if delta is None:
@@ -83,6 +94,10 @@ def ib_counters(ctx: click.Context, before: str, after: str) -> None:
         elif delta < 0:
             tag = " RESET" if is_error else " reset"
             shown = f"{delta:+}"
+        elif is_error and delta == 0 and after_v in fabric.SATURATED_COUNTER_VALUES:
+            tag = " SATURATED"
+            shown = "+0"
+            saturated = True
         else:
             tag = " ERROR" if is_error else ""
             shown = f"{delta:+}"
@@ -90,6 +105,13 @@ def ib_counters(ctx: click.Context, before: str, after: str) -> None:
             f"{port:<20} {counter:<40} {_num(before_v):>12} {_num(after_v):>12} {shown:>12}{tag}"
         )
 
+    if saturated:
+        click.echo(
+            "\nFAIL: an error-class counter is pegged at its maximum. IBTA counters "
+            "stop at the top rather than wrapping, so it records no further errors "
+            "and a delta of zero from it means nothing"
+        )
+        ctx.exit(4)
     if any_error:
         click.echo("\nFAIL: an error-class counter advanced, reset, or could not be read")
         ctx.exit(4)

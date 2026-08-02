@@ -74,7 +74,7 @@ Compares the per-port counters in a BEFORE and AFTER snapshot (bracket a run wit
 two `diag ib-snapshot` captures). Benign traffic counters are shown but ignored;
 growth on an error-class counter (symbol errors, discards, link recoveries, ...)
 means the fabric hiccupped under load. The exit code is 0 no error growth, 3 a
-file could not be read, 4 an error-class counter advanced. 2 is unused throughout the diagnostics, since click exits 2 on a usage error.
+file could not be read, 4 an error-class counter advanced, was reset, is pegged at its maximum, or could not be read. 2 is unused throughout the diagnostics, since click exits 2 on a usage error.
 
 **Use cases**
 - Confirm a benchmark did not degrade the fabric.

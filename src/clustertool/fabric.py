@@ -323,6 +323,20 @@ def require_snapshot(snapshot, label: str) -> dict:
     for hca in hcas or []:
         if not isinstance(hca, dict) or "name" not in hca:
             raise ValueError(f"{label} is not an ib-snapshot: an hca entry has no name")
+        ports = hca.get("ports", [])
+        if not isinstance(ports, list):
+            raise ValueError(f"{label} is not an ib-snapshot: an hca's ports field is not a list")
+        for port in ports:
+            if not isinstance(port, dict) or "port" not in port:
+                raise ValueError(f"{label} is not an ib-snapshot: a port entry has no number")
+            counters = port.get("counters", {})
+            if not isinstance(counters, dict):
+                raise ValueError(
+                    f"{label} is not an ib-snapshot: a port's counters field is not an object"
+                )
+    host = snapshot.get("hostname")
+    if host is not None and not isinstance(host, str):
+        raise ValueError(f"{label} is not an ib-snapshot: its hostname is not text")
     return snapshot
 
 
@@ -343,6 +357,10 @@ def counters_by_port(snapshot: dict) -> dict[str, dict]:
     return result
 
 
+SATURATED_COUNTER_VALUES = frozenset({15, 255, 65535, 4294967295})
+"""Values an IBTA PortCounters field stops at, by its 4, 8, 16 and 32 bit widths."""
+
+
 def counter_deltas(before: dict, after: dict) -> tuple[list[tuple], bool]:
     """Diff two snapshots' per-port counters.
 
@@ -357,6 +375,10 @@ def counter_deltas(before: dict, after: dict) -> tuple[list[tuple], bool]:
     between the snapshots, so its whole after value is new and unaccounted for;
     that counts as an error rather than as no growth. A congestion counter is
     listed when it moves but never marked an error.
+
+    An error counter sitting at the top of its field is also reported, even
+    though its delta is zero: IBTA counters stop there rather than wrapping, so a
+    pegged one records nothing further and its zero is not evidence of health.
     """
     a = counters_by_port(before)
     b = counters_by_port(after)
@@ -376,11 +398,46 @@ def counter_deltas(before: dict, after: dict) -> tuple[list[tuple], bool]:
                 continue
             delta = after_v - before_v
             if delta == 0:
+                if is_error_counter and after_v in SATURATED_COUNTER_VALUES:
+                    rows.append((port, counter, before_v, after_v, delta, True))
+                    any_error = True
                 continue
             is_error = is_error_counter and delta != 0
             rows.append((port, counter, before_v, after_v, delta, is_error))
             any_error = any_error or is_error
     return rows, any_error
+
+
+def _cuda_runtime(errors: dict) -> str | None:
+    """Return the CUDA runtime version nvidia-smi reports, or None.
+
+    ib-verify compares this against the golden, and nothing wrote it, so that
+    check could never fire in the workflow the command documents.
+    """
+    code, out, _ = process.probe(["nvidia-smi", "--query", "--display=COMPUTE"], timeout=30)
+    if code != 0:
+        errors["nvidia-smi --query --display=COMPUTE"] = f"exited {code}"
+        return None
+    for line in out.splitlines():
+        if "CUDA Version" in line:
+            return line.split(":", 1)[1].strip() or None
+    return None
+
+
+def _read_hcas_recording(ib_root, errors: dict) -> list:
+    """Read the HCA tree, recording a failure in probe_errors rather than raising.
+
+    Every other field goes through out(), which records why a probe did not run.
+    Without this an unreadable /sys/class/infiniband produced an empty ib section
+    with nothing in probe_errors, so a node with no RDMA stack looked the same as
+    a node whose fabric is fine, and an OSError left the command with a traceback
+    and exit 1, which the family reserves for a real finding.
+    """
+    try:
+        return read_hcas(ib_root)
+    except OSError as exc:
+        errors[str(ib_root)] = f"could not be read: {exc}"
+        return []
 
 
 def collect_snapshot(ib_root: str = "/sys/class/infiniband", timestamp: str | None = None) -> dict:
@@ -412,13 +469,14 @@ def collect_snapshot(ib_root: str = "/sys/class/infiniband", timestamp: str | No
         "system": {
             "uname": out(["uname", "-a"]).strip(),
             "nvidia_driver": driver_lines[0].strip() if driver_lines else None,
+            "cuda_runtime": _cuda_runtime(errors),
         },
         "gpus": parse_gpu_csv(
             out(["nvidia-smi", f"--query-gpu={_GPU_QUERY}", "--format=csv,noheader,nounits"])
         ),
         "topology": {"raw": out(["nvidia-smi", "topo", "-m"])},
         "nvlink": {"raw": out(["nvidia-smi", "nvlink", "--status"])},
-        "ib": {"hcas": read_hcas(ib_root)},
+        "ib": {"hcas": _read_hcas_recording(ib_root, errors)},
         "ibdev2netdev": parse_ibdev2netdev(out(["ibdev2netdev"])),
     }
     snapshot["probe_errors"] = errors

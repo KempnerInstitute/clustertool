@@ -34,8 +34,21 @@ def ib_snapshot(ctx: click.Context, output: str | None) -> None:
     \b
     Inputs:
       OUTPUT  File to write the JSON snapshot to (default: stdout).
+
+    \b
+    Exit codes:
+      0  the snapshot was taken, though probe_errors may not be empty
+      3  the node could not be probed, or the file could not be written
+    2 is unused throughout the diagnostics, since click exits 2 on a usage error.
     """
-    payload = json.dumps(fabric.collect_snapshot(), indent=2, default=str)
+    try:
+        snapshot = fabric.collect_snapshot()
+    except (OSError, ValueError) as exc:
+        click.echo(f"ib-snapshot: error: could not probe this node: {exc}", err=True)
+        ctx.exit(3)
+    payload = json.dumps(snapshot, indent=2, default=str)
+    for probe, reason in sorted(snapshot.get("probe_errors", {}).items()):
+        click.echo(f"ib-snapshot: warning: {probe}: {reason}", err=True)
     if not output:
         click.echo(payload)
         return

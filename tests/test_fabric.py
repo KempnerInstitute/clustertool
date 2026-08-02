@@ -223,3 +223,34 @@ def test_affinity_rows_flags_an_unknown_token_rather_than_calling_it_a_fault():
 def test_affinity_rows_still_prefers_a_known_token_over_an_unknown_one():
     rows = fabric.affinity_rows({"GPU0": {"NIC0": "C2C", "NIC1": "PIX"}})
     assert rows == [("GPU0", "NIC1", "PIX", "OK")]
+
+
+def test_require_snapshot_rejects_a_wrong_shaped_port_or_hostname():
+    """These reach the diff as a traceback and exit 1, which means a real finding here."""
+    import pytest
+
+    bad = [
+        {"ib": {"hcas": [{"name": "mlx5_0", "ports": None}]}},
+        {"ib": {"hcas": [{"name": "mlx5_0", "ports": ["port1"]}]}},
+        {"ib": {"hcas": [{"name": "mlx5_0", "ports": [{"counters": {}}]}]}},
+        {"ib": {"hcas": [{"name": "mlx5_0", "ports": [{"port": 1, "counters": []}]}]}},
+        {"hostname": ["a", "b"], "ib": {"hcas": []}},
+        {"hostname": 12345, "ib": {"hcas": []}},
+    ]
+    for snapshot in bad:
+        with pytest.raises(ValueError):
+            fabric.require_snapshot(snapshot, "BEFORE x.json")
+
+
+def test_collect_snapshot_records_an_unreadable_ib_tree(tmp_path):
+    """Every other field records why it could not be probed; this one raised instead."""
+    root = tmp_path / "infiniband"
+    root.mkdir()
+    (root / "mlx5_0").mkdir()
+    root.chmod(0o000)
+    try:
+        snapshot = fabric.collect_snapshot(ib_root=str(root))
+    finally:
+        root.chmod(0o755)
+    assert snapshot["ib"]["hcas"] == []
+    assert any("infiniband" in key for key in snapshot["probe_errors"])

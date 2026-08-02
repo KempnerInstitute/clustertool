@@ -63,7 +63,17 @@ def ib_verify(
         click.echo(f"ib-verify: error: cannot obtain current snapshot: {exc}", err=True)
         ctx.exit(3)
 
+    failed = current.get("probe_errors") or {}
     if save_golden:
+        if failed:
+            for probe, reason in sorted(failed.items()):
+                click.echo(f"ib-verify: error: {probe}: {reason}", err=True)
+            click.echo(
+                "ib-verify: error: refusing to save a golden from an incomplete probe; "
+                "every later check against it would report the missing hardware as drift",
+                err=True,
+            )
+            ctx.exit(3)
         try:
             pathlib.Path(golden).write_text(json.dumps(current, indent=2, default=str))
         except OSError as exc:
@@ -94,6 +104,24 @@ def ib_verify(
         except ValueError as exc:
             click.echo(f"ib-verify: error: {exc}", err=True)
             ctx.exit(3)
+    if failed:
+        for probe, reason in sorted(failed.items()):
+            click.echo(f"ib-verify: error: {probe}: {reason}", err=True)
+        click.echo(
+            "ib-verify: error: part of this node could not be probed, so what is "
+            "missing from the current snapshot would be reported as hardware that "
+            "left the node",
+            err=True,
+        )
+        ctx.exit(3)
+    golden_host, current_host = golden_snap.get("hostname"), current.get("hostname")
+    if golden_host and current_host and golden_host.split(".")[0] != current_host.split(".")[0]:
+        click.echo(
+            f"ib-verify: error: the golden was taken on {golden_host} and this is "
+            f"{current_host}; every difference between two nodes would read as drift",
+            err=True,
+        )
+        ctx.exit(3)
     findings = fabric.compare_snapshots(golden_snap, current)
     if as_json:
         click.echo(json.dumps(findings, indent=2))

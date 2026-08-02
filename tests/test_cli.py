@@ -3655,11 +3655,12 @@ def test_diag_ib_snapshot_file(monkeypatch, tmp_path):
 
 def _counter_file(tmp_path, name, value):
     snap = {
+        "hostname": "n1",
         "ib": {
             "hcas": [
                 {"name": "mlx5_0", "ports": [{"port": 1, "counters": {"symbol_error": value}}]}
             ]
-        }
+        },
     }
     path = tmp_path / name
     path.write_text(json.dumps(snap))
@@ -4073,8 +4074,11 @@ def test_gpu_pulse_forwards_unknown_args(monkeypatch):
     assert dry_run is False
 
 
-def _counter_snap(**counters):
-    return {"ib": {"hcas": [{"name": "mlx5_0", "ports": [{"port": 1, "counters": counters}]}]}}
+def _counter_snap(host="n1", **counters):
+    return {
+        "hostname": host,
+        "ib": {"hcas": [{"name": "mlx5_0", "ports": [{"port": 1, "counters": counters}]}]},
+    }
 
 
 def _write_snaps(tmp_path, before, after):
@@ -4130,6 +4134,7 @@ def test_gpu_pulse_job_refuses_another_users_job(monkeypatch):
 def test_ib_counters_ignores_a_port_in_ethernet_mode(tmp_path):
     """An adapter in Ethernet mode exposes IB counter files that often read as errors."""
     snap = {
+        "hostname": "n1",
         "ib": {
             "hcas": [
                 {
@@ -4153,7 +4158,7 @@ def test_ib_counters_ignores_a_port_in_ethernet_mode(tmp_path):
                     ],
                 },
             ]
-        }
+        },
     }
     before, after = _write_snaps(tmp_path, snap, snap)
     result = CliRunner().invoke(main, ["diag", "ib-counters", before, after])
@@ -5087,3 +5092,74 @@ def test_account_set_fairshare_shows_the_current_shares(monkeypatch):
     )
     assert "alice in kempner_dev on elsewhere" in result.output
     assert "Set fairshare to 50 on 1 association(s)" in result.output
+
+
+def test_diag_ib_verify_refuses_to_bless_a_broken_probe(monkeypatch, tmp_path):
+    """Every later check against such a golden reports the missing hardware as drift."""
+    monkeypatch.setattr(
+        fabric,
+        "collect_snapshot",
+        lambda: {
+            "hostname": "n1",
+            "ib": {"hcas": []},
+            "probe_errors": {"nvidia-smi": "exited 255"},
+        },
+    )
+    out = tmp_path / "g.json"
+    result = CliRunner().invoke(main, ["diag", "ib-verify", str(out), "--save-golden"])
+    assert result.exit_code == 3
+    assert "refusing to save" in result.output
+    assert not out.exists()
+
+
+def test_diag_ib_verify_does_not_call_a_failed_probe_drift(monkeypatch, tmp_path):
+    golden = tmp_path / "g.json"
+    golden.write_text(json.dumps({"hostname": "n1", "ib": {"hcas": []}, "gpus": [{"index": 0}]}))
+    monkeypatch.setattr(
+        fabric,
+        "collect_snapshot",
+        lambda: {"hostname": "n1", "ib": {"hcas": []}, "gpus": [], "probe_errors": {"x": "boom"}},
+    )
+    result = CliRunner().invoke(main, ["diag", "ib-verify", str(golden)])
+    assert result.exit_code == 3
+    assert "would be reported as hardware that left the node" in result.output
+
+
+def test_diag_ib_verify_refuses_a_golden_from_another_host(monkeypatch, tmp_path):
+    golden = tmp_path / "g.json"
+    golden.write_text(json.dumps({"hostname": "nodeA", "ib": {"hcas": []}}))
+    monkeypatch.setattr(
+        fabric,
+        "collect_snapshot",
+        lambda: {"hostname": "nodeB", "ib": {"hcas": []}, "probe_errors": {}},
+    )
+    result = CliRunner().invoke(main, ["diag", "ib-verify", str(golden)])
+    assert result.exit_code == 3
+    assert "taken on nodeA" in result.output
+
+
+def test_ib_counters_flags_a_saturated_counter(tmp_path):
+    """IBTA counters stop at the top rather than wrapping, so a pegged one records nothing."""
+    snap = _counter_snap(symbol_error=65535)
+    before, after = _write_snaps(tmp_path, snap, snap)
+    result = CliRunner().invoke(main, ["diag", "ib-counters", before, after])
+    assert result.exit_code == 4
+    assert "SATURATED" in result.output
+
+
+def test_ib_counters_refuses_a_snapshot_with_no_hostname(tmp_path):
+    """HCA names repeat across nodes, so an unnamed snapshot cannot be matched to one."""
+    before, after = _write_snaps(tmp_path, {"ib": {"hcas": []}}, _counter_snap(symbol_error=0))
+    result = CliRunner().invoke(main, ["diag", "ib-counters", before, after])
+    assert result.exit_code == 3
+    assert "records no hostname" in result.output
+
+
+def test_ib_counters_accepts_a_short_name_against_an_fqdn(tmp_path):
+    before, after = _write_snaps(
+        tmp_path,
+        _counter_snap(host="n1", symbol_error=0),
+        _counter_snap(host="n1.example.edu", symbol_error=0),
+    )
+    result = CliRunner().invoke(main, ["diag", "ib-counters", before, after])
+    assert result.exit_code == 0
