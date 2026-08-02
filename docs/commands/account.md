@@ -7,7 +7,10 @@ Account membership, fairshare, usage, and limits. Run `clustertool account --hel
 List the users in a Slurm fairshare account.
 
 With `--all`, list every lab account and its members as CSV:
-`account,username,full_name`. Lab accounts are the ones allowed on the site's
+`account,username,full_name`. Membership comes from `sshare`, the account list
+behind `--all` from the partition's `AllowAccounts`, and the full names from
+`getent`. The rows are written as real CSV, so a name holding a comma is quoted
+rather than splitting into a fourth column. Lab accounts are the ones allowed on the site's
 roster partition whose name carries the site's lab prefix, both set under
 `[accounts]` in the site config.
 
@@ -23,9 +26,16 @@ roster partition whose name carries the site's lab prefix, both set under
 
 Show fairshare standing and priority (via `sshare`). With an ACCOUNT, show every
 member's shares and usage; otherwise show your own across the accounts you belong
-to. The FairShare column is the effective score (higher is higher priority).
-Partition-scoped associations are labeled with their partition (`sshare -m`), so
-a user's several rows in one account can be told apart. ACCOUNT and `--user`
+to. FairShare is the factor the priority plugin multiplies in, from 0 to 1,
+where higher means higher priority; it is not the adjacent `EffectvUsage`
+column, which is the usage that produced it. `RawUsage` is billing-TRES-seconds
+and decays with the site's `PriorityDecayHalfLife`, so it is a recent-use figure
+rather than a lifetime total. Partition-scoped associations are labeled with
+their partition (`sshare -m`), so a user's several rows in one account can be
+told apart; the names are printed at full width, since `sshare` clips a username
+at 10 characters and a partition at 12 by default. A partition row whose
+`RawShares` reads `parent` inherits the account's shares, and its FairShare is
+what governs jobs on that partition. ACCOUNT and `--user`
 cannot be combined.
 
 **Use cases**
@@ -64,7 +74,11 @@ accounts compare siblings rather than the whole list.
 ## `account usage [ACCOUNT] [-d DAYS] [--efficiency]`
 
 Report cumulative CPU/GPU/TRES-hours for an account or user over the last
-`--days` (via `stotal`). With `--efficiency`, show the `seff-account` efficiency
+`--days` (via `stotal`). The account or user is resolved before the tool runs,
+so a typo is an error rather than a report of zero hours, and the account is
+passed on as the database spells it, since the site tool keys on the string it
+is handed. The command hides itself where neither tool is installed.
+With `--efficiency`, show the `seff-account` efficiency
 summary instead. Reading another user's jobs, including other members of your own
 account, needs `AdminLevel=Operator` or above, or coordinator of that account;
 without it the report silently covers only your own jobs and still exits 0.
@@ -123,8 +137,13 @@ columns.
 Add a user to a fairshare account (via `sacctmgr`), creating the account's base
 association for them. The fairshare value defaults to `[qos].grant_fairshare`
 from the site config, the same value `qos grant` gives the associations it
-creates. Prompts for confirmation unless `-y`. Slurm operator, or a coordinator of the account; a site that sets
-`DisableCoordDBD` in `slurmdbd.conf` restricts this to operators.
+creates. The user, the account, and any existing membership are all checked
+first: `sacctmgr` does warn about a name with no uid, but only at the
+confirmation prompt that `-i` skips, and it reports a missing account and an
+existing member with the same text. Prompts for confirmation unless `-y`, naming
+the cluster the write is scoped to. Slurm operator, or a coordinator of the
+account; a site that sets `DisableCoordDBD` in `slurmdbd.conf` restricts this to
+operators.
 
 **Use cases**
 - Grant a new lab member access to the lab's Slurm account.

@@ -55,6 +55,11 @@ Reads the final state, exit code, time, and memory, scans the tail of stdout and
 common error patterns (out of memory, timeout, node failure, missing modules),
 and prints a plain-English diagnosis with suggestions. Best for finished jobs.
 
+For a job of more than one task the memory line reports the total across tasks
+against the allocation's request, with the heaviest single task alongside it.
+`man sacct` defines `MaxRSS` as one task's watermark while `ReqMem` covers the
+whole allocation, so comparing the two directly understates a multi-rank job.
+
 **Use cases**
 - Understand why a job died without decoding Slurm and CUDA messages.
 - Get a suggested fix for out-of-memory, timeout, or code errors.
@@ -76,10 +81,12 @@ by an array task limit, or not yet eligible has no priority record yet, so use
 **Inputs**
 - `PARTITION`: Slurm partition name.
 
-## `jobs violators PARTITION [--cpus-per-gpu N] [--mem-per-gpu MB]`
+## `jobs violators PARTITION [--cpus-per-gpu N] [--mem-per-gpu MIB]`
 
-List running jobs requesting more CPU or memory per GPU than the norm (via
-`scontrol`). Norms default to the per-GPU policy your site sets under
+List running jobs holding more CPU or memory per GPU than the norm (via
+`scontrol`). The figures are what Slurm allocated, not what the job asked for:
+those differ whenever a request is rounded up to a whole node or socket, which
+is the case a per-GPU norm exists to catch. Norms default to the per-GPU policy your site sets under
 `[partitions.limits]`; pass `--cpus-per-gpu` / `--mem-per-gpu` for partitions
 without one. A norm below 1 is rejected rather than divided by. Jobs with no GPUs
 are not evaluated.
@@ -192,7 +199,9 @@ the CPU/memory/GPU utilization Slurm records for each finished job (the same
 numbers `jobstats` reports, read in one bulk `sacct` query with no per-job cap),
 and for the GPU view adds DCGM profiling from Prometheus. Every argument is
 forwarded to jobscope unchanged, so all of its views and selectors are
-available; run `clustertool jobs scope --help` for the full list.
+available; run `clustertool jobs scope --help` for the full list. Where you name
+no user, job id, or subcommand, your own username is passed on explicitly, taken
+from your uid rather than from `$USER`, which a caller can set.
 
 This is for completed jobs; for live (running) jobs use `gpu monitor-job`. The
 GPU views need a Prometheus endpoint, auto-discovered from the cluster's
@@ -231,9 +240,13 @@ for that.
 ## `jobs wait-times [-u USER | -A ACCOUNT | -p PARTITION] [-d DAYS]`
 
 Show submit-to-start wait time distributions (via `sacct`). Reports the count
-and p50/p90/max wait grouped by partition, QoS, and GPU count over the window.
+and p50/p90/max wait grouped by partition, QoS, and GPU count for the jobs that
+started inside the window. `man sacct` scopes `-S` and `-E` to jobs in any state
+during that span, which includes one that merely sat pending through it and
+started days later, so the start time is checked rather than left to `sacct`.
 `sacct` keeps no pending-reason history, so this does not separate priority wait
-from resource wait.
+from resource wait, and a job requeued during the window is timed from its last
+submit.
 
 **Use cases**
 - See how long jobs really wait before starting, and where.
@@ -252,6 +265,13 @@ Summarize finished-job failures over a window (via `sacct`). Classifies terminal
 jobs (completed, failed, oom, timeout, canceled, node_fail, preempted), reports
 the failure rate, and ranks the top exit codes, failing job names, failing
 users, and incident nodes.
+
+Cancellations are counted and reported but kept out of the failure rate and the
+rankings, since `scancel` is someone stopping a job rather than the job failing.
+Every accounting record is read, not only the most recent one per job id, so a
+job requeued after a preemption or a node failure reports each of them rather
+than only its final state. A multi-node incident is attributed to each node in
+the allocation, not to the bracketed range as one string.
 
 **Use cases**
 - Spot a run of failures and where they cluster.

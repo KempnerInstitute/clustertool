@@ -34,6 +34,11 @@ Answers the inverse of `account limits`: given a QoS, which user associations
 carry it, and on which partitions. Use `--by` to collapse the output to just the
 distinct users or partitions, which is handy for scripting a grant or revoke.
 
+Where the flags you gave match nothing but the QoS is held elsewhere, those other
+associations are listed on stderr rather than returned as a result, and the
+flags that excluded them are named. `--by` prints only what the flags selected,
+so its output is safe to pipe into a grant or a revoke.
+
 **Use cases**
 - See who currently holds a priority QoS before changing it.
 - List the partitions a QoS is attached to.
@@ -103,7 +108,10 @@ setting names it (where it applies without any association mentioning it), or if
 any queued or running job carries it. The refusal names the setting, since `QoS`
 and `AllowQos` let jobs use it while `DenyQos` bars them. An association that
 sets no QoS list of its own inherits its parent's, so a large holder count
-usually means one parent sets it. A QoS that does not exist is a no-op.
+usually means one parent sets it. A QoS that does not exist is a no-op. The
+association check covers every cluster, while the partition and job checks cover
+the one named by `[qos].cluster`, since a QoS object is global to slurmdbd while
+partitions and jobs belong to a cluster.
 
 **Use cases**
 - Retire a QoS definition that is no longer assigned to anyone.
@@ -142,7 +150,11 @@ operator, or a coordinator of the account; a site that sets `DisableCoordDBD` in
 `slurmdbd.conf` restricts this to operators.
 
 Removes the QoS from each matching association, moving the default off it first
-when needed and deleting the association if the QoS was its only entry. Pass
+when needed and deleting the association only if the QoS was the single entry it
+carried. An entry `sacctmgr` stores with a minus is a QoS the association filters
+out, which counts as one it carries: deleting such an association would drop the
+filter and hand back the QoS it excluded, along with the association's fairshare,
+limits and recorded usage. Pass
 `all` for `--users` or `--partition` to act on every current holder. An unknown
 partition name is refused rather than silently matching nothing. Dry run by
 default.
@@ -166,13 +178,15 @@ Remove a QoS from all its holders on a partition, then delete it (via
 deletes the definition.
 
 Revokes the QoS from every holder, then deletes the QoS definition. Where the QoS
-is an association's only one, the revoke deletes that association outright rather
-than editing it, which drops its recorded usage.
+is the single entry an association carries, the revoke deletes that association
+outright rather than editing it, which drops its recorded usage.
 
 Refuses up front if the QoS is named in any partition's configuration, if any
 queued or running job carries it, or if any association still holding it would
 not be revoked by this sweep, such as an account-level one, one with no
-partition, or one on another cluster; it lists the ones it would leave behind.
+partition, or one on another cluster; it lists the ones it would leave behind and
+gives the `sacctmgr` line that clears an account-level holder, which no
+partition sweep can reach.
 The delete runs only after every revoke in the plan succeeded. Dry run by
 default.
 
@@ -191,6 +205,10 @@ default.
 Reconcile a QoS's holders to an account's current membership (via `sacctmgr`).
 Slurm operator, or a coordinator of the account; a site that sets
 `DisableCoordDBD` in `slurmdbd.conf` restricts this to operators.
+
+A holder that carries the QoS only by inheritance has no association-level entry
+to remove, so the command says the QoS is already in sync rather than exiting
+having silently done nothing.
 
 Grants the QoS to account members who lack it and revokes it from holders no
 longer in the account, on the given partition. Membership is the account's base

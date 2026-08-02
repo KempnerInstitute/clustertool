@@ -14,12 +14,16 @@ States are Slurm's own short codes: `idle` is free, `mix` partly allocated,
 `alloc` full, `comp` finishing a job, `resv` held by a reservation, `drain` and
 `drng` take no new work, `down` is offline, `inval` registered resources that do
 not match its configuration, and `plnd` is reserved by the backfill scheduler for
-a higher-priority job. Two flags can follow: `*` means the node is not
-responding, and `-` that backfill has planned it for a higher-priority job.
-`man sinfo` documents seven more, covering power, reboot, and
-maintenance-reservation states.
+a higher-priority job. A flag can follow, and each of the nine `man sinfo`
+documents is spelled out beside the node, since several of them mean the node
+cannot take work whatever its base state reads: `*` not responding, `~` powered
+off, `#` powering up, `!` pending power down, `%` powering down, `$` in a
+maintenance reservation, `@` pending reboot, `^` reboot issued, and `-` planned
+by backfill for a higher-priority job.
 
-An unknown partition name is an error rather than an empty list.
+`-p` takes a comma-separated list, and each node is counted once even where it
+belongs to several of the named partitions. An unknown partition name is an
+error rather than an empty list.
 
 **Use cases**
 - See which nodes make up a partition.
@@ -36,15 +40,18 @@ with the packaged Kempner profile).
 
 **Use cases**
 - See which partitions exist and how big their nodes are.
-- Find GPU partitions (filter by name, e.g. `-f kempner`).
+- Find GPU partitions by name with `-f`.
 
 **Inputs**
-- `-f, --filter`: Only show rows containing this text (the header is kept).
+- `-f, --filter`: Only show rows containing this text, matched without regard to case (the header is kept).
 
 ## `nodes down [-p PARTITION]`
 
-List nodes not accepting work, with the scheduler's reason (via `sinfo -R`).
-Covers down, drained, draining and failing nodes. The reason is shown to 60
+List the nodes `sinfo -R` reports, with the scheduler's reason. `man sinfo`
+scopes `-R` to nodes that are down, drained, draining or failing, so this is not
+every node that cannot take work: a reserved node, one in maintenance, one
+powered down, and one whose base state is idle but which is not responding are
+all absent from it. The reason is shown to 60
 characters; `sinfo -R`'s default format truncates it to 20.
 
 **Use cases**
@@ -65,7 +72,7 @@ profile).
 - Check how busy a specific node is.
 
 **Inputs**
-- `-f, --filter`: Only show rows containing this text (the header is kept).
+- `-f, --filter`: Only show rows containing this text, matched without regard to case (the header is kept).
 
 ## `nodes frag [-p PARTITION] [--cpus-per-gpu N] [--mem-per-gpu MiB]`
 
@@ -75,8 +82,10 @@ one `scontrol` pass over the GPU nodes). Prints the free-GPU distribution
 could start right now.
 
 A node that cannot take a new job is excluded: down, drained, reserved, in
-maintenance, completing, failing, powered down, not responding, or registered
-with invalid resources. A node the backfill scheduler has planned for a
+maintenance, completing, failing, powered down or powering up, not responding,
+blocked, awaiting a reboot, registered with invalid resources, or in the `FUTURE`
+or `UNKNOWN` state. `UNKNOWN` matters most: every node reports it briefly after
+a slurmctld restart, and counting those would read as an idle cluster. A node the backfill scheduler has planned for a
 higher-priority job is kept, though its free capacity may only admit a job short
 enough to finish first. Partitions with no GPU nodes are not listed.
 

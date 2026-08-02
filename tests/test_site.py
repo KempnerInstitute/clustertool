@@ -1,5 +1,8 @@
 """Tests for the site configuration layer."""
 
+import pathlib
+import re
+
 import pytest
 from click.testing import CliRunner
 
@@ -197,3 +200,20 @@ def test_gpu_types_keys_are_lower_cased(tmp_path):
         assert site.gpu_type_partition() == {"v100": "gpu", "l40s": "gpu_big"}
     finally:
         site._cache = monkey
+
+
+def test_every_site_config_key_is_documented():
+    """A key nobody documents is one a porting site cannot find."""
+    import tomllib
+
+    default = pathlib.Path("src/clustertool/data/site.default.toml")
+    doc = pathlib.Path("docs/configuration.md").read_text()
+    config = tomllib.loads(default.read_text())
+    undocumented = [
+        f"[{section}].{key}"
+        for section, body in config.items()
+        if isinstance(body, dict) and section != "gpu_types"
+        for key in body
+        if not re.search(rf"\b{re.escape(key)}\b", doc)
+    ]
+    assert undocumented == [], f"undocumented in docs/configuration.md: {undocumented}"

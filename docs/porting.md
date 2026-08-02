@@ -28,7 +28,10 @@ point clustertool at it:
 
     export CLUSTERTOOL_SITE_CONFIG=/path/to/site.toml
 
-or deploy it to `/etc/clustertool/site.toml` so every user picks it up. Only the
+or deploy it to `/etc/clustertool/site.toml` so every user picks it up. A single
+user can also keep one at `~/.config/clustertool/site.toml`, which is the
+easiest way to try a config out before rolling it to the cluster; the
+environment variable wins, then the user file, then the system one. Only the
 keys you set change; the rest keep the packaged defaults, except `[gpu_types]`
 and `[partitions.limits]`, which replace outright so you must list every entry
 you want. A minimal example:
@@ -64,10 +67,16 @@ well, because the default is the Kempner cluster name:
 
 ## 3. Map or drop the site tools
 
-Some commands wrap tools that may not exist on your cluster (showq, spart,
-lsload, stotal, seff-account, jobstats, the FASRC quota tool). Point each
+Some commands wrap tools that may not exist on your cluster, or exist under
+another name: `showq`, `spart`, `lsload`, `stotal`, `seff-account`, `jobstats`,
+the FASRC `quota` wrapper, `lfs`, `sdiag`, `tmux`, `nvtop` and `ncdu`. Point each
 `[tools]` key at your equivalent binary, or leave it: a command whose tool is
 missing simply hides itself.
+
+Two of those are not whole commands. `ncdu` backs a single flag, so `storage
+home` stays available without it and only `--ncdu` reports it missing, and
+`nvtop` runs on the compute node rather than locally, so it is never checked
+here.
 
     [tools]
     queue = "my-queue-tool"

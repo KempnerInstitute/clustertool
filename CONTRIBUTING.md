@@ -178,12 +178,23 @@ command lives in its own file.
    README table. Also add a row to `clustertool-commands-index.md` (command,
    scope, wraps, description).
 
+   Changing a command takes the same pass. A flag, a unit, an exit code, or a
+   tool that moves invalidates the same four places, and a doc that describes
+   behavior the code no longer has is worse than one that says nothing.
+
 ## Add tests
 
 Add tests under `tests/`. Mock external commands by monkeypatching the helper
 (for example `slurm._run`, or `process.stream` for passthrough commands) so
 tests do not depend on a live cluster. Use `click.testing.CliRunner` for
 command tests.
+
+Stub every query the command makes, not only the one it is about: a preflight
+check that resolves a job's owner or a partition's existence will otherwise
+reach the real scheduler. On a login node such a test passes for the wrong
+reason and fails in CI, so prove the suite is isolated by running it with the
+cluster tools genuinely off `PATH`, not merely with a directory prepended to
+one that still contains them.
 
 ## Run checks before opening a PR
 

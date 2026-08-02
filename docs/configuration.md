@@ -60,6 +60,7 @@ The packaged default lists every key with Kempner values; it is the reference:
   `storage quota --all`.
 - `[pulse]` `remote_venv`: the virtualenv that `gpu pulse --node` activates on a
   remote GPU node. Leave it empty and that flag reports it is not configured.
+  `remote_tool` is the entry point run inside it, `kempnerpulse` by default.
 - `[tools]`: the binary each tool-backed command runs (`queue`, `partitions`,
   `node_load`, `account_usage`, `account_efficiency`, `job_stats`, `quota`,
   `lfs`, `ncdu`, `nvtop`, `tmux`, `sdiag`). A

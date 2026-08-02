@@ -66,7 +66,7 @@ reason.
 - See how many nodes of each GPU type are up, drained, or down.
 - Spot fleet health problems before submitting or debugging jobs.
 
-## `gpu avail PARTITION [--cpus-per-gpu N] [--mem-per-gpu MB]`
+## `gpu avail PARTITION [--cpus-per-gpu N] [--mem-per-gpu MIB]`
 
 List nodes with GPUs you can actually allocate, most first.
 
@@ -142,7 +142,10 @@ default rather than layering on top of it.
 Live GPU/CPU/memory/InfiniBand monitor for a partition's nodes.
 
 Refreshes a colored per-node table in place until Ctrl+C. Requires passwordless
-ssh to the nodes, which must expose `nvidia-smi`.
+ssh to the nodes, which must expose `nvidia-smi`. Nodes that cannot take work
+are skipped and counted, since sampling a down or drained node only costs a
+connect timeout each round. A node that answers with nothing says why on stderr
+rather than rendering as a silent row of N/A.
 
 That means ssh to every node in the partition, not only the ones running your
 jobs. Where node login requires an allocation on that node, as `pam_slurm_adopt`
@@ -154,7 +157,7 @@ enforces, use `gpu monitor-job JOBID` instead.
 
 **Inputs**
 - `PARTITION`: Slurm partition name (e.g. `kempner_h100`).
-- `--interval`: Refresh interval in seconds (default 5).
+- `--interval`: Seconds to wait between rounds (default 5). A round itself takes a few seconds, so the period is longer than this.
 - `--filter`: Only include nodes whose name starts with this prefix.
 
 ## `gpu monitor-job JOBID [--interval S]`
@@ -170,15 +173,16 @@ ssh to the job's nodes, which must expose `nvidia-smi`.
 
 **Inputs**
 - `JOBID`: Slurm job id of a running job.
-- `--interval`: Refresh interval in seconds (default 5).
+- `--interval`: Seconds to wait between rounds (default 5). A round itself takes a few seconds, so the period is longer than this.
 
 ## `gpu nvtop JOBID [--attach/--no-attach]`
 
 Open a tmux session running nvtop on each of a job's nodes.
 
 Creates a tiled tmux session `nvtop_<jobid>` with one pane per node, each ssh-ing
-to the node and launching nvtop. Requires tmux locally and passwordless ssh to
-the nodes.
+to the node and launching nvtop. Both binaries come from `[tools]`, so a site can
+rename them: the command hides itself where `tmux` is absent, and a node missing
+`nvtop` says so in its own pane. Requires passwordless ssh to the nodes.
 
 **Use cases**
 - Watch per-node GPU activity for a multi-node job at a glance.
@@ -206,7 +210,10 @@ To launch it on a remote node from a login node, pass `--node NODE` (or `--job
 JOBID` to target a running job's first node): this ssh's in and runs kempnerpulse
 from the site's shared install (`[pulse].remote_venv`). `--dry-run` prints the
 ssh command instead of running it. Remote launch needs passwordless ssh to the
-node.
+node, and runs the entry point named by `[pulse].remote_tool` inside that venv.
+
+`--help` reaches kempnerpulse rather than this wrapper, so run `gpu pulse
+--wrapper-help` for the three options above.
 
 **Most useful**
 - `gpu pulse`: live fleet dashboard (dcgm backend, about 100 ms refresh).
@@ -226,4 +233,5 @@ In the live view, type `:focus <id>`, `:plot`, or `:job` to switch views, and `:
   Where node login requires an allocation, as `pam_slurm_adopt` enforces,
   `--node` reaches a node only if you hold one there.
 - `--dry-run`: with `--node`/`--job`, print the ssh command instead of running it.
+- `--wrapper-help`: list the wrapper's own options, which `--help` does not reach.
 - `[ARG]...`: any kempnerpulse arguments (`--backend`, `--source`, `--poll`, `--focus-gpu`, `--gpus`, `--once`, `--export`, the weight presets, ...), forwarded verbatim.

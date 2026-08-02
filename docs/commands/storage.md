@@ -24,14 +24,19 @@ only on filesystems that track it, and fall back to the caller's own figures
 elsewhere. Check the header the tool prints.
 
 `--all` reports only your own lab directories, so it takes neither a PATH,
-`--group`, nor `--fleet`. A target whose quota cannot be read shows `error`,
+`--group`, nor `--fleet`. `--verbose` shows the command behind a single lookup,
+so it is refused with either table form, and `--fleet` reports every lab under
+PATH, so it takes neither `--group` nor `--user`. A warning the site tool prints
+alongside a row it still parsed is shown rather than dropped. A target whose quota cannot be read shows `error`,
 `timeout`, `no tool`, or `n/a` in the USED column, with the cause on stderr; the
 command exits nonzero when no target could be read at all. `--fleet` orders rows
 by percent of quota used, breaking ties by absolute usage.
 
 With `--all`, PATH is optional and the command reports every lab directory you
 belong to (auto-detected from your Unix groups across the site's lab roots) as a
-`USED / QUOTA / DISK% / FILES%` table. With `--fleet LAB`, it reports every
+`USED / QUOTA / DISK% / FILES%` table. `lfs` marks a value that is over quota
+with an asterisk, on the inode count as well as the block count, so `FILES%` is
+still a percentage for a group that has exceeded its inode quota. With `--fleet LAB`, it reports every
 `LAB*` directory directly under PATH, sorted by usage. Lab directories usually
 sit in a subdirectory of the filesystem, so point `--fleet` at that parent rather
 than at the mount point: `/n/holylfs06/LABS`, not `/n/holylfs06`.
@@ -55,8 +60,11 @@ Show home directory usage, and optionally its largest subdirectories.
 
 Runs `df -h ~` to show your home quota (Size), usage, and available space. With
 `--scan`, also lists the `--top` N largest subdirectories (default 10) so you can
-find what to clean up. With `--ncdu`, opens the interactive ncdu explorer
-instead.
+find what to clean up. `--scan` reads every directory under home and prints
+nothing until it finishes, which on a large home takes minutes. With `--ncdu`,
+opens the interactive explorer named by `[tools].ncdu` instead, which replaces
+`--scan` rather than combining with it; the rest of the command stays available
+where that tool is absent.
 
 **Use cases**
 - See how much home space you have left (df).
@@ -118,8 +126,11 @@ above the number of OSTs is refused, since `lfs` would silently clamp it; use
 `lfs setstripe -C` directly if you really want more than one stripe per OST.
 
 Setting a count changes the default for everyone who writes new files there,
-including in a shared lab directory, so it prompts for confirmation unless `-y`.
-Lustre allows it only on a directory you own, whatever the write permissions.
+including in a shared lab directory, so it prompts for confirmation unless `-y`,
+restating there what the change does not cover. A stripe count is the default a
+directory gives the files created in it, so a plain file is refused rather than
+passed to `lfs`. Lustre allows it only on a directory you own, whatever the write
+permissions.
 
 **Use cases**
 - Check how a directory is striped across Lustre targets.

@@ -39,8 +39,8 @@ only staff can reach the whole partition and an ordinary user sees every host
 unreachable.
 
 Exit codes: 0 every reachable host has all InfiniBand ports ACTIVE, 1 some hosts
-were unreachable or have no InfiniBand ports, 3 a partition does not exist, 4 at
-least one port is not ACTIVE. 2 is unused throughout the diagnostics, since click exits 2 on a usage error.
+were unreachable or have no InfiniBand ports, 3 a partition does not exist,
+returned no nodes, or could not be queried, 4 at least one port is not ACTIVE. 2 is unused throughout the diagnostics, since click exits 2 on a usage error.
 
 **Use cases**
 - Find nodes with a downed IB link before scheduling a large job.
@@ -74,7 +74,9 @@ Compares the per-port counters in a BEFORE and AFTER snapshot (bracket a run wit
 two `diag ib-snapshot` captures). Benign traffic counters are shown but ignored;
 growth on an error-class counter (symbol errors, discards, link recoveries, ...)
 means the fabric hiccupped under load. The exit code is 0 no error growth, 3 a
-file could not be read, 4 an error-class counter advanced, was reset, is pegged at its maximum, or could not be read. 2 is unused throughout the diagnostics, since click exits 2 on a usage error.
+file could not be read, the two snapshots are from different hosts or name no
+host, or neither holds an InfiniBand port, 4 an error-class counter advanced, was
+reset, is pegged at its maximum, or could not be read. 2 is unused throughout the diagnostics, since click exits 2 on a usage error.
 
 **Use cases**
 - Confirm a benchmark did not degrade the fabric.
@@ -97,9 +99,15 @@ to `diag ib-affinity --snapshot`.
 
 Any probe that could not run is recorded under `probe_errors`, so an empty field
 means the node genuinely had nothing to report rather than that the tool was
-missing or timed out. Run on a login node with no GPUs, for instance, the snapshot
-reports `{"nvidia-smi": "not installed"}` there rather than an unexplained empty
-GPU list.
+missing or timed out, including a `/sys/class/infiniband` that could not be
+read. Run on a login node with no GPUs, for instance, the snapshot reports
+`{"nvidia-smi": "not installed"}` there rather than an unexplained empty GPU
+list, and each one is also printed on stderr as it is recorded.
+
+The exit code is 0 when the snapshot was taken, even with a non-empty
+`probe_errors`, and 3 when the node could not be probed at all or the file could
+not be written. 2 is unused throughout the diagnostics, since click exits 2 on a
+usage error.
 
 **Use cases**
 - Capture a node's fabric state when it goes slow, for later comparison.
@@ -131,7 +139,7 @@ setup error, 4 drift. 2 is unused throughout the diagnostics, since click exits 
 - `--strict`: Count driver/kernel/CUDA drift as drift too.
 - `--json`: Emit the findings as JSON.
 
-## `diag io-probe -d TARGET [--size MB] [--meta-files N] [--min-write MBS] [--min-read MBS] [--max-meta-ms MS] [--keep] [--json]`
+## `diag io-probe -d TARGET [--size MIB] [--meta-files N] [--min-write MIBS] [--min-read MIBS] [--max-meta-ms MS] [--keep] [--json]`
 
 Probe a filesystem's write/read throughput and metadata latency (not a
 benchmark).
@@ -214,7 +222,10 @@ Every failure is a `ClickException`, so the exit codes are 0 on success and 1 on
 ## `diag scheduler`
 
 Show Slurm scheduler diagnostics (via `sdiag`): scheduling cycle times, backfill
-statistics, and queue depth.
+statistics, and queue depth. The binary comes from `[tools].sdiag`, so the
+command hides itself where it is absent. The exit code is 0 when the diagnostics
+were read and 3 when `sdiag` could not be run or reported an error. 2 is unused
+throughout the diagnostics, since click exits 2 on a usage error.
 
 **Use cases**
 - Check scheduler health and backfill activity when jobs are slow to start.
