@@ -1,5 +1,7 @@
 """jobs scope command."""
 
+import os
+import pwd
 import sys
 
 import click
@@ -29,7 +31,21 @@ def scope(args: tuple[str, ...]) -> None:
       jobs scope describe     explain every column and metric
 
     For live jobs use 'gpu monitor-job'; jobscope reports completed jobs.
+
+    Where neither a user nor a job id or subcommand is given, yours is taken from
+    your uid and passed on explicitly, since the bundled tool would otherwise
+    read $USER, which the caller can set and a batch script or an su session can
+    leave stale.
+
+    A window wider than the site's slurmdbd MaxQueryTimeRange is refused by the
+    database for anyone below operator; man slurmdbd.conf exempts operators, so
+    this succeeds for an admin and fails for the person it was written for.
     """
-    code = process.stream([sys.executable, "-m", "jobscope", *args])
+    forwarded = list(args)
+    named = any(arg == "-u" or arg.startswith(("-u", "--user")) for arg in forwarded)
+    positional = bool(forwarded) and not forwarded[0].startswith("-")
+    if not named and not positional:
+        forwarded = ["-u", pwd.getpwuid(os.getuid()).pw_name, *forwarded]
+    code = process.stream([sys.executable, "-m", "jobscope", *forwarded])
     if code:
         raise SystemExit(code)

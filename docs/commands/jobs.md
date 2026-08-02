@@ -51,7 +51,7 @@ fairshare, age, partition, QoS, and so on.
 ## `jobs debug JOBID`
 
 Explain why a finished job failed, from its accounting and log (via `sacct`).
-Reads the final state, exit code, time, and memory, scans the stdout tail for
+Reads the final state, exit code, time, and memory, scans the tail of stdout and stderr for
 common error patterns (out of memory, timeout, node failure, missing modules),
 and prints a plain-English diagnosis with suggestions. Best for finished jobs.
 

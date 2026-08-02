@@ -503,6 +503,19 @@ def running_jobs_alloctres(partition: str) -> list[tuple[str, str, int, int, int
     return jobs
 
 
+def partition_max_gpus(partition: str) -> int:
+    """Return the most GPUs any one node in a partition has, or 0 when unknown.
+
+    A request above that can never be satisfied, and sbatch reports it only as
+    "Requested node configuration is not available".
+    """
+    try:
+        rows = node_capacity()
+    except CommandError:
+        return 0
+    return max((row["gpu_tot"] for row in rows if partition in row["partitions"]), default=0)
+
+
 def partition_accounts(partition: str) -> list[str]:
     """Return the accounts allowed on a partition.
 

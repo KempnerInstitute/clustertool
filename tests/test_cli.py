@@ -870,12 +870,24 @@ def test_jobs_why_explains_an_empty_sprio_result(monkeypatch):
 
 
 def test_jobs_history(monkeypatch):
-    monkeypatch.setenv("USER", "alice")
-    calls = _capture_stream(monkeypatch)
-    result = CliRunner().invoke(main, ["jobs", "history", "--days", "3"])
+    monkeypatch.setattr(slurm, "user_exists", lambda u: True)
+    calls = []
+    monkeypatch.setattr(
+        process, "probe", lambda cmd, **kw: (calls.append(cmd), (0, "rows\n", ""))[1]
+    )
+    result = CliRunner().invoke(main, ["jobs", "history", "--days", "3", "-u", "alice"])
     assert result.exit_code == 0
     assert calls[0][:5] == ["sacct", "-u", "alice", "-S", "now-3days"]
     assert "-X" in calls[0]
+
+
+def test_jobs_history_explains_a_refused_window(monkeypatch):
+    """man slurmdbd.conf caps the span with MaxQueryTimeRange and exempts operators."""
+    monkeypatch.setattr(slurm, "user_exists", lambda u: True)
+    monkeypatch.setattr(process, "probe", lambda cmd, **kw: (1, "", "sacct: error: Query too wide"))
+    result = CliRunner().invoke(main, ["jobs", "history", "--days", "30"])
+    assert result.exit_code == 1
+    assert "MaxQueryTimeRange" in result.output
 
 
 def _cancel_stubs(monkeypatch, counts=None, exists=True):
@@ -2165,7 +2177,25 @@ def test_jobs_scope_passthrough(monkeypatch):
     result = CliRunner().invoke(main, ["jobs", "scope", "-D", "3", "--gpu"])
     assert result.exit_code == 0
     assert calls[0][:3] == [sys.executable, "-m", "jobscope"]
-    assert calls[0][3:] == ["-D", "3", "--gpu"]
+    me = pwd.getpwuid(os.getuid()).pw_name
+    assert calls[0][3:] == ["-u", me, "-D", "3", "--gpu"]
+
+
+def test_jobs_scope_does_not_override_an_explicit_user(monkeypatch):
+    calls = []
+    monkeypatch.setattr(process, "stream", lambda cmd, extra_env=None: calls.append(cmd) or 0)
+    result = CliRunner().invoke(main, ["jobs", "scope", "-u", "alice"])
+    assert result.exit_code == 0
+    assert calls[0][3:] == ["-u", "alice"]
+
+
+def test_jobs_scope_ignores_a_spoofed_user(monkeypatch):
+    """The bundled tool reads $USER, which the caller sets."""
+    monkeypatch.setenv("USER", "someoneelse")
+    calls = []
+    monkeypatch.setattr(process, "stream", lambda cmd, extra_env=None: calls.append(cmd) or 0)
+    CliRunner().invoke(main, ["jobs", "scope"])
+    assert calls[0][3:5] == ["-u", pwd.getpwuid(os.getuid()).pw_name]
 
 
 def test_jobs_scope_forwards_subcommand(monkeypatch):
@@ -5163,3 +5193,28 @@ def test_ib_counters_accepts_a_short_name_against_an_fqdn(tmp_path):
     )
     result = CliRunner().invoke(main, ["diag", "ib-counters", before, after])
     assert result.exit_code == 0
+
+
+def test_jobs_new_refuses_more_gpus_than_a_node_has(monkeypatch):
+    """sbatch reports this only as 'Requested node configuration is not available'."""
+    monkeypatch.setattr(slurm, "partition_max_gpus", lambda p: 4)
+    result = CliRunner().invoke(
+        main, ["jobs", "new", "--gpu-type", "h100", "-A", "lab", "--gpus", "8"]
+    )
+    assert result.exit_code == 1
+    assert "above the 4 GPU(s)" in result.output
+
+
+def test_jobs_new_refuses_a_time_limit_sbatch_would_misread(monkeypatch):
+    """man sbatch reads a bare number as minutes, not as the D-HH:MM the help states."""
+    monkeypatch.setattr(slurm, "partition_max_gpus", lambda p: 4)
+    result = CliRunner().invoke(
+        main, ["jobs", "new", "--gpu-type", "h100", "-A", "lab", "-t", "4:00:00:00"]
+    )
+    assert result.exit_code == 1
+    assert "invalid -t/--time" in result.output
+    for good in ("0-04:00", "12:30:00", "90", "2-6"):
+        result = CliRunner().invoke(
+            main, ["jobs", "new", "--gpu-type", "h100", "-A", "lab", "-t", good]
+        )
+        assert result.exit_code == 0, good

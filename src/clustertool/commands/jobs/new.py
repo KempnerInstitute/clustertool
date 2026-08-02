@@ -8,6 +8,11 @@ import click
 from clustertool import completion, process, slurm
 from clustertool.grouping import keywords
 
+_TIME_LIMIT = re.compile(
+    r"\d+|\d+:\d{2}|\d+:\d{2}:\d{2}|\d+-\d{1,2}|\d+-\d{1,2}:\d{2}|\d+-\d{1,2}:\d{2}:\d{2}"
+)
+"""The time formats man sbatch accepts, so a bad one fails here rather than at submit."""
+
 
 def _build_script(
     gpu_type: str,
@@ -97,7 +102,10 @@ def _check_value(option: str, value: str) -> None:
     "--cpus-per-gpu", type=click.IntRange(min=1), default=None, help="Override CPUs per GPU."
 )
 @click.option(
-    "--mem-per-gpu", type=click.IntRange(min=1), default=None, help="Override memory per GPU in MB."
+    "--mem-per-gpu",
+    type=click.IntRange(min=1),
+    default=None,
+    help="Override memory per GPU in MiB.",
 )
 @click.option(
     "-o",
@@ -144,15 +152,25 @@ def new(
       -t, --time       Time limit D-HH:MM (default 0-04:00).
       -J, --name       Job name (default job).
       --cpus-per-gpu   Override CPUs per GPU.
-      --mem-per-gpu    Override memory per GPU in MB.
+      --mem-per-gpu    Override memory per GPU in MiB.
       -o, --output     Write the generated script to a file, replacing it if it
                        already exists.
       --submit         Submit the script with sbatch.
     """
     _check_value("-J/--name", name)
     _check_value("-A/--account", account)
-    _check_value("-t/--time", time_limit)
+    if not _TIME_LIMIT.fullmatch(time_limit):
+        raise click.ClickException(
+            f"invalid -t/--time {time_limit!r}: give D-HH:MM, or one of the other forms "
+            "man sbatch lists, such as HH:MM:SS or MM. A bare number is read as minutes"
+        )
     partition = slurm.GPU_TYPE_PARTITION[gpu_type.lower()]
+    most = slurm.partition_max_gpus(partition)
+    if most and gpus > most:
+        raise click.ClickException(
+            f"--gpus {gpus} is above the {most} GPU(s) any node in {partition} has, "
+            "so the allocation could never be satisfied"
+        )
     ceiling_cpu, ceiling_mem = slurm.PARTITION_LIMITS.get(partition, (None, None))
     for option, given, ceiling, unit in (
         ("--cpus-per-gpu", cpus_per_gpu, ceiling_cpu, "CPU"),
