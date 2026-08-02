@@ -150,7 +150,7 @@ missed. 2 is unused throughout the diagnostics, since click exits 2 on a usage e
 
 **Inputs**
 - `-d, --dir`: Directory to probe (a scratch subdir is created inside).
-- `--size`: Sequential file size in MB (default 256).
+- `--size`: Sequential file size in MiB (default 256), rounded down to a whole 4 MiB chunk.
 - `--meta-files`: Metadata batch size (default 100).
 - `--min-write` / `--min-read` / `--max-meta-ms`: Gate thresholds.
 - `--keep`: Keep the scratch subdir.

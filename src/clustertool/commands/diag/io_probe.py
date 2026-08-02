@@ -18,35 +18,27 @@ from clustertool.grouping import keywords
 )
 @click.option(
     "--size",
-    type=float,
+    type=click.FloatRange(min=4.0),
     default=256.0,
     show_default=True,
-    metavar="MB",
-    help="Sequential file size in MB.",
-)
-@click.option(
-    "--meta-files",
-    "meta_files",
-    type=int,
-    default=100,
-    show_default=True,
-    help="Metadata batch size.",
+    metavar="MIB",
+    help="Sequential file size in MiB, rounded down to a whole 4 MiB chunk.",
 )
 @click.option(
     "--min-write",
     "min_write",
     type=float,
     default=None,
-    metavar="MBS",
-    help="Fail if write MB/s is below this.",
+    metavar="MIBS",
+    help="Fail if write MiB/s is below this.",
 )
 @click.option(
     "--min-read",
     "min_read",
     type=float,
     default=None,
-    metavar="MBS",
-    help="Fail if read MB/s is below this.",
+    metavar="MIBS",
+    help="Fail if read MiB/s is below this.",
 )
 @click.option(
     "--max-meta-ms",
@@ -55,6 +47,14 @@ from clustertool.grouping import keywords
     default=None,
     metavar="MS",
     help="Fail if metadata ms/op exceeds this.",
+)
+@click.option(
+    "--meta-files",
+    "meta_files",
+    type=click.IntRange(min=1),
+    default=100,
+    show_default=True,
+    help="Metadata batch size.",
 )
 @click.option("--keep", is_flag=True, help="Keep the scratch subdir.")
 @click.option("--json", "as_json", is_flag=True, help="Emit the structured result as JSON.")
@@ -72,14 +72,22 @@ def io_probe(
 ) -> None:
     """Probe a filesystem's write/read throughput and metadata latency.
 
-    Writes a bounded file (fsync included), re-reads it after asking the kernel to
-    drop its page cache,
-    and times create/stat/delete on a batch of small files, against a scratch
-    subdirectory of the target. Not a benchmark. Run it on a compute node (wrap
-    in srun) to probe from there. Set --min-write, --min-read, or --max-meta-ms
-    to turn it into a pass/fail gate. The exit code is 0 report or pass, 3 setup
-    or IO error, 4 a gate missed. 2 is unused throughout the diagnostics, since
-    click exits 2 on a usage error.
+    Writes a bounded file of random data (fsync included), re-reads it after
+    dropping its page cache, and times create/stat/delete on a batch of small
+    files, against a scratch subdirectory of the target. Not a benchmark. Run it
+    on a compute node (wrap in srun) to probe from there; on a login node it
+    measures that node's client and whatever else is contending on it.
+
+    Every figure is MiB and MiB/s. The file is written in whole 4 MiB chunks, so
+    --size rounds down to a multiple of that, and each chunk is fresh random
+    data, since a compressing or deduplicating backend does not store a repeated
+    one. tmpfs and ramfs are refused: they are memory rather than storage, and
+    posix_fadvise reports dropping their cache while evicting nothing, so a probe
+    there would report the memory subsystem as a filesystem.
+
+    Set --min-write, --min-read, or --max-meta-ms to turn it into a pass/fail
+    gate. The exit code is 0 report or pass, 3 setup or IO error, 4 a gate missed.
+    2 is unused throughout the diagnostics, since click exits 2 on a usage error.
 
     \b
     Use cases:
@@ -89,15 +97,13 @@ def io_probe(
     \b
     Inputs:
       -d, --dir     Directory to probe.
-      --size        Sequential file size in MB (default 256).
+      --size        Sequential file size in MiB (default 256), rounded down to a
+                    whole 4 MiB chunk.
       --meta-files  Metadata batch size (default 100).
       --min-write, --min-read, --max-meta-ms  Gate thresholds.
       --keep        Keep the scratch subdir.
       --json        Emit JSON instead of the text report.
     """
-    if size <= 0 or meta_files <= 0:
-        click.echo("io-probe: error: --size and --meta-files must be > 0", err=True)
-        ctx.exit(3)
     try:
         metrics = ioprobe.run_probe(directory, size, meta_files, keep=keep)
     except ioprobe.ProbeError as exc:
