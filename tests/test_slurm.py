@@ -475,10 +475,10 @@ def test_expand_log_pattern_keeps_an_unresolvable_symbol_out_of_the_name():
 
 
 def test_first_node_takes_the_head_of_a_range():
-    assert slurm._first_node("holygpu8a[10102,10202]") == "holygpu8a10102"
-    assert slurm._first_node("holygpu8a[10301-10302]") == "holygpu8a10301"
-    assert slurm._first_node("holy8a26602") == "holy8a26602"
-    assert slurm._first_node("None assigned") == ""
+    assert slurm.first_node("holygpu8a[10102,10202]") == "holygpu8a10102"
+    assert slurm.first_node("holygpu8a[10301-10302]") == "holygpu8a10301"
+    assert slurm.first_node("holy8a26602") == "holy8a26602"
+    assert slurm.first_node("None assigned") == ""
 
 
 def test_account_members_raises_when_sshare_fails(monkeypatch):

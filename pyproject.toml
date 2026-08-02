@@ -50,6 +50,7 @@ dev = [
     "pytest-asyncio>=0.24",
     "pytest-cov>=5",
     "pytest-textual-snapshot>=1",
+    "pyte>=0.8",
     "ruff>=0.6",
     "textual>=0.80",
 ]

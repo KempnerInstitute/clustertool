@@ -38,16 +38,40 @@ def test_help_overlay(snap_compare):
 SAMPLE = [
     JobRow(
         "111",
+        "R",
         "RUNNING",
         "kempner_h100",
         4,
         "2:14:00",
         "None",
-        ["gpu8a15", "gpu8a16"],
+        "gpu8a[15-16]",
+        2,
         "cpu=96,mem=1440G,gres/gpu=4",
     ),
-    JobRow("222", "RUNNING", "sapphire", 0, "6:02:11", "None", ["holy7c04309"], "cpu=8,mem=64G"),
-    JobRow("333", "PENDING", "kempner_h100", 4, "0:00", "Priority", [], "cpu=96,gres/gpu=4"),
+    JobRow(
+        "222",
+        "R",
+        "RUNNING",
+        "sapphire",
+        0,
+        "6:02:11",
+        "None",
+        "holy7c04309",
+        1,
+        "cpu=8,mem=64G",
+    ),
+    JobRow(
+        "333_[0-7]",
+        "PD",
+        "PENDING",
+        "kempner_h100,kempner_requeue",
+        4,
+        "0:00",
+        "ReqNodeNotAvail, UnavailableNodes:holygpu8a[11101-11408]",
+        "",
+        1,
+        "cpu=96,gres/gpu=4",
+    ),
 ]
 
 
@@ -76,6 +100,26 @@ def test_jobs_at_80_columns(snap_compare):
     assert snap_compare(
         _app(),
         terminal_size=(80, 24),
+        run_before=lambda pilot: _show(pilot, SAMPLE),
+    )
+
+
+def test_jobs_pending_row_selected(snap_compare):
+    """The waiting line and the elided cells are only on screen for a pending job."""
+
+    async def pending(pilot):
+        await _show(pilot, SAMPLE)
+        await pilot.press("down", "down")
+        await pilot.pause()
+
+    assert snap_compare(_app(), terminal_size=(100, 26), run_before=pending)
+
+
+def test_jobs_at_70x16(snap_compare):
+    """The size where the detail pane was squeezed off screen entirely."""
+    assert snap_compare(
+        _app(),
+        terminal_size=(70, 16),
         run_before=lambda pilot: _show(pilot, SAMPLE),
     )
 

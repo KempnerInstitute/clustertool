@@ -4,7 +4,7 @@ import asyncio
 import datetime
 from collections.abc import Callable
 
-from textual import work
+from textual import events, work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
@@ -14,6 +14,13 @@ from clustertool.process import CommandError
 from clustertool.tui import data
 from clustertool.tui.panels.jobs import JobsPanel
 from clustertool.tui.panels.status import StatusBar
+
+SIDE_BY_SIDE = 48
+"""Narrowest terminal that still holds the jobs panel and the side column together.
+
+The sum of the two width floors in app.tcss. Below it the side column is hidden
+rather than drawn past the right edge.
+"""
 
 HELP = """\
 Keys
@@ -25,6 +32,17 @@ Keys
   ?            this help
   Q            quit
 """
+
+
+def _reason(exc: BaseException) -> str:
+    """Describe a failure for the panel, naming the class only when it adds anything.
+
+    A CommandError already reads as a sentence about the cluster. Anything else is
+    unexpected, and its type is most of what there is to say about it.
+    """
+    if isinstance(exc, CommandError):
+        return str(exc)
+    return f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
 
 
 class HelpScreen(ModalScreen):
@@ -61,6 +79,7 @@ class MeApp(App):
         self._identity = identity or data.identity()
         self._clock = clock
         self._interval = interval
+        self._loading = False
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="body"):
@@ -70,34 +89,45 @@ class MeApp(App):
         yield StatusBar(self._identity, clock=self._clock)
 
     def on_mount(self) -> None:
-        for widget_id, title in (
-            ("#jobs", "Jobs"),
-            ("#storage", "Storage"),
-            ("#standing", "Standing"),
-        ):
+        for widget_id, title in (("#storage", "Storage"), ("#standing", "Standing")):
             panel = self.query_one(widget_id)
             panel.border_title = title
-            if widget_id != "#jobs":
-                panel.can_focus = True
+            panel.can_focus = True
         self.query_one("#jobs-table", DataTable).focus()
         if self._interval > 0:
             self.load_jobs()
             self.set_interval(self._interval, self.load_jobs)
 
-    @work(exclusive=True, group="jobs")
+    @work(group="jobs")
     async def load_jobs(self) -> None:
         """Read the jobs off the scheduler without blocking the interface.
 
-        Exclusive so a held-down refresh key cannot stack queries on a busy
-        controller.
+        A flag rather than an exclusive worker, which cancels only the coroutine
+        that awaits the thread: the squeue subprocess runs to completion whatever
+        happens to its awaiter, so a held-down refresh key would still put one
+        query per keypress on the controller. Every failure lands on the panel,
+        including the ones that are this code's fault, because a dashboard that
+        tears down its own screen is worse than one showing a stale table.
         """
-        panel = self.query_one(JobsPanel)
+        if self._loading:
+            return
+        self._loading = True
         try:
             rows = await asyncio.to_thread(data.jobs, self._identity.user)
-        except CommandError as exc:
-            panel.fail(str(exc))
-            return
-        panel.show(rows)
+            self.query_one(JobsPanel).show(rows)
+        except Exception as exc:
+            self.query_one(JobsPanel).fail(_reason(exc))
+        finally:
+            self._loading = False
+
+    def on_resize(self, event: events.Resize) -> None:
+        """Drop the side column when two panels no longer fit across the terminal.
+
+        Both panels hold a width floor, and below their sum the pair is drawn off
+        the right edge: the second panel loses its right border and whatever it
+        holds is simply not on screen. One panel that fits beats two that do not.
+        """
+        self.query_one("#storage").display = event.size.width >= SIDE_BY_SIDE
 
     def action_refresh(self) -> None:
         """Read the jobs again now, rather than waiting for the timer."""

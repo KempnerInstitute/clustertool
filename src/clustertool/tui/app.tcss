@@ -8,6 +8,7 @@ Screen {
 
 #jobs {
     width: 2fr;
+    min-width: 24;
     height: 100%;
     border: round $panel-lighten-2;
     border-title-align: left;
@@ -32,12 +33,14 @@ Screen {
 }
 
 #jobs-table {
-    height: auto;
-    max-height: 1fr;
+    height: 1fr;
+    min-height: 2;
+    overflow-x: hidden;
 }
 
 #jobs-detail {
     height: auto;
+    max-height: 8;
     padding: 1 1 0 1;
     color: $text-muted;
     border-top: dashed $panel-lighten-2;

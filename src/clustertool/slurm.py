@@ -827,7 +827,7 @@ def expand_hostlist(nodelist: str) -> list[str]:
     return [name for name in out.split() if name]
 
 
-def _first_node(nodelist: str) -> str:
+def first_node(nodelist: str) -> str:
     """Return the first node of a NodeList, which is what %N expands to for a batch step.
 
     Accounting records the list, so a name using %N is resolvable after the fact
@@ -893,7 +893,7 @@ def job_output_paths(jobid: str) -> tuple[str, str]:
         "job_id": row[0].strip() or jobid,
         "user": row[6].strip(),
         "name": row[5].strip(),
-        "node": _first_node(row[7].strip()),
+        "node": first_node(row[7].strip()),
     }
     workdir = row[4].strip()
 

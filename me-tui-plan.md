@@ -107,16 +107,23 @@ format changed.
 Three tiers, because the panels differ in cost by two orders of magnitude.
 
 - **Jobs**: a Textual worker on a timer, default 5s, `--interval` to change it.
-  Cancelled and restarted on manual refresh so two queries never overlap.
+  Skipped rather than queued while one is still in flight, so two never overlap.
 - **Storage and Standing**: loaded once at startup in background workers, each
   showing a spinner until its data lands. Refreshed on `r` for the focused panel
   or `R` for all. They are not on a timer: quota and fairshare move slowly, and
   polling them every few seconds would put pointless load on shared services.
 - **Clock**: a 1s timer that touches no subprocess.
 
-Every worker is `exclusive=True` per panel, so a held-down `r` cannot stack
-queries. A panel that fails keeps its last good data, marks itself stale, and
-shows the reason on the panel rather than tearing down the app.
+Every panel guards its worker with an in-flight flag, so a held-down `r` cannot
+stack queries. A `exclusive=True` worker does not achieve this: it cancels the
+coroutine awaiting the thread, and the subprocess the thread started runs to
+completion regardless, so one query per keypress still reaches the controller.
+
+A panel that fails keeps its last good data, marks itself stale, and shows the
+reason both on its border title and in its body, rather than tearing down the
+app. The title carries it because the body is what a short terminal clips first.
+Every exception reaches that path, not only `CommandError`, since a dashboard
+that dumps a traceback over the screen is worse than one showing stale data.
 
 ## Actions
 

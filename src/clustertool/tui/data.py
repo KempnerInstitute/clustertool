@@ -45,9 +45,23 @@ def identity() -> Identity:
     )
 
 
-JOB_FIELDS = "JobID:|,State:|,Partition:|,TimeUsed:|,Reason:|,tres-alloc:|,NodeList:|"
+JOB_FIELDS = (
+    "JobArrayID:|,StateCompact:|,State:|,Partition:|,TimeUsed:|,"
+    "Reason:|,tres-alloc:|,NodeList:|,NumNodes:|"
+)
+"""The one squeue format the panel reads.
 
-PENDING_STATES = ("PENDING", "CONFIGURING")
+JobArrayID rather than JobID: JobID prints the internal numeric id, which for an
+array element is neither what the user submitted nor what scancel and the rest of
+the CLI print. JobArrayID matched %i on every one of the 16,759 jobs queued when
+this was checked. StateCompact rather than deriving the two-letter code here,
+which is Slurm's table to own. NumNodes so the node column can name the head and
+a count without expanding the hostlist, which costs a scontrol fork per job.
+"""
+
+PENDING_CODES = ("PD", "CF")
+
+EMPTY_NODELISTS = ("", "none assigned", "none", "(null)")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -55,26 +69,41 @@ class JobRow:
     """One of the caller's jobs, as the panel shows it."""
 
     jobid: str
+    code: str
     state: str
     partition: str
     gpus: int
     elapsed: str
     reason: str
-    nodes: list[str]
+    nodelist: str
+    nnodes: int
     tres: str
 
     @property
     def pending(self) -> bool:
         """True while the job is waiting rather than running."""
-        return self.state.startswith(PENDING_STATES)
+        return self.code in PENDING_CODES
+
+    @property
+    def assigned(self) -> bool:
+        """True once Slurm has named nodes for the job."""
+        return self.nodelist.strip().lower() not in EMPTY_NODELISTS
 
     @property
     def where(self) -> str:
         """The node column: where it runs, or why it is not running yet."""
-        if self.nodes:
-            head = self.nodes[0]
-            return head if len(self.nodes) == 1 else f"{head} +{len(self.nodes) - 1}"
+        if self.assigned:
+            from clustertool import slurm
+
+            head = slurm.first_node(self.nodelist)
+            return head if self.nnodes <= 1 else f"{head} +{self.nnodes - 1}"
         return f"({self.reason})" if self.reason and self.reason != "None" else "-"
+
+
+def _count(text: str) -> int:
+    """Return a squeue count field as an int, tolerating the range a pending job shows."""
+    head = text.split("-")[0].strip()
+    return int(head) if head.isdigit() else 0
 
 
 def jobs(user: str) -> list[JobRow]:
@@ -90,25 +119,33 @@ def jobs(user: str) -> list[JobRow]:
     code, out, err = process.probe(
         ["squeue", "-h", "-u", user, "--Format=" + JOB_FIELDS], timeout=30
     )
+    if code == 127:
+        raise CommandError("'squeue' not found on this host")
+    if code == 124:
+        raise CommandError("squeue timed out; the controller is not answering")
     if code != 0:
         raise CommandError(f"could not read your jobs: {err.strip() or code}")
     rows = []
     for line in out.splitlines():
         parts = line.split("|")
-        if len(parts) < 7:
+        if len(parts) < 9:
             continue
-        jobid, state, partition, elapsed, reason, tres, nodelist = (p.strip() for p in parts[:7])
+        jobid, short, state, partition, elapsed, reason, tres, nodelist, nnodes = (
+            p.strip() for p in parts[:9]
+        )
         if not jobid:
             continue
         rows.append(
             JobRow(
                 jobid=jobid,
+                code=short,
                 state=state,
                 partition=partition,
                 gpus=slurm.parse_gpu_count(tres),
                 elapsed=elapsed,
                 reason=reason,
-                nodes=slurm.expand_hostlist(nodelist),
+                nodelist=nodelist,
+                nnodes=_count(nnodes),
                 tres=tres,
             )
         )
