@@ -299,7 +299,8 @@ def test_completion_callbacks_safe_on_error(monkeypatch):
 
 
 def test_me_overview(monkeypatch):
-    monkeypatch.setenv("USER", "alice")
+    """The caller comes from the uid, so a spoofed USER cannot redirect the summary."""
+    monkeypatch.setenv("USER", "someoneelse")
     monkeypatch.setattr(
         slurm,
         "my_jobs",
@@ -312,7 +313,8 @@ def test_me_overview(monkeypatch):
     monkeypatch.setattr(slurm, "user_fairshare", lambda user: [("kempner_dev", "0.87")])
     result = CliRunner().invoke(main, ["me"])
     assert result.exit_code == 0
-    assert "overview for alice" in result.output
+    assert f"overview for {pwd.getpwuid(os.getuid()).pw_name}" in result.output
+    assert "someoneelse" not in result.output
     assert "1 running, 1 pending, 4 GPU(s)" in result.output
     assert "Priority" in result.output
     assert "kempner_dev" in result.output

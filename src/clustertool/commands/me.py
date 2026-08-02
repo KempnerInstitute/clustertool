@@ -1,11 +1,29 @@
 """me command."""
 
 import os
+import pwd
+import sys
 
 import click
 
 from clustertool import site, slurm, storage
 from clustertool.grouping import keywords
+
+
+def _wants_dashboard(user: str | None, plain: bool, access: bool) -> bool:
+    """Return True when this invocation should open the interactive dashboard.
+
+    The dashboard covers the caller only, so naming another user falls back to
+    the one-shot summary, as does asking for the access map, redirecting the
+    output, or running where the optional tui extra is not installed.
+    """
+    if plain or user or access or not sys.stdout.isatty():
+        return False
+    try:
+        import textual  # noqa: F401
+    except ModuleNotFoundError:
+        return False
+    return True
 
 
 def _show_access(user: str) -> None:
@@ -39,10 +57,11 @@ def _show_access(user: str) -> None:
 @keywords("dashboard", "home", "overview", "status", "mine", "access")
 @click.command("me")
 @click.option("-u", "--user", default=None, help="Show another user instead of yourself.")
+@click.option("--plain", is_flag=True, help="Print the one-shot summary instead of the dashboard.")
 @click.option(
     "-a", "--access", is_flag=True, help="Also show what you can access: accounts, partitions, QoS."
 )
-def me(user: str | None, access: bool) -> None:
+def me(user: str | None, plain: bool, access: bool) -> None:
     """Show a personal overview: your jobs, GPUs in use, and fairshare standing.
 
     A one-screen summary of your cluster life, so you do not have to run squeue
@@ -59,9 +78,12 @@ def me(user: str | None, access: bool) -> None:
       -u, --user    Show this user instead of the current one.
       -a, --access  Also show your accounts, submission map, and priority tiers.
     """
-    user = user or os.environ.get("USER", "")
-    if not user:
-        raise click.UsageError("Could not determine the user; pass -u USER.")
+    if _wants_dashboard(user, plain, access):
+        from clustertool.tui import run
+
+        run()
+        return
+    user = user or pwd.getpwuid(os.getuid()).pw_name
     click.echo(f"clustertool overview for {user}")
 
     jobs = slurm.my_jobs(user)

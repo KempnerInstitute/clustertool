@@ -41,8 +41,11 @@ Documentation = "https://github.com/KempnerInstitute/clustertool/tree/main/docs"
 [project.scripts]
 clustertool = "clustertool.entry:run"
 
+[project.optional-dependencies]
+tui = ["textual>=0.80"]
+
 [dependency-groups]
-dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.6"]
+dev = ["pytest>=8", "pytest-cov>=5", "pytest-textual-snapshot>=1", "ruff>=0.6", "textual>=0.80"]
 
 [build-system]
 requires = ["hatchling>=1.27"]
