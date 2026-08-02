@@ -501,3 +501,11 @@ def test_job_nodes_asks_for_every_state(monkeypatch):
     monkeypatch.setattr(process, "probe", fake)
     assert slurm.job_nodes("1") == []
     assert "-t" in seen[0] and "all" in seen[0]
+
+
+def test_is_schedulable_state():
+    """man sinfo: a node marked * will not be allocated any new work."""
+    for code in ("idle", "mix", "alloc", "comp", "mix-", "plnd"):
+        assert slurm.is_schedulable_state(code), code
+    for code in ("down", "down*", "drain", "drng", "resv", "inval", "maint", "idle*", "mix*"):
+        assert not slurm.is_schedulable_state(code), code

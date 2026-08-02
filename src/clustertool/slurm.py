@@ -857,6 +857,38 @@ _BAD_NODE_STATES = (
 )
 
 
+_UNSCHEDULABLE_CODES = (
+    "down",
+    "drain",
+    "drng",
+    "fail",
+    "failg",
+    "futr",
+    "maint",
+    "resv",
+    "unk",
+    "inval",
+    "npc",
+    "pow_dn",
+    "pow_up",
+)
+"""sinfo short state codes for a node that will not take a new job."""
+
+
+def is_schedulable_state(state: str) -> bool:
+    """Return True if a sinfo %t code names a node that can still take work.
+
+    A trailing * is a node that is not responding, which man sinfo says will not
+    be allocated any new work whatever its base state, so it counts as not
+    schedulable. The other suffixes, such as - for backfill-planned, do not.
+    """
+    code = state.strip().lower()
+    if code.endswith("*"):
+        return False
+    code = code.rstrip("*-~#%$@")
+    return not code.startswith(_UNSCHEDULABLE_CODES)
+
+
 def _node_kv(line: str) -> dict[str, str]:
     """Return the key=value tokens on one scontrol -o line."""
     return dict(token.split("=", 1) for token in line.split() if "=" in token)

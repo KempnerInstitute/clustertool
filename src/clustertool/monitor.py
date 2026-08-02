@@ -5,7 +5,7 @@ import importlib.resources
 import sys
 import time
 
-from clustertool.process import CommandError, run
+from clustertool.process import CommandError, probe
 
 _SSH_OPTS = [
     "-o",
@@ -13,8 +13,18 @@ _SSH_OPTS = [
     "-o",
     "StrictHostKeyChecking=accept-new",
     "-o",
-    "LogLevel=ERROR",
+    "BatchMode=yes",
 ]
+
+_SSH_TIMEOUT_S = 20
+"""Cap on one sample, since ConnectTimeout does not bound a session that stalls.
+
+man ssh_config says ConnectTimeout applies only while connecting, so a host that
+completes the handshake and then hangs in the login path would otherwise block
+the whole table indefinitely.
+"""
+
+_SSH_NOISE = ("Warning: Permanently added", "Permanently added")
 
 # Fractions of a modern IB link: below _IB_LOW_MBS a fabric is effectively idle.
 _IB_LOW_MBS = 500.0
@@ -26,15 +36,25 @@ _SAMPLE_SCRIPT = (
 ).read_text()
 
 
+def ssh_reason(err: str) -> str:
+    """Return the first line of ssh stderr that says why a host was not reached."""
+    for line in err.splitlines():
+        line = line.strip()
+        if line and not line.startswith(_SSH_NOISE):
+            return line
+    return "ssh failed"
+
+
 def num_gpus(host: str) -> int:
     """Return the number of GPUs on a host, or 0 if it cannot be detected."""
-    out = run(
+    _, out, _ = probe(
         [
             "ssh",
             *_SSH_OPTS,
             host,
             "nvidia-smi --query-gpu=utilization.gpu --format=csv,noheader | wc -l",
-        ]
+        ],
+        timeout=_SSH_TIMEOUT_S,
     )
     try:
         return int(out.strip())
@@ -42,9 +62,21 @@ def num_gpus(host: str) -> int:
         return 0
 
 
-def sample(host: str) -> str:
-    """Return one raw stats line from a host."""
-    return run(["ssh", *_SSH_OPTS, host, "bash"], input_text=_SAMPLE_SCRIPT)
+def sample(host: str) -> tuple[str, str]:
+    """Return (raw stats line, failure reason) from a host.
+
+    The reason is empty when the host answered. It is carried alongside the line
+    rather than discarded, so a row of N/A can say whether the node reported
+    nothing or refused the login.
+    """
+    code, out, err = probe(
+        ["ssh", *_SSH_OPTS, host, "bash"], timeout=_SSH_TIMEOUT_S, input_text=_SAMPLE_SCRIPT
+    )
+    if code == 124:
+        return "", f"no answer within {_SSH_TIMEOUT_S}s"
+    if code:
+        return "", ssh_reason(err)
+    return out, ""
 
 
 def parse_sample(raw: str):
@@ -147,7 +179,7 @@ def _port_count(samples: list[str]) -> int:
     The table is drawn once and then redrawn in place, so the column count is
     fixed for the run and has to hold the busiest node.
     """
-    parsed = [parse_sample(raw) for raw in samples]
+    parsed = [parse_sample(raw) for raw, _ in samples]
     return max((len(row[3]) for row in parsed if row), default=0)
 
 
@@ -170,13 +202,18 @@ def run_monitor(title: str, hosts: list[str], interval: int) -> None:
     print(_header(title, gpus, ports, interval))
     for _ in hosts:
         print()
+    reported: set[str] = set()
     try:
         while True:
             sys.stdout.write(f"\033[{len(hosts)}A")
-            for host, raw in zip(hosts, samples, strict=True):
+            for host, (raw, _) in zip(hosts, samples, strict=True):
                 sys.stdout.write("\033[2K")
                 print(_row(host, raw, gpus, ports))
             sys.stdout.flush()
+            for host, (_, reason) in zip(hosts, samples, strict=True):
+                if reason and (host, reason) not in reported:
+                    reported.add((host, reason))
+                    print(f"  {host}: {reason}", file=sys.stderr)
             time.sleep(interval)
             with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(hosts), 32)) as pool:
                 samples = list(pool.map(sample, hosts))

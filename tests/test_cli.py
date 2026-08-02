@@ -4680,3 +4680,20 @@ def test_gpu_usage_refuses_an_empty_base_partition_list(monkeypatch):
     result = CliRunner().invoke(main, ["gpu", "usage"])
     assert result.exit_code == 1
     assert "no base partitions configured" in result.output
+
+
+def test_gpu_nvtop_uses_the_configured_binaries(monkeypatch, tmp_path):
+    """Neither tmux nor the remote viewer is hardcoded."""
+    monkeypatch.setattr(slurm, "job_owner", lambda jobid: pwd.getpwuid(os.getuid()).pw_name)
+    monkeypatch.setattr(slurm, "job_nodes", lambda jobid: ["n1"])
+    monkeypatch.setattr(site, "tool", lambda key: {"tmux": "mytmux", "nvtop": "myviewer"}[key])
+    calls = []
+    monkeypatch.setattr(process, "probe", lambda cmd, **kw: (calls.append(cmd), (0, "", ""))[1])
+    monkeypatch.setattr(process, "run", lambda cmd, **kw: (calls.append(cmd), "0")[1])
+    monkeypatch.setattr(process, "stream", lambda cmd, **kw: calls.append(cmd) or 0)
+    result = CliRunner().invoke(main, ["gpu", "nvtop", "1"])
+    assert result.exit_code == 0
+    assert all(cmd[0] == "mytmux" for cmd in calls)
+    remote = next(cmd for cmd in calls if "send-keys" in cmd)
+    assert "if command -v myviewer" in remote[-2]
+    assert "&&" not in remote[-2]
