@@ -32,9 +32,9 @@ def delete(qos_name: str, execute: bool, yes: bool) -> None:
     carries it. Clear those first. The refusal names which setting, since QoS and
     AllowQos let jobs use it while DenyQos bars them, and an association that sets
     no QoS list of its own inherits its parent's.
-    Needs AdminLevel=Operator or above, or
-    root/SlurmUser: SchedMD documents an operator as able to add, modify and
-    remove any database object, and a QoS is one.
+    Needs AdminLevel=Administrator, or root/SlurmUser. slurmdbd gates a QoS
+    object at its super-user level, unlike an association, which an Operator may
+    write: that is why qos grant and qos revoke ask for less than this does.
 
     \b
     Use cases:

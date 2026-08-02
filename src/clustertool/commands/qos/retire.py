@@ -43,9 +43,9 @@ def retire(
     one, one with no partition, or one on another cluster; it lists them. The
     delete runs only after every revoke in the plan succeeded. Dry run by default;
     re-run with --execute to apply, confirming unless --yes.
-    Needs AdminLevel=Operator or above, or
-    root/SlurmUser: SchedMD documents an operator as able to add, modify and
-    remove any database object, and a QoS is one.
+    Needs AdminLevel=Administrator, or root/SlurmUser. slurmdbd gates a QoS
+    object at its super-user level, unlike an association, which an Operator may
+    write: that is why qos grant and qos revoke ask for less than this does.
 
     \b
     Use cases:

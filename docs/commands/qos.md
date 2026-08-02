@@ -11,8 +11,11 @@ commands and change nothing. Re-run with `--execute` to apply, confirming unless
 
 They need two different privilege levels.
 
-Changing a QoS *definition* (`create`, `modify`, `delete`, `retire`) needs at
-least `AdminLevel=Operator`, or root/SlurmUser. SchedMD's `user_permissions`
+Changing a QoS *definition* (`create`, `modify`, `delete`, `retire`) needs
+`AdminLevel=Administrator`, or root/SlurmUser: slurmdbd gates a QoS object at its
+super-user level. Writing an *association* (`grant`, `revoke`, `sync`) needs only
+`AdminLevel=Operator`, or a coordinator of the account where `DisableCoordDBD` is
+not set. SchedMD's `user_permissions`
 page describes an operator as able to "add, modify, and remove any database
 object", and a QoS is one. A coordinator never has QoS-definition rights, so
 `DisableCoordDBD` does not apply to these four.

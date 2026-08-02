@@ -40,9 +40,9 @@ def modify(
     the named TRES, so other TRES components of those limits, and every non-TRES
     limit such as MaxJobsPA or MaxWall, are left alone. An explicit -A, -G or -j
     overrides the clear for that one cap.
-    Needs AdminLevel=Operator or above, or
-    root/SlurmUser: SchedMD documents an operator as able to add, modify and
-    remove any database object, and a QoS is one.
+    Needs AdminLevel=Administrator, or root/SlurmUser. slurmdbd gates a QoS
+    object at its super-user level, unlike an association, which an Operator may
+    write: that is why qos grant and qos revoke ask for less than this does.
 
     \b
     Use cases:

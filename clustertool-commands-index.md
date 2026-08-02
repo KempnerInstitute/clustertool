@@ -6,10 +6,10 @@ help, use `--help` on any command, or see [docs/commands/](docs/commands/).
 
 Scope: **user** commands need no special privilege; **admin** commands need
 elevated rights. Which rights depends on the command, so check its help: editing
-accounts, assigning a QoS, or changing a QoS definition takes `AdminLevel=Operator`
-or above, or a coordinator of the account, while resuming nodes takes a Slurm or
-system admin (`AdminLevel=Administrator`, or root/SlurmUser), since `scontrol
-update node` is a controller operation rather than a database one. Two commands are
+accounts or assigning a QoS takes `AdminLevel=Operator` or above, or a
+coordinator of the account, while resuming nodes or changing a QoS definition
+takes a Slurm or system admin (`AdminLevel=Administrator`, or root/SlurmUser):
+slurmdbd gates a QoS object at its super-user level, unlike an association. Two commands are
 admin for a different reason: `diag ib` and `gpu monitor-partition` ssh to every
 node in a partition, and where node login requires an allocation on that node,
 as `pam_slurm_adopt` enforces, only staff can reach them all. The Wraps column
