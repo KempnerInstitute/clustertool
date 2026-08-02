@@ -5,7 +5,8 @@ import click
 from clustertool import process
 from clustertool.grouping import keywords
 
-_FORMAT = "Name%28,Priority,MaxWall,MaxTRESPU%-32,MaxTRESPA%18,MaxTRES%18,GrpTRES%18"
+_FORMAT = "Name%28,Priority,MaxWall,MaxTRESPU%-32,MaxTRESPA%18,MaxTRES%18,GrpTRES%18,MaxJobsPU"
+"""Every limit qos create and qos modify can set, so the two views agree."""
 _LONG_FORMAT = (
     "Name%28,Priority,MaxWall,GrpTRES%18,MaxTRES%18,MaxTRESPU%-32,MaxTRESPA%18,"
     "MaxJobsPU,MaxSubmitPU,Flags%20,Preempt%18,UsageFactor"
@@ -22,7 +23,7 @@ _LONG_FORMAT = (
     "--long",
     "long_format",
     is_flag=True,
-    help="Show the full field set (MaxJobsPU, MaxSubmitPU, Flags, Preempt, UsageFactor).",
+    help="Also show MaxSubmitPU, Flags, Preempt and UsageFactor.",
 )
 def qos(name_filter: str | None, long_format: bool) -> None:
     """List QoS definitions and their limits (via sacctmgr).
@@ -40,7 +41,7 @@ def qos(name_filter: str | None, long_format: bool) -> None:
     \b
     Inputs:
       -f, --filter  Only show rows containing this text (the header is kept).
-      -l, --long    Show the full field set instead of the compact one.
+      -l, --long    Also show MaxSubmitPU, Flags, Preempt and UsageFactor.
     """
     cmd = ["sacctmgr", "show", "qos", "format=" + (_LONG_FORMAT if long_format else _FORMAT)]
     if not name_filter:

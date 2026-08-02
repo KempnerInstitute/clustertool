@@ -1,5 +1,6 @@
 """Tests for the CLI commands."""
 
+import csv
 import json
 import os
 import pwd
@@ -1030,11 +1031,22 @@ def test_jobs_submit_passthrough(monkeypatch):
 
 
 def test_account_fairshare_self(monkeypatch):
-    monkeypatch.setenv("USER", "alice")
+    monkeypatch.setattr(slurm, "user_exists", lambda u: True)
     calls = _capture_stream(monkeypatch)
-    result = CliRunner().invoke(main, ["account", "fairshare"])
+    result = CliRunner().invoke(main, ["account", "fairshare", "-u", "alice"])
     assert result.exit_code == 0
-    assert calls[0] == ["sshare", "-U", "-u", "alice", "-m"]
+    assert calls[0][:5] == ["sshare", "-U", "-u", "alice", "-m"]
+    assert "Partition%-24" in calls[0][-1], "sshare clips a partition name at 12 by default"
+
+
+def test_account_fairshare_refuses_a_user_that_does_not_exist(monkeypatch):
+    """An unknown user prints a bare header, the same as one with no associations."""
+    monkeypatch.setattr(slurm, "user_exists", lambda u: False)
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["account", "fairshare", "-u", "nope"])
+    assert result.exit_code == 1
+    assert "no such user" in result.output
+    assert calls == []
 
 
 def test_account_fairshare_account(monkeypatch):
@@ -1042,7 +1054,7 @@ def test_account_fairshare_account(monkeypatch):
     monkeypatch.setattr(slurm, "account_exists", lambda a: True)
     result = CliRunner().invoke(main, ["account", "fairshare", "kempner_dev"])
     assert result.exit_code == 0
-    assert calls[0] == ["sshare", "--account=kempner_dev", "-a", "-m"]
+    assert calls[0][:4] == ["sshare", "--account=kempner_dev", "-a", "-m"]
 
 
 def test_account_usage_self(monkeypatch):
@@ -2509,7 +2521,25 @@ def test_account_members_all_names_the_configured_partition(monkeypatch):
     monkeypatch.setattr(slurm, "partition_accounts", lambda p: [])
     result = CliRunner().invoke(main, ["account", "members", "--all"])
     assert result.exit_code != 0
-    assert "'gpu' partition" in result.output
+    assert "roster_partition" in result.output
+    monkeypatch.setattr(slurm, "partition_accounts", lambda p: ["other_lab"])
+    result = CliRunner().invoke(main, ["account", "members", "--all"])
+    assert result.exit_code != 0
+    assert "lab_prefix" in result.output
+
+
+def test_account_members_quotes_a_name_holding_a_comma(monkeypatch):
+    """GECOS separates the name from the office and phone subfields with commas."""
+    monkeypatch.setattr(site, "roster_partition", lambda: "gpu")
+    monkeypatch.setattr(site, "lab_account_prefix", lambda: "lab_")
+    monkeypatch.setattr(slurm, "partition_accounts", lambda p: ["lab_a"])
+    monkeypatch.setattr(slurm, "account_members", lambda a: ["alice"])
+    monkeypatch.setattr(slurm, "user_fullnames", lambda users: {"alice": "Doe, Jane"})
+    result = CliRunner().invoke(main, ["account", "members", "--all"])
+    assert result.exit_code == 0
+    row = result.output.splitlines()[1]
+    assert row == 'lab_a,alice,"Doe, Jane"'
+    assert len(next(csv.reader([row]))) == 3
 
 
 def test_account_members_needs_account():

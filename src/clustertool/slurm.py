@@ -534,7 +534,12 @@ def partition_accounts(partition: str) -> list[str]:
 
 
 def user_fullnames(usernames: list[str]) -> dict[str, str]:
-    """Return {username: full_name} (spaces as underscores) via one getent call."""
+    """Return {username: full_name} via one getent call.
+
+    GECOS legitimately holds commas, separating the name from the office and
+    phone subfields, so only the name is taken and the caller writes proper CSV
+    rather than joining with a comma.
+    """
     if not usernames:
         return {}
     out = _run(["getent", "passwd", *usernames])
@@ -542,7 +547,7 @@ def user_fullnames(usernames: list[str]) -> dict[str, str]:
     for line in out.splitlines():
         fields = line.split(":")
         if len(fields) > 4:
-            names[fields[0]] = fields[4].replace(" ", "_")
+            names[fields[0]] = fields[4].split(",")[0].strip()
     return names
 
 

@@ -168,11 +168,16 @@ def test_partition_accounts_raises_when_the_read_fails(monkeypatch):
 
 
 def test_user_fullnames(monkeypatch):
-    out = "auser:*:1:2:A User:/home:/bin/bash\nbuser:*:3:4:B Example User:/h:/bin/bash\n"
+    out = (
+        "auser:*:1:2:A User:/home:/bin/bash\n"
+        "buser:*:3:4:B Example User:/h:/bin/bash\n"
+        "cuser:*:5:6:C User,Room 7,x123:/h:/bin/bash\n"
+    )
     monkeypatch.setattr(slurm, "_run", lambda cmd: out)
-    assert slurm.user_fullnames(["auser", "buser"]) == {
-        "auser": "A_User",
-        "buser": "B_Example_User",
+    assert slurm.user_fullnames(["auser", "buser", "cuser"]) == {
+        "auser": "A User",
+        "buser": "B Example User",
+        "cuser": "C User",
     }
 
 

@@ -99,7 +99,7 @@ predates the current policy or was shaped in a way that check did not catch.
 **Inputs**
 - `PARTITION`: Slurm partition name.
 - `--cpus-per-gpu`: CPU-per-GPU norm (default: the per-partition policy).
-- `--mem-per-gpu`: Memory-per-GPU norm in MB (default: the per-partition policy).
+- `--mem-per-gpu`: Memory-per-GPU norm in MiB (default: the per-partition policy).
 
 ## `jobs queue PARTITION`
 

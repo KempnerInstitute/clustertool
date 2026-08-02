@@ -116,7 +116,7 @@ columns.
 
 **Inputs**
 - `-f, --filter`: Only show rows containing this text (the header is kept).
-- `-l, --long`: Show the full field set instead of the compact one.
+- `-l, --long`: Also show `MaxSubmitPU`, `Flags`, `Preempt` and `UsageFactor`. `man sacctmgr` lists roughly fifty QoS fields; neither view shows them all.
 
 ## `account add-user USER ACCOUNT`
 
