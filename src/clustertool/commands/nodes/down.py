@@ -29,7 +29,7 @@ def down(partition: str | None) -> None:
     Inputs:
       -p, --partition  Limit to one partition.
     """
-    cmd = ["sinfo", "-a", "-R", "-o", "%60E %12u %19H %N"]
+    cmd = ["sinfo", "-R", "-o", "%60E %12u %19H %N"]
     if partition:
         if not slurm.partition_exists(partition):
             raise click.ClickException(f"partition '{partition}' does not exist")

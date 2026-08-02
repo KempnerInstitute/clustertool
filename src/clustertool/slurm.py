@@ -226,12 +226,13 @@ def partition_nodes(partition: str) -> list[tuple[str, str]]:
     """Return (node, state) rows for a partition.
 
     Raises if sinfo fails, since callers read an empty result as a partition that
-    does not exist, and an unreachable controller is not the user's typo. -a is
-    passed because man sinfo otherwise hides a partition the caller's group
-    cannot use, which would read as a partition with no nodes rather than one
-    they may not submit to.
+    does not exist, and an unreachable controller is not the user's typo.
+
+    sinfo refuses -a together with -p, so a partition the caller's group cannot
+    use comes back empty rather than hidden. The caller distinguishes that from a
+    mistyped name by asking whether the partition exists.
     """
-    code, out, err = process.probe(["sinfo", "-a", "-h", "-N", "-p", partition, "-o", "%N %t"])
+    code, out, err = process.probe(["sinfo", "-h", "-N", "-p", partition, "-o", "%N %t"])
     if code != 0:
         raise CommandError(f"could not list the nodes in {partition}: {err.strip() or code}")
     rows: list[tuple[str, str]] = []

@@ -1261,7 +1261,7 @@ def test_nodes_down(monkeypatch):
     monkeypatch.setattr(qos, "partition_exists", lambda p, cluster=None: True)
     result = CliRunner().invoke(main, ["nodes", "down", "-p", "kempner"])
     assert result.exit_code == 0
-    assert calls[0] == ["sinfo", "-a", "-R", "-o", "%60E %12u %19H %N", "-p", "kempner"]
+    assert calls[0] == ["sinfo", "-R", "-o", "%60E %12u %19H %N", "-p", "kempner"]
 
 
 def test_nodes_load_default(monkeypatch):
