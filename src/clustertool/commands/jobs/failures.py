@@ -11,7 +11,13 @@ from clustertool.grouping import keywords
 
 _FIELDS = "JobIDRaw,User,Account,Partition,State,ExitCode,Elapsed,NodeList,JobName"
 _TIME_FMT = "%Y-%m-%dT%H:%M:%S"
-_FAILURE = ("failed", "oom", "timeout", "node_fail", "canceled", "preempted")
+_FAILURE = ("failed", "oom", "timeout", "node_fail", "preempted", "other")
+"""Classes that are a job failing rather than a person or the scheduler acting.
+
+A cancellation is almost always someone running scancel, so counting it as a
+failure both inflates the rate and lists the user who pressed Ctrl-C as a top
+failing user.
+"""
 _CLASSES = (
     ("OUT_OF_MEMORY", "oom"),
     ("TIMEOUT", "timeout"),
@@ -113,13 +119,18 @@ def failures(
 
     counts = Counter(job["cls"] for job in jobs)
     terminal = len(jobs) - counts.get("active", 0)
-    noncompleted = terminal - counts.get("completed", 0)
-    rate = (100.0 * noncompleted / terminal) if terminal else 0.0
     failing = [job for job in jobs if job["cls"] in _FAILURE]
+    rate = (100.0 * len(failing) / terminal) if terminal else 0.0
+    canceled = counts.get("canceled", 0)
     exit_codes = Counter(job["exit"] for job in jobs if job["cls"] == "failed")
     names = Counter(job["name"] for job in failing)
     users = Counter(job["user"] for job in failing)
-    incident = Counter(job["nodelist"] for job in jobs if job["cls"] in ("node_fail", "oom"))
+    incident = Counter(
+        node
+        for job in jobs
+        if job["cls"] in ("node_fail", "oom")
+        for node in slurm.expand_hostlist(job["nodelist"])
+    )
 
     click.echo(f"Job failures  ({start} to {end})")
     click.echo()
@@ -131,6 +142,11 @@ def failures(
     if by_class:
         click.echo(f"  by class: {by_class}")
     click.echo(f"  failure rate: {rate:.1f}% of terminal jobs")
+    if canceled:
+        click.echo(
+            f"  {canceled} cancellation(s) are excluded from that rate and from the "
+            "tables below, since scancel is someone deciding to stop a job"
+        )
 
     def table(title: str, pairs: list, label: str) -> None:
         if not pairs:

@@ -763,6 +763,25 @@ def _expand_log_pattern(path: str, fields: dict) -> str:
     return "" if failed else expanded
 
 
+def expand_hostlist(nodelist: str) -> list[str]:
+    """Return the individual node names in a Slurm hostlist.
+
+    sacct and squeue write a multi-node allocation as a range such as
+    node[1-4,7], so counting the field verbatim books one incident against a
+    string rather than against each node, and splits one bad node's incidents
+    across every allocation shape it appeared in.
+    """
+    compact = nodelist.strip()
+    if not compact or compact.lower() in ("none assigned", "none"):
+        return []
+    if "[" not in compact:
+        return [name for name in compact.split(",") if name]
+    code, out, _ = process.probe(["scontrol", "show", "hostnames", compact])
+    if code != 0:
+        return [compact]
+    return [name for name in out.split() if name]
+
+
 def _first_node(nodelist: str) -> str:
     """Return the first node of a NodeList, which is what %N expands to for a batch step.
 

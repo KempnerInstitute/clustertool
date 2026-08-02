@@ -2818,9 +2818,21 @@ def test_jobs_wait_times(monkeypatch):
         ["103", "kempner", "qb", "2026-07-01T00:00:00", "", "PENDING", "cpu=8"],
     ]
     monkeypatch.setattr(slurm, "sacct_window_rows", lambda *a, **k: rows)
-    result = CliRunner().invoke(main, ["jobs", "wait-times", "-u", "bob"])
+    result = CliRunner().invoke(
+        main,
+        [
+            "jobs",
+            "wait-times",
+            "-u",
+            "bob",
+            "--since",
+            "2026-07-01T00:00:00",
+            "--until",
+            "2026-07-01T01:00:00",
+        ],
+    )
     assert result.exit_code == 0
-    assert "2 started job(s); excluded 1 pending" in result.output
+    assert "2 job(s) started in the window; excluded 1 pending" in result.output
     part_row = next(
         line for line in result.output.splitlines() if line.strip().startswith("kempner_h100")
     )
@@ -2850,10 +2862,29 @@ def test_jobs_wait_times_skew_and_buckets(monkeypatch):
         ["2", "p", "q", "2026-07-01T00:00:00", "2026-07-01T00:02:00", "COMPLETED", "gres/gpu=2"],
     ]
     monkeypatch.setattr(slurm, "sacct_window_rows", lambda *a, **k: rows)
-    result = CliRunner().invoke(main, ["jobs", "wait-times"])
+    result = CliRunner().invoke(
+        main,
+        ["jobs", "wait-times", "--since", "2026-07-01T00:00:00", "--until", "2026-07-01T01:00:00"],
+    )
     assert result.exit_code == 0
     assert "1 clock-skew" in result.output
     assert "2-4" in result.output
+
+
+def test_jobs_wait_times_excludes_a_job_that_started_after_the_window(monkeypatch):
+    """man sacct scopes -S/-E to jobs in any state during the span, not to jobs that started."""
+    rows = [
+        ["1", "p", "q", "2026-07-01T00:00:00", "2026-07-01T00:30:00", "COMPLETED", "gres/gpu=1"],
+        ["2", "p", "q", "2026-06-28T00:00:00", "2026-07-02T09:00:00", "COMPLETED", "gres/gpu=1"],
+    ]
+    monkeypatch.setattr(slurm, "sacct_window_rows", lambda *a, **k: rows)
+    result = CliRunner().invoke(
+        main,
+        ["jobs", "wait-times", "--since", "2026-07-01T00:00:00", "--until", "2026-07-01T01:00:00"],
+    )
+    assert result.exit_code == 0
+    assert "1 job(s) started in the window" in result.output
+    assert "1 that started outside it" in result.output
 
 
 def test_jobs_failures_node_fail(monkeypatch):
@@ -4901,3 +4932,27 @@ def test_jobs_debug_reports_the_whole_job_not_one_task(monkeypatch):
     assert result.exit_code == 0
     assert "4185700 MiB used across 1024 tasks" in result.output
     assert "9434 MiB in the heaviest" in result.output
+
+
+def test_jobs_failures_expands_a_hostlist(monkeypatch):
+    """A range books one incident against a string instead of one against each node."""
+    rows = [["1", "u", "a", "p", "NODE_FAIL", "0:0", "00:10:00", "nX[1-3]", "job"]]
+    monkeypatch.setattr(slurm, "sacct_window_rows", lambda *a, **k: rows)
+    monkeypatch.setattr(slurm, "expand_hostlist", lambda nl: ["nX1", "nX2", "nX3"])
+    result = CliRunner().invoke(main, ["jobs", "failures"])
+    assert result.exit_code == 0
+    for node in ("nX1", "nX2", "nX3"):
+        assert node in result.output
+
+
+def test_jobs_failures_keeps_cancellations_out_of_the_rate(monkeypatch):
+    """scancel is someone stopping a job, not the job failing."""
+    rows = [
+        ["1", "u", "a", "p", "CANCELLED by 1001", "0:0", "00:10:00", "nX", "job"],
+        ["2", "u", "a", "p", "COMPLETED", "0:0", "00:10:00", "nX", "job"],
+    ]
+    monkeypatch.setattr(slurm, "sacct_window_rows", lambda *a, **k: rows)
+    result = CliRunner().invoke(main, ["jobs", "failures"])
+    assert result.exit_code == 0
+    assert "failure rate: 0.0%" in result.output
+    assert "1 cancellation(s) are excluded" in result.output
