@@ -30,8 +30,18 @@ def _cluster(cluster: str | None) -> str:
 
 
 def _show(*args: str) -> list[str]:
-    """Run a read-only `sacctmgr -n -P show ...` and return non-empty lines."""
-    return [line for line in _run(["sacctmgr", "-n", "-P", "show", *args]).splitlines() if line]
+    """Run a read-only `sacctmgr -n -P show ...` and return non-empty lines.
+
+    Raises on a failed query rather than returning nothing. sacctmgr answers a
+    database it cannot reach with an error and no rows, which would otherwise
+    read as "this user holds nothing" and let a write be planned against a read
+    that never happened.
+    """
+    cmd = ["sacctmgr", "-n", "-P", "show", *args]
+    code, out, err = process.probe(cmd)
+    if code != 0:
+        raise CommandError(f"could not read {args[0]} from sacctmgr: {err.strip() or code}")
+    return [line for line in out.splitlines() if line]
 
 
 def qos_exists(name: str) -> bool:
@@ -363,11 +373,14 @@ def account_base_members(account: str, cluster: str | None = None) -> list[str]:
 
 def read_assoc(
     user: str, account: str, partition: str, cluster: str | None = None
-) -> tuple[str, str] | None:
-    """Return (qos_csv, default_qos) for a partition-scoped association, or None.
+) -> tuple[str, str, list[str]] | None:
+    """Return (qos_csv, default_qos, raw_entries) for a partition-scoped association.
 
     None means the association does not exist; the qos_csv may be empty when the
-    association exists but carries no QoS of its own.
+    association exists but carries no QoS of its own. raw_entries is the list
+    sacctmgr returned with its signs intact, since a minus entry is a filter the
+    association really carries and dropping one silently hands back the QoS it
+    was filtering out.
 
     woplimits and withrawqos ask sacctmgr for what this association sets rather
     than what it inherits. Without them a QoS pushed down from the parent reads
@@ -391,7 +404,12 @@ def read_assoc(
     parts = lines[0].split("|")
     if len(parts) != 3 or not parts[0]:
         return None
-    return ",".join(_held_qos(parts[1])), parts[2]
+    raw = [entry.strip() for entry in parts[1].split(",") if entry.strip()]
+    return ",".join(_held_qos(parts[1])), parts[2], raw
+
+
+_CLEAR_DEFAULT = "-1"
+"""What man sacctmgr gives for clearing DefaultQOS when nothing is left to inherit."""
 
 
 def _held_qos(raw: str) -> list[str]:
@@ -457,7 +475,7 @@ def grant_plan(
                 f"defaultqos={default_qos}",
             ]
         ]
-    current, default = assoc
+    current, default, _raw = assoc
     current_list = [entry for entry in current.split(",") if entry]
     plan = []
     add = [name for name in dict.fromkeys((qos_name, default_qos)) if name not in current_list]
@@ -487,11 +505,11 @@ def revoke_plan(
     assoc = read_assoc(user, account, partition, cluster=resolved)
     if assoc is None:
         return []
-    current, default = assoc
+    current, default, raw = assoc
     current_list = [entry for entry in current.split(",") if entry]
     if qos_name not in current_list:
         return []
-    if len(current_list) == 1:
+    if len(raw) == 1:
         return [
             [
                 "sacctmgr",
@@ -514,7 +532,7 @@ def revoke_plan(
     ]
     plan = []
     if default == qos_name:
-        new_default = next(entry for entry in current_list if entry != qos_name)
+        new_default = next((entry for entry in current_list if entry != qos_name), _CLEAR_DEFAULT)
         plan.append(
             ["sacctmgr", "-i", "modify", "user", *where, "set", f"DefaultQOS={new_default}"]
         )

@@ -15,10 +15,12 @@ Changing a QoS *definition* (`create`, `modify`, `delete`, `retire`) needs
 `AdminLevel=Administrator`, or root/SlurmUser: slurmdbd gates a QoS object at its
 super-user level. Writing an *association* (`grant`, `revoke`, `sync`) needs only
 `AdminLevel=Operator`, or a coordinator of the account where `DisableCoordDBD` is
-not set. SchedMD's `user_permissions`
-page describes an operator as able to "add, modify, and remove any database
-object", and a QoS is one. A coordinator never has QoS-definition rights, so
-`DisableCoordDBD` does not apply to these four.
+not set. SchedMD's `user_permissions` page describes an operator as able to
+"add, modify, and remove any database object", but slurmdbd's own accounting
+plugin gates a QoS object at `SLURMDB_ADMIN_SUPER_USER` while gating an
+association at `SLURMDB_ADMIN_OPERATOR`, so an operator is refused on the four
+definition commands. A coordinator never has QoS-definition rights either, so
+`DisableCoordDBD` does not apply to them.
 
 *Assigning* an existing QoS (`grant`, `revoke`, `sync`) only edits associations,
 so a Slurm operator or a coordinator of the account can do it, unless the site
@@ -46,7 +48,7 @@ distinct users or partitions, which is handy for scripting a grant or revoke.
 ## `qos create QOS_NAME <limits> [-x] [-y]`
 
 Create a QoS with the given limits, updating it if it already exists (via
-`sacctmgr`). Slurm operator or admin.
+`sacctmgr`). Needs AdminLevel=Administrator, or root/SlurmUser.
 
 Dry run by default. Give at least one limit; a value of `-1` clears that limit.
 Per-user node and GPU caps merge into one `MaxTRESPU` limit.
@@ -69,11 +71,13 @@ Per-user node and GPU caps merge into one `MaxTRESPU` limit.
 
 ## `qos modify QOS_NAME <limits> [--per-user-only] [-x] [-y]`
 
-Change an existing QoS's limits (via `sacctmgr`). Slurm operator or admin.
+Change an existing QoS's limits (via `sacctmgr`). Needs
+AdminLevel=Administrator, or root/SlurmUser.
 
 Dry run by default. Only the limits you pass change; a value of `-1` clears one.
 With `--per-user-only` the per-account, group, and per-job GPU caps are all
-cleared, so only the per-user caps remain. Errors if the QoS does not exist (use
+cleared. Any other limit the QoS carries, such as `MaxWall` or a non-GPU
+`MaxTRES`, is left as it was. Errors if the QoS does not exist (use
 `qos create`).
 
 **Use cases**
@@ -91,7 +95,7 @@ cleared, so only the per-user caps remain. Errors if the QoS does not exist (use
 ## `qos delete QOS_NAME [-x] [-y]`
 
 Delete a QoS definition, refusing while it is still referenced (via `sacctmgr`).
-Slurm operator or admin.
+Needs AdminLevel=Administrator, or root/SlurmUser.
 
 Dry run by default. Refuses while the QoS is still in force: if any association
 on any cluster still lists it, if a partition's `QoS`, `AllowQos`, or `DenyQos`
@@ -158,7 +162,8 @@ default.
 ## `qos retire QOS_NAME -p PART|all [-c CLUSTER] [-r REGEX] [-x] [-y]`
 
 Remove a QoS from all its holders on a partition, then delete it (via
-`sacctmgr`). Slurm operator or admin, because it deletes the definition.
+`sacctmgr`). Needs AdminLevel=Administrator, or root/SlurmUser, because it
+deletes the definition.
 
 Revokes the QoS from every holder, then deletes the QoS definition. Where the QoS
 is an association's only one, the revoke deletes that association outright rather

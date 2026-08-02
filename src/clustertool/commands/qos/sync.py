@@ -93,6 +93,16 @@ def sync(
         plan += qoslib.grant_plan(user, account, partition, qos_name, qos_name, cluster)
     for user in to_del:
         plan += qoslib.revoke_plan(user, account, partition, qos_name, cluster)
-    summary = f"Sync QoS {qos_name} on {partition}: +{len(to_add)} / -{len(to_del)} user(s)?"
+    if not plan:
+        click.echo(
+            f"QoS {qos_name} is already in sync with {account} on {partition}: the "
+            f"{len(to_del)} user(s) listed as holders carry it only by inheritance, "
+            "so there is no association-level entry to remove"
+        )
+        return
+    where = f"{account} on {partition}"
+    if cluster:
+        where += f" ({cluster})"
+    summary = f"Sync QoS {qos_name} for {where}: +{len(to_add)} / -{len(to_del)} user(s)?"
     if _gate.apply(plan, execute, yes, summary):
         raise SystemExit(1)

@@ -38,7 +38,7 @@ def test_holder_rows_filters(monkeypatch):
         "|kempner_dev|kempner_h100\n"
         "carol|kempner_dev|\n"
     )
-    monkeypatch.setattr(qos, "_run", lambda cmd: sample)
+    monkeypatch.setattr(qos.process, "probe", lambda cmd, timeout=None: (0, sample, ""))
     rows = qos.holder_rows("kemp_gpu4", cluster="odyssey")
     assert rows == [
         ("alice", "kempner_dev", "kempner_h100"),
@@ -48,7 +48,7 @@ def test_holder_rows_filters(monkeypatch):
 
 def test_holder_rows_account_regex(monkeypatch):
     sample = "alice|kempner_dev|kempner_h100\nbob|kempner_eng|kempner_h100\n"
-    monkeypatch.setattr(qos, "_run", lambda cmd: sample)
+    monkeypatch.setattr(qos.process, "probe", lambda cmd, timeout=None: (0, sample, ""))
     rows = qos.holder_rows("q", account_regex="^kempner_dev$")
     assert rows == [("alice", "kempner_dev", "kempner_h100")]
 
@@ -56,11 +56,11 @@ def test_holder_rows_account_regex(monkeypatch):
 def test_holder_rows_partition_in_where(monkeypatch):
     captured = {}
 
-    def fake_run(cmd):
+    def fake_run(cmd, timeout=None):
         captured["cmd"] = cmd
-        return ""
+        return (0, "", "")
 
-    monkeypatch.setattr(qos, "_run", fake_run)
+    monkeypatch.setattr(qos.process, "probe", fake_run)
     qos.holder_rows("q", cluster="odyssey", partition="kempner_h100")
     assert "partition=kempner_h100" in captured["cmd"]
     assert "cluster=odyssey" in captured["cmd"]
@@ -133,7 +133,9 @@ def test_partition_exists_raises_when_the_lookup_itself_fails(monkeypatch):
 
 def test_grant_plan_keeps_the_qos_it_sets_as_the_default(monkeypatch):
     """Stripping the catch-all must not remove the QoS just installed as the default."""
-    monkeypatch.setattr(qos, "read_assoc", lambda *a, **k: ("normal,other", "other"))
+    monkeypatch.setattr(
+        qos, "read_assoc", lambda *a, **k: ("normal,other", "other", ["normal", "other"])
+    )
     monkeypatch.setattr(qos, "_strip_names", lambda partition: ["normal", partition])
     plan = qos.grant_plan("alice", "lab", "gpu", "kemp", "normal", "odyssey")
     specs = [cmd[-1] for cmd in plan]
@@ -143,7 +145,9 @@ def test_grant_plan_keeps_the_qos_it_sets_as_the_default(monkeypatch):
 
 
 def test_grant_plan_still_strips_the_catch_all_for_the_usual_default(monkeypatch):
-    monkeypatch.setattr(qos, "read_assoc", lambda *a, **k: ("normal,other", "other"))
+    monkeypatch.setattr(
+        qos, "read_assoc", lambda *a, **k: ("normal,other", "other", ["normal", "other"])
+    )
     monkeypatch.setattr(qos, "_strip_names", lambda partition: ["normal", partition])
     plan = qos.grant_plan("alice", "lab", "gpu", "kemp", "kemp", "odyssey")
     specs = [cmd[-1] for cmd in plan]
@@ -279,7 +283,11 @@ def test_flatten_users():
 
 
 def test_get_accounts_filters(monkeypatch):
-    monkeypatch.setattr(qos, "_run", lambda cmd: "kempner_dev\nkempner_eng\nother_lab\n")
+    monkeypatch.setattr(
+        qos.process,
+        "probe",
+        lambda cmd, timeout=None: (0, "kempner_dev\nkempner_eng\nother_lab\n", ""),
+    )
     assert qos.get_accounts("alice", account_regex="^kempner_") == ["kempner_dev", "kempner_eng"]
 
 
@@ -298,21 +306,27 @@ def test_account_base_members_raises_when_the_query_fails(monkeypatch):
 
 
 def test_account_exists(monkeypatch):
-    monkeypatch.setattr(qos, "_run", lambda cmd: "kempner_dev\n")
+    monkeypatch.setattr(qos.process, "probe", lambda cmd, timeout=None: (0, "kempner_dev\n", ""))
     assert qos.account_exists("kempner_dev") is True
-    monkeypatch.setattr(qos, "_run", lambda cmd: "\n")
+    monkeypatch.setattr(qos.process, "probe", lambda cmd, timeout=None: (0, "\n", ""))
     assert qos.account_exists("ghost") is False
 
 
 def test_read_assoc(monkeypatch):
-    monkeypatch.setattr(qos, "_run", lambda cmd: "alice|kemp,normal|kemp\n")
-    assert qos.read_assoc("alice", "kempner_dev", "kempner_h100") == ("kemp,normal", "kemp")
-    monkeypatch.setattr(qos, "_run", lambda cmd: "")
+    monkeypatch.setattr(
+        qos.process, "probe", lambda cmd, timeout=None: (0, "alice|kemp,normal|kemp\n", "")
+    )
+    assert qos.read_assoc("alice", "kempner_dev", "kempner_h100") == (
+        "kemp,normal",
+        "kemp",
+        ["kemp", "normal"],
+    )
+    monkeypatch.setattr(qos.process, "probe", lambda cmd, timeout=None: (0, "", ""))
     assert qos.read_assoc("alice", "kempner_dev", "kempner_h100") is None
 
 
 def test_grant_plan_create(monkeypatch):
-    monkeypatch.setattr(qos, "_run", lambda cmd: "")
+    monkeypatch.setattr(qos.process, "probe", lambda cmd, timeout=None: (0, "", ""))
     plan = qos.grant_plan("alice", "kempner_dev", "kempner_h100", "kemp", "kemp", "odyssey")
     assert plan == [
         [
@@ -332,14 +346,18 @@ def test_grant_plan_create(monkeypatch):
 
 
 def test_grant_plan_create_distinct_default(monkeypatch):
-    monkeypatch.setattr(qos, "_run", lambda cmd: "")
+    monkeypatch.setattr(qos.process, "probe", lambda cmd, timeout=None: (0, "", ""))
     plan = qos.grant_plan("alice", "kempner_dev", "kempner_h100", "kemp", "normal", "odyssey")
     assert "qos=kemp,normal" in plan[0]
     assert "defaultqos=normal" in plan[0]
 
 
 def test_grant_plan_update_and_strip(monkeypatch):
-    monkeypatch.setattr(qos, "_run", lambda cmd: "alice|normal,kempner_h100|normal\n")
+    monkeypatch.setattr(
+        qos.process,
+        "probe",
+        lambda cmd, timeout=None: (0, "alice|normal,kempner_h100|normal\n", ""),
+    )
     plan = qos.grant_plan("alice", "kempner_dev", "kempner_h100", "kemp", "kemp", "odyssey")
     joined = [" ".join(cmd) for cmd in plan]
     assert any(j.endswith("set QOS+=kemp") for j in joined)
@@ -348,12 +366,16 @@ def test_grant_plan_update_and_strip(monkeypatch):
 
 
 def test_grant_plan_noop(monkeypatch):
-    monkeypatch.setattr(qos, "_run", lambda cmd: "alice|kemp|kemp\n")
+    monkeypatch.setattr(
+        qos.process, "probe", lambda cmd, timeout=None: (0, "alice|kemp|kemp\n", "")
+    )
     assert qos.grant_plan("alice", "kempner_dev", "kempner_h100", "kemp", "kemp", "odyssey") == []
 
 
 def test_revoke_plan_only_entry(monkeypatch):
-    monkeypatch.setattr(qos, "_run", lambda cmd: "alice|kemp|kemp\n")
+    monkeypatch.setattr(
+        qos.process, "probe", lambda cmd, timeout=None: (0, "alice|kemp|kemp\n", "")
+    )
     plan = qos.revoke_plan("alice", "kempner_dev", "kempner_h100", "kemp", "odyssey")
     assert plan == [
         [
@@ -371,7 +393,9 @@ def test_revoke_plan_only_entry(monkeypatch):
 
 
 def test_revoke_plan_moves_default_then_removes(monkeypatch):
-    monkeypatch.setattr(qos, "_run", lambda cmd: "alice|kemp,normal|kemp\n")
+    monkeypatch.setattr(
+        qos.process, "probe", lambda cmd, timeout=None: (0, "alice|kemp,normal|kemp\n", "")
+    )
     plan = qos.revoke_plan("alice", "kempner_dev", "kempner_h100", "kemp", "odyssey")
     joined = [" ".join(cmd) for cmd in plan]
     assert joined[0].endswith("set DefaultQOS=normal")
@@ -379,7 +403,9 @@ def test_revoke_plan_moves_default_then_removes(monkeypatch):
 
 
 def test_revoke_plan_removes_without_default_move(monkeypatch):
-    monkeypatch.setattr(qos, "_run", lambda cmd: "alice|kemp,normal|normal\n")
+    monkeypatch.setattr(
+        qos.process, "probe", lambda cmd, timeout=None: (0, "alice|kemp,normal|normal\n", "")
+    )
     plan = qos.revoke_plan("alice", "kempner_dev", "kempner_h100", "kemp", "odyssey")
     joined = [" ".join(cmd) for cmd in plan]
     assert joined == [
@@ -389,24 +415,26 @@ def test_revoke_plan_removes_without_default_move(monkeypatch):
 
 
 def test_revoke_plan_skips(monkeypatch):
-    monkeypatch.setattr(qos, "_run", lambda cmd: "")
+    monkeypatch.setattr(qos.process, "probe", lambda cmd, timeout=None: (0, "", ""))
     assert qos.revoke_plan("alice", "kempner_dev", "kempner_h100", "kemp", "odyssey") == []
-    monkeypatch.setattr(qos, "_run", lambda cmd: "alice|other|other\n")
+    monkeypatch.setattr(
+        qos.process, "probe", lambda cmd, timeout=None: (0, "alice|other|other\n", "")
+    )
     assert qos.revoke_plan("alice", "kempner_dev", "kempner_h100", "kemp", "odyssey") == []
 
 
 def test_revoke_targets_plan_expands_all(monkeypatch):
-    def fake(cmd):
+    def fake(cmd, timeout=None):
         tail = " ".join(cmd).split("format=")[-1]
         if tail == "User,Account,Partition":
-            return "alice|kempner_dev|kempner_h100\n"
+            return (0, "alice|kempner_dev|kempner_h100\n", "")
         if tail == "Account":
-            return "kempner_dev\n"
+            return (0, "kempner_dev\n", "")
         if tail == "User,QOS,DefaultQOS":
-            return "alice|kemp|kemp\n"
-        return ""
+            return (0, "alice|kemp|kemp\n", "")
+        return (0, "", "")
 
-    monkeypatch.setattr(qos, "_run", fake)
+    monkeypatch.setattr(qos.process, "probe", fake)
     plan = qos.revoke_targets_plan("kemp", ["all"], "all", cluster="odyssey")
     assert plan == [
         [
@@ -468,7 +496,9 @@ def test_account_limits_falls_back_when_the_probe_fails(monkeypatch):
 
 def test_grant_plan_adds_the_default_qos_to_the_list(monkeypatch):
     """Slurm requires a DefaultQOS to be a member of the association's QoS list."""
-    monkeypatch.setattr(qos, "read_assoc", lambda u, a, p, cluster=None: ("other", "other"))
+    monkeypatch.setattr(
+        qos, "read_assoc", lambda u, a, p, cluster=None: ("other", "other", ["other"])
+    )
     monkeypatch.setattr(qos, "_cluster", lambda c: "odyssey")
     plan = qos.grant_plan("bob", "lab", "part", "prio", "normal", None)
     added = [cmd for cmd in plan if any(arg.startswith("QOS+=") for arg in cmd)]
@@ -478,7 +508,11 @@ def test_grant_plan_adds_the_default_qos_to_the_list(monkeypatch):
 
 
 def test_grant_plan_does_not_re_add_a_qos_already_held(monkeypatch):
-    monkeypatch.setattr(qos, "read_assoc", lambda u, a, p, cluster=None: ("prio,normal", "normal"))
+    monkeypatch.setattr(
+        qos,
+        "read_assoc",
+        lambda u, a, p, cluster=None: ("prio,normal", "normal", ["prio", "normal"]),
+    )
     monkeypatch.setattr(qos, "_cluster", lambda c: "odyssey")
     plan = qos.grant_plan("bob", "lab", "part", "prio", "normal", None)
     assert not [cmd for cmd in plan if any(arg.startswith("QOS+=") for arg in cmd)]
@@ -504,25 +538,25 @@ def test_read_assoc_reads_only_what_the_association_sets(monkeypatch):
     """A QoS pushed down from the parent is not the association's own entry."""
     captured = {}
 
-    def fake_run(cmd, input_text=None):
+    def fake_run(cmd, timeout=None):
         captured["cmd"] = cmd
-        return "alice||\n"
+        return (0, "alice||\n", "")
 
-    monkeypatch.setattr(qos, "_run", fake_run)
-    assert qos.read_assoc("alice", "lab", "part", cluster="c") == ("", "")
+    monkeypatch.setattr(qos.process, "probe", fake_run)
+    assert qos.read_assoc("alice", "lab", "part", cluster="c") == ("", "", [])
     assert "woplimits" in captured["cmd"]
     assert "withrawqos" in captured["cmd"]
 
 
 def test_revoke_plan_leaves_an_inherited_qos_alone(monkeypatch):
     """Deleting the association would destroy fairshare, limits and usage."""
-    monkeypatch.setattr(qos, "read_assoc", lambda u, a, p, cluster=None: ("", ""))
+    monkeypatch.setattr(qos, "read_assoc", lambda u, a, p, cluster=None: ("", "", []))
     monkeypatch.setattr(qos, "_cluster", lambda c: "odyssey")
     assert qos.revoke_plan("alice", "lab", "part", "normal", None) == []
 
 
 def test_revoke_plan_still_deletes_a_sole_explicit_holder(monkeypatch):
-    monkeypatch.setattr(qos, "read_assoc", lambda u, a, p, cluster=None: ("prio", "prio"))
+    monkeypatch.setattr(qos, "read_assoc", lambda u, a, p, cluster=None: ("prio", "prio", ["prio"]))
     monkeypatch.setattr(qos, "_cluster", lambda c: "odyssey")
     plan = qos.revoke_plan("alice", "lab", "part", "prio", None)
     assert plan and plan[0][2:4] == ["delete", "user"]
@@ -545,22 +579,58 @@ def test_jobs_using_names_the_states_it_counts(monkeypatch):
 def test_read_assoc_resolves_the_raw_qos_sigils(monkeypatch):
     """withrawqos prefixes each name with nothing, + or -; a minus is not held."""
     monkeypatch.setattr(
-        qos, "_run", lambda cmd, input_text=None: "alice|+prio,+other,-normal|prio\n"
+        qos.process, "probe", lambda cmd, timeout=None: (0, "alice|+prio,+other,-normal|prio\n", "")
     )
-    assert qos.read_assoc("alice", "lab", "part", cluster="c") == ("prio,other", "prio")
+    assert qos.read_assoc("alice", "lab", "part", cluster="c") == (
+        "prio,other",
+        "prio",
+        ["+prio", "+other", "-normal"],
+    )
 
 
 def test_grant_plan_is_idempotent_against_a_delta_stored_list(monkeypatch):
     """Every association this tool has already granted is stored in delta form."""
-    monkeypatch.setattr(qos, "_run", lambda cmd, input_text=None: "alice|+prio,-normal|prio\n")
+    monkeypatch.setattr(
+        qos.process, "probe", lambda cmd, timeout=None: (0, "alice|+prio,-normal|prio\n", "")
+    )
     monkeypatch.setattr(qos, "_cluster", lambda c: "odyssey")
     monkeypatch.setattr(qos, "_strip_names", lambda p: ["normal"])
     assert qos.grant_plan("alice", "lab", "part", "prio", "prio", None) == []
 
 
 def test_grant_plan_strips_a_catch_all_that_is_still_held(monkeypatch):
-    monkeypatch.setattr(qos, "_run", lambda cmd, input_text=None: "alice|+prio,+normal|prio\n")
+    monkeypatch.setattr(
+        qos.process, "probe", lambda cmd, timeout=None: (0, "alice|+prio,+normal|prio\n", "")
+    )
     monkeypatch.setattr(qos, "_cluster", lambda c: "odyssey")
     monkeypatch.setattr(qos, "_strip_names", lambda p: ["normal"])
     plan = qos.grant_plan("alice", "lab", "part", "prio", "prio", None)
     assert any("QOS-=normal" in cmd[-1] for cmd in plan)
+
+
+def test_revoke_plan_keeps_an_association_that_also_carries_a_filter(monkeypatch):
+    """A minus entry is a filter the association really holds, not an absence.
+
+    Deleting the association to remove the QoS would also drop the filter, handing
+    back the very QoS it was excluding, and would take the fairshare, limits and
+    recorded usage with it.
+    """
+    monkeypatch.setattr(
+        qos.process,
+        "probe",
+        lambda cmd, timeout=None: (0, "alice|+kemp,-normal|kemp\n", ""),
+    )
+    plan = qos.revoke_plan("alice", "lab", "part", "kemp", "odyssey")
+    assert plan
+    assert not any("delete" in cmd for cmd in plan)
+    joined = [" ".join(cmd) for cmd in plan]
+    assert any(line.endswith("set QOS-=kemp") for line in joined), joined
+
+
+def test_show_raises_when_the_query_fails(monkeypatch):
+    """An unreachable database must not read as 'this user holds nothing'."""
+    monkeypatch.setattr(qos.process, "probe", lambda cmd, timeout=None: (1, "", "slurmdbd down"))
+    with pytest.raises(qos.CommandError):
+        qos.read_assoc("alice", "lab", "part", cluster="c")
+    with pytest.raises(qos.CommandError):
+        qos.get_accounts("alice")

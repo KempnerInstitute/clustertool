@@ -68,6 +68,8 @@ def revoke(
         re.compile(account_regex)
     except re.error as exc:
         raise click.ClickException(f"invalid --account-regex: {exc}") from exc
+    if cluster and not qoslib.cluster_exists(cluster):
+        raise click.ClickException(f"no such cluster: {cluster}")
     if not qoslib.qos_exists(qos_name):
         raise click.ClickException(f"QoS {qos_name} is not defined")
     user_list = qoslib.flatten_users(users)

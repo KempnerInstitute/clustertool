@@ -21,6 +21,22 @@ _DESTRUCTIVE_NOTE = (
 )
 
 
+def _reason(out: str, err: str, code: int) -> str:
+    """Return why a sacctmgr command failed, from whichever stream it used.
+
+    sacctmgr writes its own diagnostics to stdout, including the ones a caller
+    most needs: Nothing modified, Nothing new added, Nothing deleted, and the
+    Unknown option and Use keyword where messages. Only the messages it prefixes
+    with sacctmgr: error: go to stderr, so reading stderr alone left the caller
+    with a bare exit code.
+    """
+    for stream in (err, out):
+        line = " ".join(stream.split())
+        if line:
+            return line
+    return f"exit {code}"
+
+
 def apply(
     plan: list[list[str]],
     execute: bool,
@@ -47,14 +63,16 @@ def apply(
             raise click.ClickException(
                 "stdin is not a terminal; re-run with --yes to apply without confirmation"
             )
+        for cmd in plan:
+            click.echo(f"[WILL] {shlex.join(cmd)}")
         click.confirm(summary, abort=True)
     failures = 0
     for index, cmd in enumerate(plan):
         click.echo(f"[EXEC] {shlex.join(cmd)}")
-        code, _out, err = process.probe(cmd)
+        code, out, err = process.probe(cmd)
         if code != 0:
             failures += 1
-            click.echo(f"[WARN] command failed (exit {code}): {err.strip()}", err=True)
+            click.echo(f"[WARN] command failed (exit {code}): {_reason(out, err, code)}", err=True)
             remaining = len(plan) - index - 1
             if remaining:
                 click.echo(

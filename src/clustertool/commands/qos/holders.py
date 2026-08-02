@@ -67,29 +67,31 @@ def holders(
     except re.error as exc:
         raise click.ClickException(f"invalid --account-regex: {exc}") from exc
     if not rows:
+        narrowed = [
+            label
+            for label, value in (
+                ("--cluster", cluster),
+                ("--partition", partition),
+                ("--account-regex", account_regex if account_regex != "^" else None),
+            )
+            if value
+        ]
+        where = f" matching {', '.join(narrowed)}" if narrowed else ""
         others = qoslib.any_holders(qos_name)
         if not others:
             click.echo(f"Nothing holds QoS {qos_name}.")
             return
-        parsed = [line.split("|") for line in others]
-        parsed = [row for row in parsed if len(row) == 4]
-        if by == "user":
-            for user in sorted({row[2] for row in parsed if row[2]}):
-                click.echo(user)
-            return
-        if by == "partition":
-            for part in sorted({row[3] for row in parsed if row[3]}):
-                click.echo(part)
-            return
         click.echo(
-            f"No user holds QoS {qos_name} on a partition-scoped association, but "
-            f"{len(others)} association(s) do carry it (Cluster|Account|User|Partition):",
+            f"No user holds QoS {qos_name} on a partition-scoped association{where}. "
+            f"Elsewhere {len(others)} association(s) do carry it, which the flags you "
+            "gave do not select, so they are listed on stderr rather than as a result "
+            "(Cluster|Account|User|Partition):",
             err=True,
         )
         for line in others[:20]:
-            click.echo(f"  {line}")
+            click.echo(f"  {line}", err=True)
         if len(others) > 20:
-            click.echo(f"  ... and {len(others) - 20} more")
+            click.echo(f"  ... and {len(others) - 20} more", err=True)
         return
     if by == "user":
         for user in sorted({r[0] for r in rows}):

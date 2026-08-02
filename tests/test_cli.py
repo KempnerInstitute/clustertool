@@ -4837,3 +4837,42 @@ def test_diag_nccl_cleans_up_when_the_setup_after_staging_fails(monkeypatch, tmp
     monkeypatch.setattr(slurm, "first_hostname", lambda: (_ for _ in ()).throw(OSError("boom")))
     CliRunner().invoke(main, ["diag", "nccl"])
     assert list(tmp_path.glob("nccl_fsdp_test_*.py")) == []
+
+
+def test_qos_holders_does_not_answer_by_with_rows_the_flags_excluded(monkeypatch):
+    """--by feeds a grant or revoke, so it must never list a non-matching holder."""
+    monkeypatch.setattr(qos, "cluster_exists", lambda c: True)
+    monkeypatch.setattr(qos, "qos_exists", lambda name: True)
+    monkeypatch.setattr(qos, "partition_known", lambda p, cluster=None: True)
+    monkeypatch.setattr(qos, "holder_rows", lambda *a, **k: [])
+    monkeypatch.setattr(qos, "any_holders", lambda name: ["odyssey|lab|alice|other_partition"])
+    result = CliRunner().invoke(
+        main, ["qos", "holders", "prio", "-p", "kempner_h100", "--by", "user"]
+    )
+    assert result.exit_code == 0
+    assert "alice" not in result.stdout
+    assert "--partition" in result.stderr
+
+
+def test_qos_revoke_refuses_an_unknown_cluster(monkeypatch):
+    """Without this a mistyped -c reads as 'nothing holds it' and exits 0."""
+    monkeypatch.setattr(qos, "cluster_exists", lambda c: False)
+    result = CliRunner().invoke(
+        main, ["qos", "revoke", "prio", "-u", "all", "-p", "all", "-c", "nope"]
+    )
+    assert result.exit_code == 1
+    assert "no such cluster" in result.output
+
+
+def test_qos_gate_reports_the_reason_sacctmgr_put_on_stdout(monkeypatch):
+    """sacctmgr writes Nothing modified and Unknown option to stdout, not stderr."""
+    from clustertool.commands.qos import _gate
+
+    monkeypatch.setattr(process, "probe", lambda cmd, **kw: (1, " Nothing modified\n", ""))
+    runner = CliRunner()
+    with runner.isolation() as (out, err, _):
+        _gate.apply(
+            [["sacctmgr", "-i", "modify", "qos", "x", "set", "Priority=1"]], True, True, "go?"
+        )
+        text = out.getvalue().decode() + err.getvalue().decode()
+    assert "Nothing modified" in text
