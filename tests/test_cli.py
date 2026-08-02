@@ -2874,7 +2874,7 @@ def test_diag_gpu_health_from_xml_ok(tmp_path):
 
 
 def test_diag_gpu_health_warn_exits_1(tmp_path):
-    path = _write_capture(tmp_path, _smi_xml(_gpu(power_cap=True)))
+    path = _write_capture(tmp_path, _smi_xml(_gpu(replay=gpuhealth.PCIE_REPLAY_WARN + 1)))
     result = CliRunner().invoke(main, ["diag", "gpu-health", "--from-xml", path])
     assert result.exit_code == 1
     assert "node verdict: WARN" in result.output
