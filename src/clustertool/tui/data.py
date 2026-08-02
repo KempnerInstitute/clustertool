@@ -103,6 +103,15 @@ class JobRow:
         return self.nodelist.strip().lower() not in EMPTY_NODELISTS
 
     @property
+    def stated_reason(self) -> str:
+        """The reason Slurm gives, when it gives one rather than the literal None.
+
+        A job Slurm is setting up carries the string None, which reads in a panel
+        as a wait with an unknown cause rather than as no wait at all.
+        """
+        return self.reason if self.reason and self.reason != "None" else ""
+
+    @property
     def where(self) -> str:
         """The node column: where it runs, or why it is not running yet."""
         if self.assigned:
@@ -110,7 +119,7 @@ class JobRow:
 
             head = slurm.first_node(self.nodelist)
             return head if self.nnodes <= 1 else f"{head} +{self.nnodes - 1}"
-        return f"({self.reason})" if self.reason and self.reason != "None" else "-"
+        return f"({self.stated_reason})" if self.stated_reason else "-"
 
 
 def _count(text: str) -> int:

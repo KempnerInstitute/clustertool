@@ -8,18 +8,19 @@ from clustertool.tui import data
 
 COLUMNS = (
     ("ID", 12, 31),
-    ("PART", 6, 30),
+    ("PART", 6, 50),
     ("ST", 2, 2),
     ("GPU", 3, 3),
     ("ELAP", 7, 11),
-    ("NODE", 6, 30),
+    ("NODE", 6, 47),
 )
 """Each column as (heading, narrowest useful width, widest worth growing to).
 
-The ceilings are the widest value each field actually takes on this cluster, so a
+The ceilings are the widest value each field takes across every queued job, so a
 wide terminal spends its room on the table rather than leaving it blank. ELAP is
-11 for DD-HH:MM:SS up to 99 days: the detail pane has no elapsed line to fall
-back on, so a job past ten days could otherwise never show how long it has run.
+the one that has to be right: every other field is repeated in full in the detail
+pane, so eliding it there costs nothing but a keystroke, and 11 covers
+DD-HH:MM:SS to 99 days.
 
 A partition list, and a pending reason such as ReqNodeNotAvail with its node
 list, both run long enough on their own to push the table past any terminal, and
@@ -110,6 +111,7 @@ class JobsPanel(Vertical):
         super().__init__(id="jobs", classes="panel")
         self._rows: list[data.JobRow] = []
         self._error = ""
+        self._columns: list[tuple[str, int]] = []
 
     def compose(self) -> ComposeResult:
         table = DataTable(id="jobs-table", cursor_type="row", zebra_stripes=False)
@@ -120,8 +122,17 @@ class JobsPanel(Vertical):
         self.border_title = TITLE
 
     def on_resize(self, _event) -> None:
-        """Lay the columns out again, since how many fit depends on the width."""
-        self._paint()
+        """Lay the columns out again, since how many fit depends on the width.
+
+        Only when the layout actually changed. Dragging a window edge delivers an
+        event per column, and rebuilding the table costs about 70ms for someone
+        holding four thousand jobs, most of it in add_row. Redrawing on a stale
+        layout instead of skipping is not an option: the old widths no longer fit,
+        and the overflow would be clipped without an ellipsis.
+        """
+        table = self.query_one("#jobs-table", DataTable)
+        if layout(table.size.width or 80) != self._columns:
+            self._paint()
 
     def show(self, rows: list[data.JobRow]) -> None:
         """Replace the table with these rows, keeping the cursor on the same job."""
@@ -142,6 +153,7 @@ class JobsPanel(Vertical):
         if rows is None:
             rows, previous = self._rows, self.selected.jobid if self.selected else None
         columns = layout(table.size.width or 80)
+        self._columns = columns
         table.clear(columns=True)
         for name, width in columns:
             table.add_column(name, width=width)
@@ -199,10 +211,9 @@ class JobsPanel(Vertical):
             parts.append(EMPTY if not self._error else "")
         else:
             parts.append(f"{row.jobid}  {row.state}  on {row.partition}")
-            if row.pending:
-                parts.append(f"waiting: {row.reason}")
-            else:
-                parts.append(f"elapsed: {row.elapsed}")
+            if row.pending and row.stated_reason:
+                parts.append(f"waiting: {row.stated_reason}")
+            parts.append(f"elapsed: {row.elapsed}")
             parts.append(f"holds: {row.tres or 'nothing recorded'}")
             parts.append(f"nodes: {_nodes(row)}")
         return "\n".join(p for p in parts if p)

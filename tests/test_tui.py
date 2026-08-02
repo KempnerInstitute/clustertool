@@ -670,6 +670,88 @@ def test_the_elapsed_column_holds_a_run_of_over_ten_days():
     assert elide("99-23:59:59", ceiling) == "99-23:59:59"
 
 
+async def test_a_job_being_set_up_is_not_described_as_waiting_on_none():
+    """CONFIGURING counts as pending, and Slurm gives its reason as the string None."""
+    from clustertool.tui.panels.jobs import JobsPanel
+
+    app = _app()
+    async with app.run_test(size=(100, 26)) as pilot:
+        await pilot.pause()
+        panel = app.query_one(JobsPanel)
+        panel.show([_row("1", code="CF", state="CONFIGURING", reason="None", elapsed="0:03")])
+        await pilot.pause()
+        text = panel._detail_text()
+        assert "waiting" not in text, text
+        assert "None" not in text, text
+        assert "elapsed: 0:03" in text
+
+
+def test_a_reason_of_none_is_not_a_reason():
+    assert _row("1", reason="None").stated_reason == ""
+    assert _row("1", reason="").stated_reason == ""
+    assert _row("1", reason="Priority").stated_reason == "Priority"
+
+
+@pytest.mark.parametrize(
+    ("name", "widest"),
+    [
+        ("ID", "36782876_[169,504,591,1008,1208"),
+        ("PART", "huce_ice,huce_cascade,sapphire,seas_compute,shared"),
+        ("ELAP", "13-06:53:59"),
+        ("NODE", "(ReqNodeNotAvail, UnavailableNodes:holy7c24105)"),
+    ],
+)
+def test_each_ceiling_covers_the_widest_value_its_field_takes(name, widest):
+    """Measured across every job queued on 2026-08-02, so these are real widths."""
+    from clustertool.tui.panels.jobs import COLUMNS
+
+    ceiling = {heading: high for heading, _, high in COLUMNS}[name]
+    assert ceiling >= len(widest), (name, ceiling, len(widest))
+
+
+async def test_a_wide_terminal_spends_its_room_on_the_table():
+    from clustertool.tui.panels.jobs import JobsPanel
+
+    partition = "huce_ice,huce_cascade,sapphire,seas_compute,shared"
+    app = _app()
+    async with app.run_test(size=(260, 30)) as pilot:
+        await pilot.pause()
+        app.query_one(JobsPanel).show([_row("1", partition=partition, elapsed="13-06:53:59")])
+        await pilot.pause()
+        painted = " ".join(str(cell) for cell in app.query_one("#jobs-table").get_row_at(0))
+        assert partition in painted, painted
+        assert "13-06:53:59" in painted, painted
+
+
+async def test_a_drag_only_rebuilds_the_table_when_the_layout_changes():
+    """Dragging a window edge delivers one resize per column.
+
+    Past the width where every column has reached its ceiling the layout stops
+    changing, so each rebuild is pure cost: about 70ms of it for someone holding
+    four thousand jobs, most of it in add_row.
+    """
+    from clustertool.tui.panels.jobs import JobsPanel
+
+    app = _app()
+    async with app.run_test(size=(300, 24)) as pilot:
+        await pilot.pause()
+        panel = app.query_one(JobsPanel)
+        panel.show(_wide_rows())
+        await pilot.pause()
+        painted = []
+        original = panel._paint
+        panel._paint = lambda *a, **k: (painted.append(1), original(*a, **k))[1]
+        widths = set()
+        for width in range(299, 279, -1):
+            await pilot.resize_terminal(width, 24)
+            await pilot.pause()
+            widths.add(app.query_one("#jobs-table").size.width)
+        assert len(widths) > 10, widths
+        assert painted == [], len(painted)
+        table = app.query_one("#jobs-table")
+        assert table.virtual_size.width <= table.size.width
+
+
 async def test_the_detail_names_the_elapsed_time():
     from clustertool.tui.panels.jobs import JobsPanel
 

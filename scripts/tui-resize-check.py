@@ -99,8 +99,39 @@ def report(screen, cols, rows, early):
     print(f"=== {cols}x{rows}")
     print(f"  overflow={over or 'none'}  corners={corners} balanced={balanced}")
     print(f"  rows still changing after {EARLY}s: {settling or 'none'}")
+    print(f"  table headings: {_headings_verdict(lines)}")
     for n, line in enumerate(lines):
         print(f"  {n:3d}|{line}")
+
+
+def _headings_verdict(lines):
+    """Check the painted heading positions against the widths layout asked for.
+
+    The settling check alone is not enough: it sees a frame that lands wrong and
+    then heals, and is blind to one that lands wrong and stays, because then the
+    early and the settled screen agree. This compares what is on the screen with
+    what the code says should be there, so a wrong frame is wrong either way.
+    """
+    from clustertool.tui.panels.jobs import layout
+
+    for line in lines:
+        edges = [n for n, char in enumerate(line) if char == "│"]
+        if len(edges) < 2 or "ID" not in line:
+            continue
+        table_width = edges[1] - edges[0] - 3
+        want = layout(table_width)
+        offset, expected = edges[0] + 2, []
+        for name, width in want:
+            expected.append((name, offset + 1))
+            offset += width + 2
+        painted = [(name, line.find(name, start - 1)) for name, start in expected]
+        wrong = [
+            (name, start, at)
+            for (name, start), (_, at) in zip(expected, painted, strict=True)
+            if at != start
+        ]
+        return f"ok, {len(want)} columns in {table_width}" if not wrong else f"MISPLACED {wrong}"
+    return "no table row found"
 
 
 def _steady(line):
