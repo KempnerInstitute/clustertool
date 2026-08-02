@@ -19,25 +19,48 @@ usage that does not count toward the cap.
 **Inputs**
 - `ACCOUNT`: Slurm account name (e.g. `kempner_sham_lab`). Omit for all labs.
 
-## `gpu util [PARTITION...]`
+## `gpu util [PARTITION...] [-p PARTITION]`
 
-Show GPU occupancy per partition (via `sinfo` and `squeue`): total, down,
-available, used, and percent. Available excludes GPUs on down or drained nodes,
-and percent is used over available. With no PARTITION, reports the site base
-partitions.
+Show GPU occupancy per partition: total, unavailable, used, other, free, and
+percent.
+
+`USED` is the GPUs held by jobs submitted to that partition. `TOTAL`, `UNAVAIL`
+and `FREE` describe the partition's nodes, read in one `scontrol` pass: the GPUs
+those nodes have, the unallocated ones on nodes that cannot take a new job (down, drained,
+reserved, in maintenance, completing, failing, powered down, not responding, or
+registered with invalid resources), and those still unallocated on nodes that can.
+
+`OTHER` is what jobs from partitions sharing the same nodes hold, which is why
+`USED` plus `FREE` need not reach `TOTAL`. On a cluster where a requeue or
+priority partition overlaps a base partition, that column is where the rest of the
+hardware went. `UTIL` is `USED` over `TOTAL`, so it answers how much of the
+partition's hardware its own jobs hold. It is deliberately not `(USED + OTHER)`
+over `TOTAL`, which would read as high occupancy on a partition none of whose own
+jobs are running; add the two columns yourself for how busy the nodes are.
+
+With no PARTITION, reports the site base partitions.
 
 **Use cases**
 - See how full each GPU partition is right now.
 
 **Inputs**
 - `PARTITION...`: One or more partitions (default: the site base partitions).
+- `-p, --partition`: Same, as an option rather than an argument (repeatable).
 
 ## `gpu status`
 
 Show GPU node status by type and state (via `sinfo`). Reads the site's requeue
-partition, which spans every GPU node, and breaks the nodes down by GPU type and
-state. Idle, Mixed, and Alloc nodes are up; Resv is reserved; Drain is draining;
-Down is offline.
+partition, which is expected to span every GPU node, and breaks the nodes down by
+GPU type and state. Nodes with no GPU are skipped. Idle, Mixed, and Alloc nodes
+are up; Resv is reserved; Drain is drained or draining;
+Down is offline. Each column aggregates the related Slurm states: an idle node
+the backfill scheduler has planned counts as Idle and a partly busy one stays
+Mixed, one still completing a job as Alloc, one
+held for maintenance as Resv, and one with invalid registered resources as Down.
+A node not responding (`*`) counts as Down whatever its base state, since `man
+sinfo` says it will not be allocated any new work; one already drained or reserved
+keeps that column instead, which says the same about availability and names the
+reason.
 
 **Use cases**
 - See how many nodes of each GPU type are up, drained, or down.
@@ -53,20 +76,28 @@ memory support at the per-GPU ratio your site enforces for that partition, from
 shows raw free GPUs unless `--cpus-per-gpu` / `--mem-per-gpu` are given. Run
 `nodes partitions` to see the configured ratios.
 
+Only schedulable nodes are listed: a node that is down, draining, reserved, in
+maintenance, completing, failing, powered down, not responding, or registered with
+invalid resources keeps its free GPUs but cannot take a new job. A node the
+backfill scheduler has planned for a higher-priority job is still listed, since a
+job that fits before that one is due to start can run on it.
+
 **Use cases**
 - Find where you can actually place a GPU job.
 - See spare CPU and memory alongside usable GPUs.
 
 **Inputs**
-- `PARTITION`: Slurm partition name (e.g. `kempner_h100`).
+- `PARTITION`: Slurm partition name.
 - `--cpus-per-gpu`: Cores per GPU (overrides the per-partition default).
-- `--mem-per-gpu`: Memory per GPU in MB (overrides the per-partition default).
+- `--mem-per-gpu`: Memory per GPU in MiB (overrides the per-partition default).
 
 ## `gpu session GPU_TYPE -A ACCOUNT [-t TIME] [SALLOC_ARG]...`
 
 Start an interactive single-GPU session on a base partition (via `salloc`).
 GPU_TYPE selects the partition, and the session requests one GPU plus the CPU and
-memory that partition enforces per GPU. Drops you into a shell on the node; exit
+memory your site allots per GPU on that partition. Where the site sets
+`use_interactive_step` in `LaunchParameters`, as this cluster does, salloc puts
+the shell on the allocated node; otherwise it runs on the submitting host. Exit
 it (or let the time limit lapse) to release the allocation.
 
 The GPU types come from `[gpu_types]` in the site config, each mapped to a
@@ -75,27 +106,35 @@ packaged Kempner profile that is:
 
 | GPU_TYPE | Partition | CPUs | Memory |
 | --- | --- | --- | --- |
-| `a100` | `kempner` | 16 | 240000 MB |
-| `h100` | `kempner_h100` | 24 | 360000 MB |
-| `h200` | `kempner_h200` | 16 | 360000 MB |
-| `rtx` | `kempner_rtx` | 16 | 180000 MB |
+| `a100` | `kempner` | 16 | 245760 MiB |
+| `h100` | `kempner_h100` | 24 | 368640 MiB |
+| `h200` | `kempner_h200` | 16 | 368640 MiB |
+| `rtx` | `kempner_rtx` | 16 | 184320 MiB |
 
-Run `nodes partitions` to see the mapping in force on your cluster. Memory is
-passed in MB (Slurm's default unit), so `--mem=360000`, not `360G`.
+Run `gpu avail PARTITION` to see the ratio in force on your cluster. Memory is
+passed in MiB, Slurm's default unit for `--mem`, so `--mem=368640` rather than
+`360G`; the two are the same amount. When a
+partition has no configured ratio, no CPU or memory request is made and Slurm
+applies that partition's own defaults.
 
 Any extra arguments are forwarded to `salloc` after these defaults, so you can
-override or add flags (salloc uses the last value): for example
+override or add a flag (salloc uses the last value): for example
 `gpu session a100 -A LAB --mem=500000`, `... -J devshell`, or `... --x11`.
+
+The per-GPU forms are the exception. `man salloc` makes `--mem-per-gpu` and
+`--mem-per-cpu` mutually exclusive with `--mem`, and `--cpus-per-gpu`
+incompatible with `--cpus-per-task`, so passing one of those drops the matching
+default rather than layering on top of it.
 
 **Use cases**
 - Grab one GPU for interactive development or debugging.
 
 **Inputs**
-- `GPU_TYPE`: One of `a100`, `h100`, `h200`, `rtx`.
+- `GPU_TYPE`: A GPU type your site defines under `[gpu_types]`.
 - `-A, --account`: Fairshare account to charge (required).
 - `-t, --time`: Time limit D-HH:MM (default 0-01:00).
 - `--jupyter`: Launch Jupyter Lab on the node and print the SSH tunnel to reach it.
-- `--port`: Port for `--jupyter` (default 8888).
+- `--port`: Port for `--jupyter` (default 8888; 1024-65535).
 - `[SALLOC_ARG]...`: Extra salloc arguments, forwarded (they override the defaults).
 
 ## `gpu monitor-partition PARTITION [--interval S] [--filter PREFIX]`
@@ -105,10 +144,9 @@ Live GPU/CPU/memory/InfiniBand monitor for a partition's nodes.
 Refreshes a colored per-node table in place until Ctrl+C. Requires passwordless
 ssh to the nodes, which must expose `nvidia-smi`.
 
-That means ssh to every node in the partition, not just the ones running your
-jobs. Where node login is gated on having an allocation, as `pam_slurm_adopt`
-does, only staff can reach the whole partition. To watch your own job instead,
-use `gpu monitor-job JOBID`.
+That means ssh to every node in the partition, not only the ones running your
+jobs. Where node login requires an allocation on that node, as `pam_slurm_adopt`
+enforces, use `gpu monitor-job JOBID` instead.
 
 **Use cases**
 - Watch utilization across a partition during a large run.
@@ -172,7 +210,7 @@ node.
 
 **Most useful**
 - `gpu pulse`: live fleet dashboard (dcgm backend, about 100 ms refresh).
-- `gpu pulse --node holygpu123`: run the dashboard on a remote GPU node.
+- `gpu pulse --node NODE`: run the dashboard on a remote GPU node.
 - `gpu pulse --job 1234567`: run it on a running job's node.
 - `gpu pulse --once`: render one snapshot and exit.
 - `gpu pulse --focus-gpu 0`: start focused on a single GPU.
@@ -184,6 +222,8 @@ In the live view, type `:focus <id>`, `:plot`, or `:job` to switch views, and `:
 
 **Inputs**
 - `--node NODE`: ssh to NODE and run the dashboard there.
-- `--job JOBID`: run it on the first node of a running job.
+- `--job JOBID`: run it on the first node of one of your own running jobs.
+  Where node login requires an allocation, as `pam_slurm_adopt` enforces,
+  `--node` reaches a node only if you hold one there.
 - `--dry-run`: with `--node`/`--job`, print the ssh command instead of running it.
 - `[ARG]...`: any kempnerpulse arguments (`--backend`, `--source`, `--poll`, `--focus-gpu`, `--gpus`, `--once`, `--export`, the weight presets, ...), forwarded verbatim.

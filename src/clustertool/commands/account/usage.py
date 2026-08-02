@@ -2,18 +2,24 @@
 
 import datetime
 import os
+import pwd
 
 import click
 
-from clustertool import completion, process, site
+from clustertool import completion, process, site, slurm
 from clustertool.grouping import ToolCommand, keywords
 
 
 @keywords("hours", "spend", "cost")
-@click.command("usage", cls=ToolCommand, tool_key="account_usage")
+@click.command("usage", cls=ToolCommand, tool_key=("account_usage", "account_efficiency"))
 @click.argument("account", required=False, shell_complete=completion.complete_accounts)
 @click.option(
-    "-d", "--days", type=int, default=30, show_default=True, help="Period length in days."
+    "-d",
+    "--days",
+    type=click.IntRange(min=1),
+    default=30,
+    show_default=True,
+    help="Period length in days.",
 )
 @click.option("-u", "--user", default=None, help="User to report (default: you).")
 @click.option(
@@ -22,11 +28,14 @@ from clustertool.grouping import ToolCommand, keywords
     help="Show efficiency histograms (seff-account) instead of usage hours.",
 )
 def usage(account: str | None, days: int, user: str | None, efficiency: bool) -> None:
-    """Report cumulative CPU/GPU/TRES-hours for an account or user (via stotal).
+    """Report cumulative CPU/GPU/TRES-hours for an account or user (via the site usage tool).
 
     Sums usage over the last --days. With --efficiency, show the seff-account
     efficiency summary instead. With an ACCOUNT, report that account (querying
-    accounts you do not belong to needs operator rights); otherwise report you.
+    another user's jobs, including other members of your own account, needs
+    AdminLevel=Operator or above or coordinator of that account, and without it
+    the report silently covers only your own jobs and still exits 0); otherwise
+    report you.
 
     \b
     Use cases:
@@ -42,7 +51,16 @@ def usage(account: str | None, days: int, user: str | None, efficiency: bool) ->
     """
     if account and user:
         raise click.UsageError("Give an ACCOUNT or --user, not both.")
-    scope = ["-A", account] if account else ["-u", user or os.environ.get("USER", "")]
+    if account:
+        canonical = slurm.canonical_account(account)
+        if canonical is None:
+            raise click.ClickException(f"account '{account}' not found")
+        scope = ["-A", canonical]
+    else:
+        target = user or pwd.getpwuid(os.getuid()).pw_name
+        if not slurm.user_exists(target):
+            raise click.ClickException(f"no such user on this host: {target}")
+        scope = ["-u", target]
     end_dt = datetime.datetime.now()
     start = (end_dt - datetime.timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%S")
     end = end_dt.strftime("%Y-%m-%dT%H:%M:%S")
@@ -54,7 +72,11 @@ def usage(account: str | None, days: int, user: str | None, efficiency: bool) ->
             )
         cmd = [site.tool("account_efficiency"), *scope, "-S", start, "-E", end]
     else:
+        if not site.tool_available("account_usage"):
+            raise click.ClickException(
+                f"this command needs '{site.tool('account_usage')}', which was not found on "
+                "this host. Install it, or set [tools].account_usage in your site config "
+                "(see docs/configuration.md). For per-job efficiency instead, use --efficiency."
+            )
         cmd = [site.tool("account_usage"), *scope, "-S", start, "-E", end, "-d"]
-    code = process.stream(cmd)
-    if code:
-        raise SystemExit(code)
+    process.passthrough(cmd, f"'{cmd[0]}' failed")

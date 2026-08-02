@@ -35,12 +35,17 @@ def retire(
     """Remove a QoS from all its holders on a partition, then delete it.
 
     Revokes the QoS from every holder on the partition (or all partitions), then
-    deletes the QoS definition. Refuses up front if the QoS is named in any
-    partition's configuration, or if an association still holds it that this
-    sweep would not revoke, such as an account-level one or one on another
-    partition. The delete runs only after every revoke in the plan succeeded.
-    Dry run by default; re-run with --execute to apply, confirming unless --yes.
-    Slurm or system admin only.
+    deletes the QoS definition. Where the QoS is an association's only one, the
+    revoke deletes that association outright rather than editing it, which drops
+    its recorded usage. Refuses up front if the QoS is named in any partition's
+    configuration, if any queued or running job carries it, or if any association
+    still holding it would not be revoked by this sweep, such as an account-level
+    one, one with no partition, or one on another cluster; it lists them. The
+    delete runs only after every revoke in the plan succeeded. Dry run by default;
+    re-run with --execute to apply, confirming unless --yes.
+    Needs AdminLevel=Administrator, or root/SlurmUser. slurmdbd gates a QoS
+    object at its super-user level, unlike an association, which an Operator may
+    write: that is why qos grant and qos revoke ask for less than this does.
 
     \b
     Use cases:
@@ -59,27 +64,44 @@ def retire(
         re.compile(account_regex)
     except re.error as exc:
         raise click.ClickException(f"invalid --account-regex: {exc}") from exc
+    if partition != "all" and not qoslib.partition_known(partition, cluster=cluster):
+        raise click.ClickException(f"no such partition: {partition}, and no association carries it")
     if not qoslib.qos_exists(qos_name):
         click.echo(f"QoS {qos_name} does not exist; nothing to do.")
         return
-    referencing = qoslib.partitions_referencing(qos_name)
-    if referencing:
+    references = qoslib.partition_references(qos_name, cluster=cluster)
+    if references:
+        listed = ", ".join(f"{name} ({'/'.join(kinds)})" for name, kinds in references.items())
         raise click.ClickException(
-            f"QoS {qos_name} is configured on partition(s) {', '.join(referencing)}; "
-            "deleting it would drop the limits those partitions apply. Remove it "
-            "from the partition configuration first"
+            f"QoS {qos_name} is configured on partition(s) {listed}; deleting it "
+            "would change what those partitions allow. Remove it from the partition "
+            "configuration first"
+        )
+    live = qoslib.jobs_using(qos_name, cluster=cluster)
+    if live:
+        raise click.ClickException(
+            f"QoS {qos_name} is carried by {live} queued or running job(s); "
+            "let them finish or cancel them first"
         )
     plan = qoslib.revoke_targets_plan(
         qos_name, ["all"], partition, cluster=cluster, account_regex=account_regex
     )
-    holders = qoslib.any_holders(qos_name)
-    if holders and not plan:
+    uncovered = qoslib.uncovered_holders(qos_name, plan)
+    if uncovered:
+        shown = "\n".join(f"  {row}" for row in uncovered[:10])
+        more = f"\n  ... and {len(uncovered) - 10} more" if len(uncovered) > 10 else ""
         raise click.ClickException(
-            f"QoS {qos_name} is held by {len(holders)} association(s) that this sweep "
-            "does not cover, such as an account-level one or another partition. "
-            "Revoke those first, or widen --partition and --account-regex"
+            f"QoS {qos_name} is held by {len(uncovered)} association(s) that this sweep "
+            f"would not revoke (Cluster|Account|User|Partition):\n{shown}{more}\n"
+            "An association with an empty partition is account-level, which a sweep "
+            "over partitions cannot reach: clear it with "
+            f"'sacctmgr modify user where account=ACCOUNT set QOS-={qos_name}', or "
+            "revoke the others first and widen --partition and --account-regex"
         )
     plan.append(["sacctmgr", "-i", "delete", "qos", qos_name])
-    summary = f"Revoke QoS {qos_name} from all holders on {partition} and delete it?"
+    where = f"on {partition}"
+    if cluster:
+        where += f" ({cluster})"
+    summary = f"Revoke QoS {qos_name} from all holders {where} and delete the definition?"
     if _gate.apply(plan, execute, yes, summary):
         raise SystemExit(1)

@@ -18,8 +18,11 @@ from clustertool.grouping import keywords
 def release(jobids: tuple[str, ...]) -> None:
     """Release held jobs so they can be scheduled (via scontrol release).
 
-    Undoes 'jobs hold'. You can release your own hold, but a hold placed by an
-    operator or admin needs one of them to lift it.
+    Undoes 'jobs hold'. Per man scontrol the rule is the kind of hold, not who
+    placed it: an owner or an account coordinator may release a user-hold, while
+    only a privileged user may release an admin-hold. Note that 'jobs hold' run
+    by an operator or admin records an admin-hold the owner cannot lift, which
+    scontrol uhold exists to avoid.
 
     \b
     Use cases:
@@ -29,6 +32,9 @@ def release(jobids: tuple[str, ...]) -> None:
     Inputs:
       JOBID...  One or more Slurm job ids.
     """
-    code = process.stream(["scontrol", "release", ",".join(jobids)])
-    if code:
-        raise SystemExit(code)
+    if any(not jobid.strip() for jobid in jobids):
+        raise click.UsageError("JOBID may not be empty.")
+    process.passthrough(
+        ["scontrol", "release", ",".join(jobids)],
+        f"could not release one or more of {', '.join(jobids)}; see the messages above for which",
+    )

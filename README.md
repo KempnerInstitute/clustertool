@@ -17,15 +17,16 @@
 # ClusterTool
 
 A single umbrella CLI (`clustertool`) that centralizes the Slurm cluster
-scripts used by both researchers and the engineering team, so common tasks live
+scripts used by both researchers and the admin team, so common tasks live
 in one place with consistent help and behavior. It is built at the Kempner
-Institute and adapts to other clusters through a site config.
+Institute, Harvard University, and adapts to other clusters through a site
+config.
 
 Every task is a subcommand under a group (for example `clustertool gpu ...`).
 Each command has `--help` explaining what it does, its use cases, and its
 inputs.
 
-## How it works
+## What it runs
 
 ```mermaid
 flowchart LR
@@ -42,15 +43,9 @@ flowchart LR
 ```
 
 Nothing runs as a service and nothing is cached: each command shells out to the
-tools your cluster already provides and formats what they return. That makes
-adoption mostly a matter of description rather than integration. **The site
-config is the only place a cluster's specifics live**, so another center points
-those keys at its own partitions, limits, paths, and tool names and keeps the
-same commands. A command whose site wrapper is missing hides itself from help
-instead of failing, so a center that has no `showq` simply has no `jobs queue`.
-
-See [`docs/configuration.md`](docs/configuration.md) for every key and
-[`docs/porting.md`](docs/porting.md) for a step-by-step adoption guide.
+tools your cluster already provides and formats what they return. Every
+cluster-specific value comes from a site config, so the same commands work at
+another center (see [Configuration](#configuration)).
 
 ## Requirements
 
@@ -72,7 +67,10 @@ a command needs only the tools it actually calls:
 - **Extras**, for a handful of commands: passwordless `ssh` to compute nodes
   running `nvidia-smi` (the live monitors, `diag ib`, `gpu pulse --node`), `tmux`
   and `nvtop` (`gpu nvtop`), `nvcc` and NCCL (`diag nvlink`), `torch`
-  (`diag nccl`), and `ncdu` (`storage home --ncdu`).
+  (`diag nccl`), and `ncdu` (`storage home --ncdu`). `tmux`, `nvtop` and `ncdu`,
+  plus `sdiag` above, are `[tools]` keys as well, so a site can rename them:
+  `gpu nvtop` and `diag scheduler` hide without `tmux` and `sdiag`, while `ncdu`
+  gates only `storage home --ncdu` and `nvtop` is checked on the remote node.
 
 Two tools ship with clustertool and install automatically. `jobs scope` uses
 `jobscope`, whose GPU views also read a Prometheus endpoint discovered from the
@@ -147,7 +145,7 @@ clustertool nodes list kempner_h100      # nodes and states in a partition
 # Storage
 clustertool storage quota netscratch  # your quota on a filesystem (-g LAB for a lab)
 clustertool storage quota --all       # every lab dir you belong to, as a usage table
-clustertool storage scratch           # netscratch usage and the 90-day purge reminder
+clustertool storage scratch           # scratch usage and the site's purge reminder
 clustertool storage home              # home directory usage and quota
 ```
 
@@ -179,9 +177,14 @@ fairshare` or `clustertool search gpu reservation`.
 
 ## Configuration
 
-clustertool defaults to the Kempner AI Cluster. The cluster-specific values
-(partitions, per-GPU limits, GPU types, account conventions, storage paths) live
-in a config file, so another center runs the same commands by supplying its own.
+clustertool defaults to the Kempner AI Cluster. **The site config is the only
+place a cluster's specifics live** (partitions, per-GPU limits, GPU types,
+account conventions, storage paths), so another center points those keys at its
+own values and keeps the same commands. That makes adoption mostly a matter of
+description rather than integration. A command whose site wrapper is missing
+hides itself from help instead of failing, so a center that has no `showq`
+simply has no `jobs queue`.
+
 See [`docs/configuration.md`](docs/configuration.md) for the config reference and
 [`docs/porting.md`](docs/porting.md) for a step-by-step adoption guide.
 
@@ -189,7 +192,10 @@ See [`docs/configuration.md`](docs/configuration.md) for the config reference an
 
 ```
 src/clustertool/
+  entry.py            # console-script entry point
   cli.py              # umbrella group, registers command groups
+  site.py             # site config; every cluster-specific value is read here
+  grouping.py         # help layout, group markers, tool-backed command class
   process.py          # subprocess helpers (capture / stream)
   slurm.py            # read-only Slurm query and parse helpers
   storage.py          # storage quota command construction
@@ -198,6 +204,8 @@ src/clustertool/
   ioprobe.py          # filesystem write/read/metadata probe (diag io-probe)
   fabric.py           # InfiniBand topology/affinity/snapshot helpers (diag ib-*)
   qos.py              # read-only Slurm QoS queries and limit-spec builder
+  search.py           # command ranking for 'clustertool search'
+  completion.py       # shell completion and dynamic value completion
   data/               # bundled payloads (monitor sample, nccl test, nvlink .cu)
   commands/           # one package per group; one file per command
     gpu/              # usage, util, status, avail, session, monitor_partition, monitor_job, nvtop, pulse

@@ -21,8 +21,14 @@ from clustertool.grouping import admin, keywords
 def resume(nodes: tuple[str, ...], partition: str | None, yes: bool) -> None:
     """Return drained or down nodes to service (via scontrol). Slurm or system admin only.
 
-    Give explicit node names, or --partition to resume every drained node in a
-    partition. Prompts for confirmation unless -y.
+    Give explicit node names, or --partition to sweep a whole partition. The sweep
+    covers the states man scontrol lists RESUME as accepting and Slurm actually
+    prints: drained, down, reboot requested or issued, and a registration Slurm
+    marked invalid. A powering-down node is left alone rather than fought with
+    power save. Each node is listed with its state and the scheduler's reason
+    before you confirm, including one named through a hostlist expression, which
+    is expanded first so the count is of nodes rather than of arguments. Prompts
+    for confirmation unless -y.
 
     \b
     Use cases:
@@ -31,26 +37,56 @@ def resume(nodes: tuple[str, ...], partition: str | None, yes: bool) -> None:
     \b
     Inputs:
       NODE...          One or more node names to resume.
-      -p, --partition  Resume all drained nodes in this partition.
+      -p, --partition  Resume every resumable node in this partition.
       -y, --yes        Skip the confirmation prompt.
     """
-    targets = list(nodes)
-    swept = slurm.drained_nodes(partition) if partition else []
-    targets += [name for name, _, _ in swept]
-    if not targets:
+    if not nodes and not partition:
         raise click.UsageError("Give one or more NODEs, or --partition.")
-    nodelist = ",".join(targets)
-    if swept:
-        click.echo(f"Drained nodes in {partition}:")
-        for name, state, reason in swept:
-            note = " (not responding)" if state.endswith("*") else ""
-            click.echo(f"  {name:<20} {state:<12}{note}  {reason or '-'}")
-        click.echo(
-            "Resuming a node whose reason is unresolved puts it straight back "
-            "into service, where it can start failing jobs again."
+    if partition and not slurm.partition_exists(partition):
+        raise click.ClickException(f"partition '{partition}' does not exist")
+    swept = slurm.resumable_nodes(partition) if partition else []
+    if partition and not swept and not nodes:
+        raise click.ClickException(
+            f"no drained, down or invalid-registration nodes in '{partition}'"
         )
+
+    listed: list[tuple[str, str, str]] = []
+    seen: set[str] = set()
+    if nodes:
+        by_name = {name: (name, state, reason) for name, state, reason in swept}
+        resolved: dict[str, tuple[str, str, str]] = {}
+        unknown = []
+        for argument in nodes:
+            found = slurm.resumable_nodes_by_name((argument,))
+            if not found:
+                unknown.append(argument)
+            resolved.update(found)
+        if unknown:
+            raise click.ClickException(
+                f"Slurm does not know: {', '.join(unknown)}. A name may be a hostlist "
+                "expression such as node[1-4], but it has to resolve to real nodes"
+            )
+        for name in sorted(resolved):
+            listed.append(by_name.get(name) or resolved[name])
+            seen.add(name)
+    for row in swept:
+        if row[0] not in seen:
+            listed.append(row)
+            seen.add(row[0])
+    targets = [row[0] for row in listed]
+    nodelist = ",".join(targets)
+    click.echo(f"Nodes to resume{f' in {partition}' if partition else ''}:")
+    for name, state, reason in listed:
+        flags = {flag.strip("*~#!%$@^-") for flag in state.upper().split("+")}
+        note = "" if flags & slurm.RESUMABLE_STATES else "  (not in a resumable state)"
+        click.echo(f"  {name:<20} {state:<26}{note}  {reason or '-'}")
+    click.echo(
+        "Resuming a node whose reason is unresolved puts it straight back "
+        "into service, where it can start failing jobs again."
+    )
     if not yes:
         click.confirm(f"Resume {len(targets)} node(s): {nodelist}?", abort=True)
-    code = process.stream(["scontrol", "update", f"NodeName={nodelist}", "State=RESUME"])
-    if code:
-        raise SystemExit(code)
+    process.passthrough(
+        ["scontrol", "update", f"NodeName={nodelist}", "State=RESUME"],
+        f"failed to resume {nodelist}",
+    )

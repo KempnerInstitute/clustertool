@@ -2,7 +2,7 @@
 
 import click
 
-from clustertool import completion, process
+from clustertool import completion, process, slurm
 from clustertool.grouping import keywords
 
 
@@ -16,7 +16,12 @@ from clustertool.grouping import keywords
     shell_complete=completion.complete_partitions,
 )
 def down(partition: str | None) -> None:
-    """List down and drained nodes with the scheduler's reason (via sinfo).
+    """List the nodes sinfo -R reports, with the scheduler's reason.
+
+    man sinfo scopes -R to nodes that are down, drained, draining or failing, so
+    this is not every node that cannot take work: a reserved node, one in
+    maintenance, one powered down, and one whose base state is idle but which is
+    not responding are all missing from it. Reads nothing and changes nothing.
 
     \b
     Use cases:
@@ -27,9 +32,9 @@ def down(partition: str | None) -> None:
     Inputs:
       -p, --partition  Limit to one partition.
     """
-    cmd = ["sinfo", "-R"]
+    cmd = ["sinfo", "-R", "-o", "%60E %12u %19H %N"]
     if partition:
+        if not slurm.partition_exists(partition):
+            raise click.ClickException(f"partition '{partition}' does not exist")
         cmd += ["-p", partition]
-    code = process.stream(cmd)
-    if code:
-        raise SystemExit(code)
+    process.passthrough(cmd, "'sinfo -R' failed")

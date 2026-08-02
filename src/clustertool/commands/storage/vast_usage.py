@@ -13,9 +13,12 @@ from clustertool.grouping import ToolCommand, keywords
 def vast_usage(path: str, group: str) -> None:
     """Show per-user usage for a group on a VAST filesystem (via the quota tool).
 
-    Lists how much each member of GROUP is using under PATH. Works on VAST
-    filesystems such as /n/netscratch. A bare name like 'netscratch' becomes
-    '/n/netscratch'.
+    PATH selects the filesystem, and the figures cover the whole mountpoint
+    rather than only what sits under PATH. Each user's number is their total on
+    that filesystem, not their usage under GROUP alone; GROUP selects whose names
+    to list. Works on VAST filesystems. A bare name is completed with
+    [storage].path_prefix from the site config, so 'netscratch' becomes
+    '/n/netscratch' with the packaged Kempner profile.
 
     \b
     Use cases:
@@ -23,10 +26,12 @@ def vast_usage(path: str, group: str) -> None:
 
     \b
     Inputs:
-      PATH         Filesystem path, or a bare name that becomes /n/<name>.
+      PATH         Filesystem path, or a bare name the site prefix completes.
       -g, --group  Unix group to break usage down by.
     """
     target = path if path.startswith("/") else f"{site.path_prefix()}/{path}"
-    code = process.stream([site.tool("quota"), "--group-user-usage", group, target])
-    if code:
-        raise SystemExit(code)
+    tool = site.tool("quota")
+    process.passthrough(
+        [tool, "--group-user-usage", group, target],
+        f"'{tool} --group-user-usage' failed for {group} on {target}",
+    )

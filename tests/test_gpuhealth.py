@@ -6,11 +6,25 @@ import pytest
 
 from clustertool import gpuhealth as gh
 
-_THROTTLE = ("sw_power_cap", "sw_thermal_slowdown", "hw_thermal_slowdown", "hw_slowdown")
+_THROTTLE = (
+    "sw_power_cap",
+    "sw_thermal_slowdown",
+    "hw_thermal_slowdown",
+    "hw_slowdown",
+    "hw_power_brake_slowdown",
+)
 
 
-def _throttle_block(power_cap=False, sw_thermal=False, hw_thermal=False, hw_slowdown=False):
-    states = dict(zip(_THROTTLE, (power_cap, sw_thermal, hw_thermal, hw_slowdown), strict=True))
+def _throttle_block(
+    power_cap=False, sw_thermal=False, hw_thermal=False, hw_slowdown=False, power_brake=False
+):
+    states = dict(
+        zip(
+            _THROTTLE,
+            (power_cap, sw_thermal, hw_thermal, hw_slowdown, power_brake),
+            strict=True,
+        )
+    )
     body = ""
     for name, active in states.items():
         state = "Active" if active else "Not Active"
@@ -141,6 +155,7 @@ def test_parse_healthy_two_gpus():
         "sw_thermal": False,
         "hw_thermal": False,
         "hw_slowdown": False,
+        "hw_power_brake": False,
     }
     assert g0["temp_c"] == 41
     assert g0["slowdown_temp_c"] == 92
@@ -205,14 +220,17 @@ def healthy_gpu(**overrides):
         "row_remap_pending": False,
         "row_remap_failure": False,
         "retired_pages_pending": None,
+        "sram_threshold_exceeded": False,
         "throttle": {
             "sw_power_cap": False,
             "sw_thermal": False,
             "hw_thermal": False,
             "hw_slowdown": False,
+            "hw_power_brake": False,
         },
         "temp_c": 40,
         "slowdown_temp_c": 92,
+        "temp_margin_c": None,
         "power_w": 100.0,
         "power_limit_w": 700.0,
         "pcie_replay": 0,
@@ -273,10 +291,30 @@ def test_evaluate_correctable_at_threshold_ok():
     assert tiers(gpu)["ecc"] == gh.OK
 
 
-def test_evaluate_power_cap_throttle_warns():
+def test_evaluate_power_cap_throttle_is_ok():
+    """man nvidia-smi calls this the SW scaling algorithm holding the power limit."""
     gpu = healthy_gpu()
     gpu["throttle"]["sw_power_cap"] = True
-    assert tiers(gpu)["throttle"] == gh.WARN
+    checks = gh.evaluate(gpu, None)
+    assert checks["throttle"][0] == gh.OK
+    assert "normal" in checks["throttle"][1]
+
+
+def test_evaluate_power_brake_fails():
+    gpu = healthy_gpu()
+    gpu["throttle"]["hw_power_brake"] = True
+    checks = gh.evaluate(gpu, None)
+    assert checks["throttle"][0] == gh.FAIL
+    assert "hw_power_brake" in checks["throttle"][1]
+
+
+def test_evaluate_throttle_all_unreported_is_na():
+    gpu = healthy_gpu()
+    gpu["throttle"] = dict.fromkeys(gpu["throttle"])
+    gpu["temp_c"] = None
+    gpu["slowdown_temp_c"] = None
+    gpu["temp_margin_c"] = None
+    assert tiers(gpu)["throttle"] == gh.NA
 
 
 def test_evaluate_thermal_throttle_warns():
@@ -301,8 +339,31 @@ def test_evaluate_temp_below_margin_ok():
     assert tiers(gpu)["throttle"] == gh.OK
 
 
-def test_evaluate_pcie_replay_warns():
-    assert tiers(healthy_gpu(pcie_replay=4))["pcie"] == gh.WARN
+def test_evaluate_pcie_replay_warns_above_threshold():
+    assert tiers(healthy_gpu(pcie_replay=gh.PCIE_REPLAY_WARN + 1))["pcie"] == gh.WARN
+
+
+def test_evaluate_pcie_replay_at_threshold_is_ok():
+    """A replay is an ordinary link-layer retry, so a handful is not a fault."""
+    assert tiers(healthy_gpu(pcie_replay=gh.PCIE_REPLAY_WARN))["pcie"] == gh.OK
+
+
+def test_evaluate_sram_threshold_exceeded_fails():
+    gpu = healthy_gpu()
+    gpu["sram_threshold_exceeded"] = True
+    checks = gh.evaluate(gpu, None)
+    assert checks["ecc"][0] == gh.FAIL
+    assert "RMA" in checks["ecc"][1]
+
+
+def test_evaluate_thermal_margin_warns_without_a_slowdown_threshold():
+    """Hopper reports gpu_temp_tlimit, a margin, and no absolute slowdown point."""
+    gpu = healthy_gpu(temp_c=60)
+    gpu["slowdown_temp_c"] = None
+    gpu["temp_margin_c"] = gh.TEMP_MARGIN_C
+    assert tiers(gpu)["throttle"] == gh.WARN
+    gpu["temp_margin_c"] = gh.TEMP_MARGIN_C + 1
+    assert tiers(gpu)["throttle"] == gh.OK
 
 
 def test_evaluate_nvlink_errors_warn():
@@ -330,6 +391,7 @@ def test_evaluate_ecc_unreported_is_na():
         row_remap_pending=None,
         row_remap_failure=None,
         retired_pages_pending=None,
+        sram_threshold_exceeded=None,
     )
     assert tiers(gpu)["ecc"] == gh.NA
 
@@ -473,3 +535,21 @@ def test_render_json_round_trips():
     payload = gh.render_json(result)
     assert json.loads(payload) == result
     assert payload.endswith("\n")
+
+
+def test_nvlink_errors_are_attributed_to_the_right_gpu():
+    """The XML position is the nvidia-smi index that parse_nvlink keys on."""
+    xml = "<nvidia_smi_log>" + _gpu(index=1) + _gpu(index=0) + "</nvidia_smi_log>"
+    parsed = gh.parse_smi_xml(xml)["gpus"]
+    assert [g["index"] for g in parsed] == [0, 1]
+    assert [g["minor_number"] for g in parsed] == [1, 0]
+
+
+def test_nvlink_errors_land_on_the_nvidia_smi_index():
+    """parse_nvlink keys on the nvidia-smi index, which is the <gpu> element order."""
+    xml = "<nvidia_smi_log>" + _gpu(index=1) + _gpu(index=0) + "</nvidia_smi_log>"
+    result = gh.build_result(gh.parse_smi_xml(xml), gh.parse_nvlink(_nvlink(gpu0_link1_crc=42)))
+    first, second = result["gpus"]
+    assert (first["index"], first["minor_number"]) == (0, 1)
+    assert "crc_errors=42" in first["checks"]["nvlink"]["detail"]
+    assert second["checks"]["nvlink"]["detail"] == ""

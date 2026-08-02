@@ -21,6 +21,7 @@ def create(
     group_gpu: int | None,
     job_gpu: int | None,
     jobs_per_user: int | None,
+    account_gpu: int | None,
     execute: bool,
     yes: bool,
 ) -> None:
@@ -28,7 +29,10 @@ def create(
 
     Dry run by default: prints the sacctmgr commands and changes nothing. Re-run
     with --execute to apply, confirming unless --yes. Give at least one limit; a
-    value of -1 clears that limit. Slurm or system admin only.
+    value of -1 clears that limit.
+    Needs AdminLevel=Administrator, or root/SlurmUser. slurmdbd gates a QoS
+    object at its super-user level, unlike an association, which an Operator may
+    write: that is why qos grant and qos revoke ask for less than this does.
 
     \b
     Use cases:
@@ -37,19 +41,26 @@ def create(
     \b
     Inputs:
       QOS_NAME       Name of the QoS to create or update.
-      -g/-n/-G/-j/-J Limit caps (see each option; -1 clears).
+      -g/-n/-A/-G/-j/-J
+                     Limit caps (see each option; -1 clears).
       -x, --execute  Apply the change instead of previewing it.
       -y, --yes      Skip the confirmation prompt.
     """
-    specs = _limits.resolve_specs(gpu_per_user, node_per_user, group_gpu, job_gpu, jobs_per_user)
+    specs = _limits.resolve_specs(
+        gpu_per_user, node_per_user, group_gpu, job_gpu, jobs_per_user, account_gpu
+    )
     if not qoslib.valid_name(qos_name):
         raise click.ClickException(
             f"invalid QoS name {qos_name!r}: use letters, digits, and . _ - only"
         )
-    plan = []
-    if not qoslib.qos_exists(qos_name):
-        plan.append(["sacctmgr", "-i", "add", "qos", qos_name])
-    plan.append(["sacctmgr", "-i", "modify", "qos", qos_name, "set", *specs])
-    summary = f"Create or update QoS {qos_name} with {len(specs)} limit(s)?"
+    exists = qoslib.qos_exists(qos_name)
+    if exists:
+        plan = [["sacctmgr", "-i", "modify", "qos", qos_name, "set", *specs]]
+    else:
+        plan = [["sacctmgr", "-i", "add", "qos", qos_name, *specs]]
+    verb = "Update" if exists else "Create"
+    summary = f"{verb} QoS {qos_name} with {', '.join(specs)}?"
     if _gate.apply(plan, execute, yes, summary):
         raise SystemExit(1)
+    if execute:
+        _limits.report(qos_name)

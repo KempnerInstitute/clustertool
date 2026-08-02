@@ -2,7 +2,7 @@
 
 import click
 
-from clustertool import completion, slurm
+from clustertool import completion, site, slurm
 from clustertool.grouping import keywords
 
 
@@ -26,6 +26,11 @@ def usage(account: str | None) -> None:
     Inputs:
       ACCOUNT  Slurm account name (e.g. kempner_sham_lab). Omit for all labs.
     """
+    if not slurm.BASE_PARTITIONS:
+        raise click.ClickException(
+            "no base partitions configured ([partitions].base in the site config). "
+            "Without them this would report no usage rather than no configuration"
+        )
     if account is None:
         _all_labs()
     else:
@@ -37,16 +42,16 @@ def _all_labs() -> None:
     cap = slurm.account_cap()
     totals = slurm.gpu_by_account(slurm.BASE_PARTITIONS)
 
-    click.echo(
-        f"Base-partition GPU usage by account (counts toward the {cap}-GPU cap) - highest first"
-    )
+    scope = f"counts toward the {cap}-GPU cap" if cap else "no per-account GPU cap is set"
+    click.echo(f"Base-partition GPU usage by account ({scope}) - highest first")
     click.echo()
     if not totals:
         click.echo("  (no running GPU jobs on the base partitions)")
         return
 
     for account, gpus in sorted(totals.items(), key=lambda item: item[1], reverse=True):
-        click.echo(f"  {account:<28} {gpus:3d}/{cap}")
+        against = f"/{cap}" if cap else ""
+        click.echo(f"  {account:<28} {gpus:3d}{against}")
     total = sum(totals.values())
     click.echo(f"  {'':<28} ----")
     click.echo(f"  {'TOTAL':<28} {total:3d} GPU in use across {len(totals)} account(s)")
@@ -60,37 +65,45 @@ def _one_lab(account: str) -> None:
     cap = slurm.account_cap()
     click.echo(f"Lab GPU usage (running jobs) - account: {account}")
     click.echo()
-    _section(
-        f"Base partitions - COUNT toward the {cap}-GPU account cap",
-        account,
-        slurm.BASE_PARTITIONS,
-        in_cap=True,
-        cap=cap,
+    base_title = (
+        f"Base partitions - COUNT toward the {cap}-GPU account cap" if cap else "Base partitions"
     )
-    _section(
-        "Priority partitions - additive (outside the cap)",
-        account,
-        slurm.priority_partitions(),
-        in_cap=False,
-        cap=cap,
-    )
-    _section(
-        f"{slurm.REQUEUE_PARTITION} - additive (outside the cap)",
-        account,
-        [slurm.REQUEUE_PARTITION],
-        in_cap=False,
-        cap=cap,
-    )
+    outside = "additive (outside the cap)" if cap else "additive"
+    found = [
+        _section(base_title, account, slurm.BASE_PARTITIONS, in_cap=True, cap=cap),
+        _section(
+            f"Priority partitions - {outside}",
+            account,
+            slurm.priority_partitions(),
+            in_cap=False,
+            cap=cap,
+        ),
+    ]
+    requeue = slurm.REQUEUE_PARTITION
+    if requeue:
+        found.append(_section(f"{requeue} - {outside}", account, [requeue], in_cap=False, cap=cap))
+    if not any(found):
+        _suggest_prefixed(account)
 
 
-def _section(title: str, account: str, partitions, in_cap: bool, cap: int) -> None:
-    """Print one usage section for an account on a set of partitions."""
+def _suggest_prefixed(account: str) -> None:
+    """Print a pointer to the prefixed lab account, if one exists."""
+    prefix = site.lab_account_prefix()
+    if not prefix or account.startswith(prefix):
+        return
+    sibling = f"{prefix}{account}"
+    if slurm.account_exists(sibling):
+        click.echo(f"note: {sibling} also exists. Did you mean 'gpu usage {sibling}'?")
+
+
+def _section(title: str, account: str, partitions, in_cap: bool, cap: int | None) -> int:
+    """Print one usage section for an account, returning the GPUs it found."""
     rows = slurm.gpu_rows(account, partitions)
     click.echo(f"== {title} ==")
     if not rows:
         click.echo("  (no running GPU jobs)")
         click.echo()
-        return
+        return 0
 
     by_user: dict[str, int] = {}
     by_partition: dict[str, int] = {}
@@ -106,15 +119,20 @@ def _section(title: str, account: str, partitions, in_cap: bool, cap: int) -> No
         click.echo(f"    {partition:<24} {gpus:4d} GPU")
 
     total = sum(by_user.values())
-    if in_cap:
-        percent = total * 100 // cap if cap else 0
+    if in_cap and cap:
+        percent = total * 100 // cap
         click.echo(f"  ACCOUNT TOTAL: {total} / {cap} GPU  ({percent}% of the cap)")
         pending = slurm.pending_at_cap(account, partitions)
         if pending:
             click.echo(
                 f"  note: {pending} job(s) pending because the lab is at the cap "
-                "(MaxGRESPerAccount)"
+                "(QOSMaxGRESPerAccount)"
             )
-    else:
+    elif in_cap:
+        click.echo(f"  ACCOUNT TOTAL: {total} GPU")
+    elif cap:
         click.echo(f"  ACCOUNT TOTAL: {total} GPU  (additive - NOT counted toward the {cap} cap)")
+    else:
+        click.echo(f"  ACCOUNT TOTAL: {total} GPU  (additive)")
     click.echo()
+    return total

@@ -57,6 +57,20 @@ def test_parse_quota_row_none():
     assert storage.parse_quota_row("/short row\n") is None
 
 
+def test_parse_quota_row_ignores_a_df_table():
+    out = (
+        "command: df -h /n/home14/mmsh\n"
+        "Filesystem Size Used Avail Use% Mounted on\n"
+        "/dev/mapper/vg-home 1.8T 1.2T 500G 71% /home\n"
+    )
+    assert storage.parse_quota_row(out) is None
+
+
+def test_parse_quota_row_over_quota_asterisk():
+    out = "/n/holylfs06/LABS/kempner_dev 2.1T* 2T 2T none 500000 1000000 1000000 none\n"
+    assert storage.parse_quota_row(out) == ("2.1T*", "2T", "105%", "50%")
+
+
 def test_percent_value():
     assert storage.percent_value("90%") == 90.0
     assert storage.percent_value("-") == -1.0
@@ -89,3 +103,65 @@ def test_user_groups(monkeypatch):
 
     monkeypatch.setattr(process, "run", lambda cmd: "kempner_dev kempner_shared\n")
     assert storage.user_groups("alice") == ["kempner_dev", "kempner_shared"]
+
+
+def test_parse_quota_row_takes_the_record_with_the_most_usage():
+    """The tool prints a block per record; the unused one must not win by order."""
+    out = (
+        "Disk quotas for grp mallet_lab (gid 402716):\n"
+        "Filesystem\tused\tquota\tfiles\tquota\n"
+        "/n/holylabs\t0.0B\t4.0Ti\t3\t10000000\n"
+        "Disk quotas for grp mallet_lab (gid 402716):\n"
+        "Filesystem\tused\tquota\tfiles\tquota\n"
+        "/n/holylabs\t42.0Ti\t100.0Ti\t3225130\t100000000\n"
+    )
+    assert storage.parse_quota_row(out) == ("42.0Ti", "100.0Ti", "42%", "3%")
+
+
+def test_parse_quota_row_rejoins_a_wrapped_mount_point():
+    """lfs quota puts a long mount point on its own line, leaving the numbers below."""
+    out = (
+        "     Filesystem    used   quota   limit   grace   files   quota   limit   grace\n"
+        "/n/holylfs06/LABS\n"
+        "                 45.27T     75T     75T       - 16117322  55574528 55574528       -\n"
+    )
+    assert storage.parse_quota_row(out) == ("45.27T", "75T", "60%", "29%")
+
+
+def test_to_bytes_handles_lower_case_and_large_units():
+    assert storage._to_bytes("20k") == 20 * 1024
+    assert storage._to_bytes("1.5t") == 1.5 * 1024**4
+    assert storage._to_bytes("1.0Ei") == 1024**6
+    assert storage._to_bytes("2.0Y") == 2 * 1024**8
+
+
+def test_parse_quota_row_unreadable_file_count_is_not_zero_percent():
+    """A suffixed count must read as unknown, not as no files used."""
+    out = "/n/netscratch 1.0Ti 50.0Ti 3099k 100000000\n"
+    assert storage.parse_quota_row(out) == ("1.0Ti", "50.0Ti", "2%", "-")
+
+
+def test_data_rows_rejoins_a_wrapped_mount_point():
+    """lfs puts the mount point on its own line once it outgrows the column."""
+    out = "/n/very/long/path\n        45.31T 75T 75T - 16119595 55574528 55574528 -\n"
+    assert storage._data_rows(out) == [
+        ["/n/very/long/path", "45.31T", "75T", "75T", "-", "16119595", "55574528", "55574528", "-"]
+    ]
+
+
+def test_data_rows_does_not_join_a_note_to_a_wrapped_mount_point():
+    """lfs prints notes of its own between rows, and joining one would invent a row."""
+    out = "/n/very/long/path\nuid 1 is using default block quota setting\n"
+    assert storage._data_rows(out) == []
+
+
+def test_data_rows_keeps_a_value_marked_over_quota():
+    """lfs marks a value that is over its quota with a trailing star."""
+    out = "/n/very/long/path\n        45.31T* 75T 75T none 1 2 3 -\n"
+    assert storage._data_rows(out)[0][1] == "45.31T*"
+
+
+def test_inode_count_over_quota_is_still_a_percentage():
+    """lfs stars the used cell of the inode group too, per man lfs-quota."""
+    row = "   /n/holylfs06  4.101T*  4T  4T 6d23h 3508976* 2936012 2936012 6d23h"
+    assert storage.parse_quota_row(row) == ("4.101T*", "4T", "103%", "120%")

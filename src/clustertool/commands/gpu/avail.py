@@ -2,7 +2,7 @@
 
 import click
 
-from clustertool import completion, slurm
+from clustertool import completion, qos, slurm
 from clustertool.grouping import keywords
 
 
@@ -11,15 +11,15 @@ from clustertool.grouping import keywords
 @click.argument("partition", shell_complete=completion.complete_partitions)
 @click.option(
     "--cpus-per-gpu",
-    type=int,
+    type=click.IntRange(min=0),
     default=None,
-    help="Cores per GPU (overrides the partition default).",
+    help="Cores per GPU (overrides the partition default; 0 removes the cap).",
 )
 @click.option(
     "--mem-per-gpu",
-    type=int,
+    type=click.IntRange(min=0),
     default=None,
-    help="Memory per GPU in MB (overrides the partition default).",
+    help="Memory per GPU in MiB (overrides the partition default; 0 removes the cap).",
 )
 def avail(partition: str, cpus_per_gpu: int | None, mem_per_gpu: int | None) -> None:
     """List nodes with GPUs you can actually allocate, most first.
@@ -30,6 +30,12 @@ def avail(partition: str, cpus_per_gpu: int | None, mem_per_gpu: int | None) -> 
     configured ratio shows raw free GPUs unless --cpus-per-gpu / --mem-per-gpu
     are given. Run 'nodes partitions' to see the configured ratios.
 
+    Only schedulable nodes are listed: a node that is down, draining, reserved, in
+    maintenance, completing, failing, powered down, not responding, or registered
+    with invalid resources keeps its free GPUs but cannot take a new job. A node
+    the backfill scheduler has planned for a higher-priority job is still listed,
+    since a job that fits before that one is due to start can run on it.
+
     \b
     Use cases:
       - Find where you can actually place a GPU job.
@@ -39,7 +45,9 @@ def avail(partition: str, cpus_per_gpu: int | None, mem_per_gpu: int | None) -> 
     Inputs:
       PARTITION       Slurm partition name (e.g. kempner_h100).
       --cpus-per-gpu  Cores per GPU (overrides the per-partition default).
-      --mem-per-gpu   Memory per GPU in MB (overrides the per-partition default).
+      --mem-per-gpu   Memory per GPU in MiB, Slurm's own unit for --mem
+                      (overrides the per-partition default). Either flag set to
+                      0 drops that cap.
     """
     default = slurm.PARTITION_LIMITS.get(partition)
     if cpus_per_gpu is None and default:
@@ -47,33 +55,40 @@ def avail(partition: str, cpus_per_gpu: int | None, mem_per_gpu: int | None) -> 
     if mem_per_gpu is None and default:
         mem_per_gpu = default[1]
 
-    nodes = [name for name, _ in slurm.partition_nodes(partition)]
+    nodes = [node for node in slurm.node_capacity() if partition in node["partitions"]]
     if not nodes:
-        raise click.ClickException(f"no nodes found in partition '{partition}'")
+        if not qos.partition_exists(partition):
+            raise click.ClickException(f"partition '{partition}' does not exist")
+        raise click.ClickException(f"partition '{partition}' has no nodes")
 
     rows = []
     for node in nodes:
-        free_gpu, free_cpu, free_mem = slurm.node_free_resources(node)
+        if not node["available"]:
+            continue
+        free_gpu, free_cpu = node["gpu_free"], node["cpu_free"]
+        free_mem = node["mem_free_mb"]
         avail_gpu = free_gpu
         if cpus_per_gpu:
             avail_gpu = min(avail_gpu, free_cpu // cpus_per_gpu)
         if mem_per_gpu:
             avail_gpu = min(avail_gpu, int(free_mem // mem_per_gpu))
         if avail_gpu > 0:
-            rows.append((node, avail_gpu, free_gpu, free_cpu, round(free_mem / 1024)))
+            rows.append((node["name"], avail_gpu, free_gpu, free_cpu, round(free_mem / 1024)))
     rows.sort(key=lambda row: row[1], reverse=True)
 
-    if cpus_per_gpu and mem_per_gpu:
-        limit = f"capped by {cpus_per_gpu} CPU / {mem_per_gpu // 1000} GB per GPU"
-    else:
-        limit = "raw free; no per-GPU ratio known"
+    caps = []
+    if cpus_per_gpu:
+        caps.append(f"{cpus_per_gpu} CPU")
+    if mem_per_gpu:
+        caps.append(f"{mem_per_gpu} MiB")
+    limit = f"capped by {' / '.join(caps)} per GPU" if caps else "raw free; no per-GPU ratio known"
     click.echo(f"Allocatable GPUs on '{partition}' ({limit}), most first")
     click.echo()
     if not rows:
         click.echo("  (no nodes with allocatable GPUs)")
         return
     click.echo(
-        f"  {'Node':<20} {'Avail_GPU':>9} {'Free_GPU':>8} {'Free_CPU':>8} {'Free_Mem_GB':>12}"
+        f"  {'NODE':<20} {'AVAIL_GPU':>9} {'FREE_GPU':>8} {'FREE_CPU':>8} {'FREE_MEM_GIB':>12}"
     )
     for node, avail_gpu, free_gpu, free_cpu, free_mem_gb in rows:
         click.echo(f"  {node:<20} {avail_gpu:>9} {free_gpu:>8} {free_cpu:>8} {free_mem_gb:>12}")

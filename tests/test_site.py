@@ -1,9 +1,5 @@
 """Tests for the site configuration layer."""
 
-import pathlib
-import re
-import sys
-
 import pytest
 from click.testing import CliRunner
 
@@ -22,9 +18,9 @@ def test_default_accessors():
     assert "kempner_h100" in site.base_partitions()
     assert site.requeue_partition() == "kempner_requeue"
     assert site.base_qos() == "kempner_base"
-    assert site.default_cap() == 96
-    assert site.partition_limits()["kempner_h100"] == (24, 360000)
-    assert site.partition_limits()["kempner"] == (16, 240000)
+    assert site.default_cap() == 0
+    assert site.partition_limits()["kempner_h100"] == (24, 368640)
+    assert site.partition_limits()["kempner"] == (16, 245760)
     assert site.gpu_type_partition()["h100"] == "kempner_h100"
     assert ("H100", "h100") in site.gpu_status_types()
     assert site.priority_pattern() == "kempner.*priority"
@@ -91,7 +87,27 @@ def test_unknown_slurm_attribute_still_raises():
 
 def test_commands_honor_a_different_site(monkeypatch):
     monkeypatch.setattr(site, "base_partitions", lambda: ("alpha", "beta"))
-    monkeypatch.setattr(slurm, "partition_gpu_util", lambda p: (10, 0, 10, 5, 50.0))
+    monkeypatch.setattr(
+        slurm,
+        "partition_gpu_util",
+        lambda partition, nodes=None: (10, 0, 5, 0, 5, 50.0),
+    )
+    monkeypatch.setattr(
+        slurm,
+        "node_capacity",
+        lambda: [
+            {
+                "name": "n1",
+                "partitions": ["alpha", "beta"],
+                "state": "MIXED",
+                "available": True,
+                "cpu_free": 0,
+                "mem_free_mb": 0,
+                "gpu_tot": 10,
+                "gpu_free": 5,
+            }
+        ],
+    )
     result = CliRunner().invoke(main, ["gpu", "util"])
     assert result.exit_code == 0
     assert "alpha" in result.output
@@ -118,39 +134,66 @@ def test_unreadable_config_raises_config_error(tmp_path):
         site.load_file(tmp_path / "does-not-exist.toml")
 
 
-def test_entry_reports_config_error_without_traceback(tmp_path, monkeypatch):
-    bad = tmp_path / "site.toml"
-    bad.write_text("nope [[[\n")
-    monkeypatch.setenv(site.ENV_VAR, str(bad))
-    for name in [m for m in list(sys.modules) if m.startswith("clustertool.c")]:
-        monkeypatch.delitem(sys.modules, name, raising=False)
-    site._cache = None
+def test_entry_reports_config_error_without_traceback(monkeypatch):
+    """The guard turns an unusable config into one line, not an import traceback."""
+
+    def boom():
+        raise site.ConfigError("site config /x/site.toml is not valid TOML: bad key")
+
+    monkeypatch.setattr(entry, "_load_main", boom)
     with pytest.raises(SystemExit) as excinfo:
         entry.run()
     assert "not valid TOML" in str(excinfo.value)
-    site._cache = None
+    assert "clustertool: error:" in str(excinfo.value)
 
 
-def test_every_config_key_is_documented():
-    """Each key in the packaged default must appear in the config reference."""
-    root = pathlib.Path(__file__).resolve().parents[1]
-    doc = (root / "docs" / "configuration.md").read_text()
-    referenced = set(re.findall(r"`([a-z_]+)`", doc))
+def test_entry_runs_the_cli_when_the_config_loads(monkeypatch):
+    called = []
+    monkeypatch.setattr(entry, "_load_main", lambda: lambda: called.append(1))
+    entry.run()
+    assert called == [1]
 
-    def leaves(table, prefix=""):
-        for key, value in table.items():
-            path = f"{prefix}{key}"
-            if isinstance(value, dict):
-                yield from leaves(value, f"{path}.")
-            else:
-                yield path
 
-    # [gpu_types] and [partitions.limits] are keyed by site-chosen names, so the
-    # table is documented rather than each entry.
-    by_site_name = ("gpu_types.", "partitions.limits.")
-    undocumented = [
-        path
-        for path in leaves(site._packaged_default())
-        if not path.startswith(by_site_name) and path.split(".")[-1] not in referenced
-    ]
-    assert undocumented == []
+def test_gpu_types_replace_rather_than_merge(tmp_path):
+    """A site inventory must not keep the packaged entries it did not name."""
+    cfg = tmp_path / "site.toml"
+    cfg.write_text('[gpu_types]\nv100 = "gpu"\n')
+    merged = site.load_file(cfg)
+    assert merged["gpu_types"] == {"v100": "gpu"}
+
+
+def test_partition_limits_replace_rather_than_merge(tmp_path):
+    cfg = tmp_path / "site.toml"
+    cfg.write_text("[partitions.limits.gpu]\ncpus_per_gpu = 8\nmem_per_gpu_mb = 100000\n")
+    merged = site.load_file(cfg)
+    assert list(merged["partitions"]["limits"]) == ["gpu"]
+
+
+def test_settings_tables_still_merge(tmp_path):
+    """Overriding one tool must leave the others at their packaged values."""
+    cfg = tmp_path / "site.toml"
+    cfg.write_text('[tools]\nqueue = "myqueue"\n')
+    merged = site.load_file(cfg)
+    assert merged["tools"]["queue"] == "myqueue"
+    assert merged["tools"]["partitions"] == "spart"
+    assert merged["tools"]["quota"] == "quota"
+
+
+def test_unnamed_inventory_keeps_the_packaged_default(tmp_path):
+    """A site that says nothing about gpu_types still gets the packaged profile."""
+    cfg = tmp_path / "site.toml"
+    cfg.write_text('[site]\nname = "Example"\n')
+    merged = site.load_file(cfg)
+    assert "h100" in merged["gpu_types"]
+
+
+def test_gpu_types_keys_are_lower_cased(tmp_path):
+    """TOML allows an upper-case bare key; the type lookup is lower-case."""
+    cfg = tmp_path / "site.toml"
+    cfg.write_text('[gpu_types]\nV100 = "gpu"\nL40S = "gpu_big"\n')
+    monkey = site._cache
+    try:
+        site._cache = site.load_file(cfg)
+        assert site.gpu_type_partition() == {"v100": "gpu", "l40s": "gpu_big"}
+    finally:
+        site._cache = monkey

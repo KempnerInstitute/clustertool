@@ -2,8 +2,10 @@
 #
 # Other centers override these values with their own file, discovered from
 # $CLUSTERTOOL_SITE_CONFIG, then ~/.config/clustertool/site.toml, then
-# /etc/clustertool/site.toml. A site file is deep-merged over this default,
-# so it only needs to set the keys that differ.
+# /etc/clustertool/site.toml. A site file is deep-merged over this default, so it
+# only needs to set the keys that differ. Two tables are the exception:
+# [gpu_types] and [partitions.limits] describe what a cluster has, so defining
+# either one replaces it entirely and you must list every entry you want.
 
 [site]
 name = "Kempner AI Cluster"
@@ -17,23 +19,26 @@ priority_pattern = "kempner.*priority"
 
 [partitions.limits.kempner]
 cpus_per_gpu = 16
-mem_per_gpu_mb = 240000
+mem_per_gpu_mb = 245760
 
 [partitions.limits.kempner_h100]
 cpus_per_gpu = 24
-mem_per_gpu_mb = 360000
+mem_per_gpu_mb = 368640
 
 [partitions.limits.kempner_h200]
 cpus_per_gpu = 16
-mem_per_gpu_mb = 360000
+mem_per_gpu_mb = 368640
 
 [partitions.limits.kempner_rtx]
 cpus_per_gpu = 16
-mem_per_gpu_mb = 180000
+mem_per_gpu_mb = 184320
 
 [qos]
 base = "kempner_base"
-default_cap = 96
+# Fallback per-account GPU cap, used only when the base QoS names no gres/gpu
+# limit. 0 means assume no cap, so usage is reported without a denominator
+# rather than against a number this cluster does not enforce.
+default_cap = 0
 # Slurm cluster name that the admin qos commands operate on.
 cluster = "odyssey"
 # Fairshare set on a new association created by qos grant.
@@ -46,6 +51,8 @@ grant_strip = ["normal"]
 # Venv on remote GPU nodes that `gpu pulse --node` activates to run kempnerpulse.
 # Leave empty to disable remote launch at a site without a shared install.
 remote_venv = "/n/holylfs06/LABS/kempner_shared/Everyone/common_envs/kempnerpulse/.venv"
+# Entry point to run inside that venv. Defaults to kempnerpulse.
+remote_tool = "kempnerpulse"
 
 [gpu_types]
 a100 = "kempner"
@@ -84,6 +91,11 @@ account_usage = "stotal"
 account_efficiency = "seff-account"
 job_stats = "jobstats"
 quota = "quota"
+lfs = "lfs"
+ncdu = "ncdu"
+sdiag = "sdiag"
+nvtop = "nvtop"
+tmux = "tmux"
 
 # Command paths to turn off at this site, e.g. ["jobs scope", "diag nvlink"].
 # Disabled commands vanish from help, search, and resolution.

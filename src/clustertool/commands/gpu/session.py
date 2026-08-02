@@ -1,6 +1,7 @@
 """gpu session command."""
 
 import os
+import pwd
 import socket
 
 import click
@@ -8,15 +9,38 @@ import click
 from clustertool import completion, process, slurm
 from clustertool.grouping import keywords
 
+_CONFLICTS = {
+    "--mem": ("--mem-per-cpu", "--mem-per-gpu"),
+    "--cpus-per-task": ("--cpus-per-gpu", "--tres-per-task"),
+}
+"""Defaults salloc refuses to see alongside a flag the caller may pass.
+
+man salloc calls --mem, --mem-per-cpu and --mem-per-gpu mutually exclusive, and
+--cpus-per-task incompatible with --cpus-per-gpu, so these cannot be overridden
+by passing the other form: salloc rejects the pair outright. The default is
+dropped instead.
+"""
+
+
+def _drop_conflicting_defaults(defaults: list[str], salloc_args: tuple[str, ...]) -> list[str]:
+    """Return the injected defaults minus any salloc would refuse next to a given flag."""
+    given = {arg.split("=", 1)[0] for arg in salloc_args}
+    kept = []
+    for spec in defaults:
+        flag = spec.split("=", 1)[0]
+        if given.intersection(_CONFLICTS.get(flag, ())):
+            continue
+        kept.append(spec)
+    return kept
+
 
 def _jupyter_command(port: int) -> list[str]:
     """Return an srun command that launches Jupyter Lab on the allocated node.
 
-    srun is required: salloc runs a command it is given on the submitting host,
-    so a bare command would start the notebook on the login node while the GPU
-    sat idle. Binding to the node's own hostname keeps it off other interfaces.
+    salloc runs a given command on the submitting host, so srun is what places it
+    on the allocation. The server binds to the node's own hostname.
     """
-    user = os.environ.get("USER", "")
+    user = pwd.getpwuid(os.getuid()).pw_name
     login_host = socket.gethostname()
     tunnel = f"ssh -N -L {port}:$(hostname):{port} {user}@{login_host}"
     inner = (
@@ -44,7 +68,13 @@ def _jupyter_command(port: int) -> list[str]:
 @click.option(
     "--jupyter", is_flag=True, help="Launch Jupyter Lab on the node and print the tunnel."
 )
-@click.option("--port", type=int, default=8888, show_default=True, help="Port for --jupyter.")
+@click.option(
+    "--port",
+    type=click.IntRange(1024, 65535),
+    default=8888,
+    show_default=True,
+    help="Port for --jupyter.",
+)
 def session(
     gpu_type: str,
     salloc_args: tuple[str, ...],
@@ -56,19 +86,29 @@ def session(
     """Start an interactive single-GPU session on a base partition (via salloc).
 
     GPU_TYPE selects the base partition, and the session requests one GPU plus
-    the CPU and memory that partition enforces per GPU. Drops you into a shell
-    on the node; exit it (or let the time limit lapse) to release the
-    allocation. With --jupyter it runs Jupyter Lab on the allocated node through
+    the CPU and memory your site allots per GPU on that partition. Where the site
+    sets use_interactive_step in LaunchParameters, salloc puts the shell on the
+    allocated node; otherwise it runs on the submitting host. Exit the shell, or
+    let the time limit lapse, to release the allocation. With --jupyter it runs
+    Jupyter Lab on the allocated node through
     srun instead, bound to that node, and prints the SSH tunnel to reach it from
-    your laptop.
+    your laptop. That tunnel names the host this command was run on, so run it
+    from a login node: a tunnel to a compute node is not reachable from outside
+    the cluster.
 
     Extra arguments are forwarded to salloc after these defaults, so you can
-    override or add any salloc flag (salloc uses the last value), for example
-    'gpu session a100 -A LAB --mem=500000' or '... -J devshell'.
+    override or add a salloc flag (salloc uses the last value), for example
+    'gpu session TYPE -A LAB --mem=500000' or '... -J devshell'. The per-GPU
+    forms are the exception: man salloc makes --mem-per-gpu and --mem-per-cpu
+    mutually exclusive with --mem, and --cpus-per-gpu incompatible with
+    --cpus-per-task, so passing one of those drops the matching default rather
+    than layering on top of it.
 
     The GPU types listed above are the ones your site defines under [gpu_types],
     each mapped to a partition whose per-GPU CPU and memory come from
-    [partitions.limits]. Run 'nodes partitions' to see that mapping.
+    [partitions.limits], which 'gpu avail PARTITION' states in force. When a
+    partition has no configured ratio, no CPU or memory request is made and
+    Slurm applies that partition's own defaults.
 
     \b
     Use cases:
@@ -77,7 +117,7 @@ def session(
 
     \b
     Inputs:
-      GPU_TYPE         One of a100, h100, h200, rtx.
+      GPU_TYPE         A GPU type your site defines under [gpu_types].
       -A, --account    Fairshare account to charge (required).
       -t, --time       Time limit D-HH:MM (default 0-01:00).
       --jupyter        Launch Jupyter Lab on the node and print the SSH tunnel.
@@ -85,21 +125,14 @@ def session(
       [SALLOC_ARG]...  Extra salloc arguments, forwarded (override the defaults).
     """
     partition = slurm.GPU_TYPE_PARTITION[gpu_type.lower()]
-    cpus, mem_mb = slurm.PARTITION_LIMITS[partition]
-    cmd = [
-        "salloc",
-        "-p",
-        partition,
-        "--account=" + account,
-        "--gres=gpu:1",
-        "--cpus-per-task=" + str(cpus),
-        "--mem=" + str(mem_mb),
-        "-t",
-        time_limit,
-        *salloc_args,
-    ]
+    cmd = ["salloc", "-p", partition, "--account=" + account, "--gres=gpu:1"]
+    limits = slurm.PARTITION_LIMITS.get(partition)
+    if limits:
+        cpus, mem_mb = limits
+        defaults = ["--cpus-per-task=" + str(cpus), "--mem=" + str(mem_mb)]
+        cmd += _drop_conflicting_defaults(defaults, salloc_args)
+    cmd += ["-t", time_limit, *salloc_args]
     if jupyter:
         cmd += _jupyter_command(port)
-    code = process.stream(cmd)
-    if code:
-        raise SystemExit(code)
+    if process.stream(cmd):
+        raise click.ClickException(f"salloc failed for partition {partition}")

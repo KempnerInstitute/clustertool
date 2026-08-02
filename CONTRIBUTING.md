@@ -89,7 +89,7 @@ command lives in its own file.
    an ordinary user's) should be marked with the `admin` decorator from
    `clustertool.grouping`, placed above `@click.command`, so `--help` lists
    them under Admin Commands rather than User Commands. A command that changes
-   only the caller's own jobs or files, such as `jobs hold` or `storage
+   only the caller's own jobs or files, such as `jobs cancel` or `storage
    lfs-stripe`, is not privileged and stays user scope. Name the actual level in
    the docstring rather than assuming operator: `scontrol update node` and QoS
    definition changes need a Slurm or system admin, editing an account or

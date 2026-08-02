@@ -69,8 +69,12 @@ def wait_times(
     """Show submit-to-start wait time distributions (via sacct).
 
     Reports the count and p50/p90/max wait, grouped by partition, QoS, and GPU
-    count, over the window. sacct keeps no pending-reason history, so this does
-    not separate priority wait from resource wait.
+    count, for the jobs that started inside the window. man sacct scopes -S and
+    -E to jobs in any state during that span, which includes a job that was
+    merely pending through it and started days later, so the start time is
+    checked here rather than left to sacct. sacct keeps no pending-reason
+    history, so this does not separate priority wait from resource wait, and a
+    job requeued during the window is timed from its last submit.
 
     \b
     Use cases:
@@ -80,7 +84,9 @@ def wait_times(
     \b
     Inputs:
       -u, --user       User to report (default: current user).
-      -A, --account    Report an account (others' need operator rights).
+      -A, --account    Report an account (others' jobs need AdminLevel=Operator
+                       or above, or coordinator of it; without it the result
+                       covers only your own jobs).
       -p, --partition  Report a partition.
       -d, --days       Window length in days (default 7).
       --since/--until  Explicit window, YYYY-mm-ddTHH:MM:SS.
@@ -93,8 +99,9 @@ def wait_times(
         _FIELDS, start, end, user=scope_user, account=account, partition=partition
     )
 
+    window_start, window_end = _epoch(start), _epoch(end)
     samples: list[dict] = []
-    pending = skew = malformed = 0
+    pending = skew = malformed = outside = 0
     for row in rows:
         if len(row) < 7 or not row[0].strip().isdigit():
             malformed += 1
@@ -104,9 +111,13 @@ def wait_times(
             pending += 1
             continue
         try:
-            wait_s = _epoch(started) - _epoch(submit)
+            start_epoch = _epoch(started)
+            wait_s = start_epoch - _epoch(submit)
         except ValueError:
             pending += 1
+            continue
+        if not window_start <= start_epoch <= window_end:
+            outside += 1
             continue
         if wait_s < 0:
             skew += 1
@@ -123,10 +134,14 @@ def wait_times(
     click.echo(f"Submit-to-start wait times  ({start} to {end})")
     click.echo()
     click.echo(
-        f"  {len(samples)} started job(s); excluded {pending} pending, {skew} clock-skew; "
+        f"  {len(samples)} job(s) started in the window; excluded {pending} pending, "
+        f"{outside} that started outside it, {skew} clock-skew; "
         f"{malformed} malformed row(s)"
     )
     click.echo("  (sacct cannot separate priority wait from resource wait)")
+    click.echo(
+        "  (a job requeued during the window is timed from its last submit, not from its first)"
+    )
 
     def show(title: str, key: str) -> None:
         groups: dict[str, list[int]] = {}

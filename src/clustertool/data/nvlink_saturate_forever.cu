@@ -35,7 +35,7 @@ int main(int argc, char** argv) {
   const size_t bytes = (argc > 1) ? std::strtoull(argv[1], nullptr, 10)
                                   : (size_t)2 << 30; // default 2 GiB per GPU
   const int warmup = (argc > 2) ? std::atoi(argv[2]) : 20;
-  const int report_every = (argc > 3) ? std::atoi(argv[3]) : 100;
+  const int report_every = (argc > 3) ? std::atoi(argv[3]) : 200;
 
   if (bytes % sizeof(float) != 0) {
     fprintf(stderr, "Buffer size must be a multiple of sizeof(float)\n");

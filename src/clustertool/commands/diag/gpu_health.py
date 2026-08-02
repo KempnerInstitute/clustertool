@@ -43,7 +43,8 @@ def gpu_health(ctx: click.Context, json_out: str | None, from_xml: str | None) -
     GPU and for the node, from ECC and row-remap state, clock throttling, and
     PCIe/NVLink error counters. Read-only and hardware-only; for utilization and
     profiling use jobs scope. Run it on a GPU node, for example inside an salloc
-    or srun. The exit code is 0 OK, 1 WARN, 2 FAIL, 3 probe error.
+    or srun. The exit code is 0 OK, 1 WARN, 3 probe error, 4 FAIL. 2 is unused
+    throughout the diagnostics, since click exits 2 on a usage error.
 
     \b
     Use cases:

@@ -15,7 +15,8 @@ def test_quality_score():
     assert fabric.quality_score("NODE") == 3
     assert fabric.quality_score("SYS") == 1
     assert fabric.quality_score("X") == 0
-    assert fabric.quality_score("?") == 0
+    assert fabric.quality_score("?") is None
+    assert fabric.quality_score("C2C") is None
 
 
 def test_parse_topo_real_node():
@@ -173,3 +174,83 @@ def test_render_drift_verdict():
     assert "DRIFT" in fabric.render_drift({"hardware": ["x"], "informational": []}, False)
     assert "MATCH" in fabric.render_drift({"hardware": [], "informational": ["d"]}, False)
     assert "DRIFT" in fabric.render_drift({"hardware": [], "informational": ["d"]}, True)
+
+
+def test_collect_snapshot_records_a_missing_tool(monkeypatch, tmp_path):
+    """An empty field must be distinguishable from a probe that could not run."""
+    monkeypatch.setattr(fabric.process, "probe", lambda cmd, timeout=None: (127, "", ""))
+    snapshot = fabric.collect_snapshot(ib_root=str(tmp_path), timestamp="2026-08-01T00:00:00+00:00")
+    assert snapshot["probe_errors"]["nvidia-smi"] == "not installed"
+    assert snapshot["probe_errors"]["ibdev2netdev"] == "not installed"
+    assert snapshot["gpus"] == []
+
+
+def test_collect_snapshot_records_a_timeout(monkeypatch, tmp_path):
+    monkeypatch.setattr(fabric.process, "probe", lambda cmd, timeout=None: (124, "", ""))
+    snapshot = fabric.collect_snapshot(ib_root=str(tmp_path), timestamp="2026-08-01T00:00:00+00:00")
+    assert any("timed out" in reason for reason in snapshot["probe_errors"].values())
+
+
+def test_collect_snapshot_has_no_errors_when_every_probe_works(monkeypatch, tmp_path):
+    monkeypatch.setattr(fabric.process, "probe", lambda cmd, timeout=None: (0, "", ""))
+    snapshot = fabric.collect_snapshot(ib_root=str(tmp_path), timestamp="2026-08-01T00:00:00+00:00")
+    assert snapshot["probe_errors"] == {}
+
+
+def test_require_snapshot_rejects_the_wrong_shape():
+    """json.loads accepts anything well-formed, including a list or a bare string."""
+    import pytest
+
+    for bad in ([1, 2], None, "text", {"ib": None}, {"ib": {"hcas": {}}}):
+        with pytest.raises(ValueError):
+            fabric.require_snapshot(bad, "BEFORE x.json")
+    with pytest.raises(ValueError):
+        fabric.require_snapshot({"ib": {"hcas": [{"ports": []}]}}, "BEFORE x.json")
+
+
+def test_require_snapshot_accepts_a_real_one():
+    snap = {"ib": {"hcas": [{"name": "mlx5_0", "ports": []}]}}
+    assert fabric.require_snapshot(snap, "BEFORE x.json") is snap
+    assert fabric.require_snapshot({"gpus": []}, "AFTER y.json") == {"gpus": []}
+
+
+def test_affinity_rows_flags_an_unknown_token_rather_than_calling_it_a_fault():
+    """A token the legend does not define is a gap in the parse, not distant hardware."""
+    rows = fabric.affinity_rows({"GPU0": {"NIC0": "C2C"}})
+    assert rows == [("GPU0", "NIC0", "C2C", "UNKNOWN")]
+
+
+def test_affinity_rows_still_prefers_a_known_token_over_an_unknown_one():
+    rows = fabric.affinity_rows({"GPU0": {"NIC0": "C2C", "NIC1": "PIX"}})
+    assert rows == [("GPU0", "NIC1", "PIX", "OK")]
+
+
+def test_require_snapshot_rejects_a_wrong_shaped_port_or_hostname():
+    """These reach the diff as a traceback and exit 1, which means a real finding here."""
+    import pytest
+
+    bad = [
+        {"ib": {"hcas": [{"name": "mlx5_0", "ports": None}]}},
+        {"ib": {"hcas": [{"name": "mlx5_0", "ports": ["port1"]}]}},
+        {"ib": {"hcas": [{"name": "mlx5_0", "ports": [{"counters": {}}]}]}},
+        {"ib": {"hcas": [{"name": "mlx5_0", "ports": [{"port": 1, "counters": []}]}]}},
+        {"hostname": ["a", "b"], "ib": {"hcas": []}},
+        {"hostname": 12345, "ib": {"hcas": []}},
+    ]
+    for snapshot in bad:
+        with pytest.raises(ValueError):
+            fabric.require_snapshot(snapshot, "BEFORE x.json")
+
+
+def test_collect_snapshot_records_an_unreadable_ib_tree(tmp_path):
+    """Every other field records why it could not be probed; this one raised instead."""
+    root = tmp_path / "infiniband"
+    root.mkdir()
+    (root / "mlx5_0").mkdir()
+    root.chmod(0o000)
+    try:
+        snapshot = fabric.collect_snapshot(ib_root=str(root))
+    finally:
+        root.chmod(0o755)
+    assert snapshot["ib"]["hcas"] == []
+    assert any("infiniband" in key for key in snapshot["probe_errors"])

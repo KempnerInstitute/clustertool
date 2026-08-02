@@ -7,7 +7,7 @@ import click
 import pytest
 from click.testing import CliRunner
 
-from clustertool import process, site
+from clustertool import process, site, slurm
 from clustertool.cli import main
 from clustertool.commands.jobs import jobs as jobs_group
 
@@ -112,6 +112,17 @@ def test_configured_tool_name_is_used(monkeypatch):
     monkeypatch.setattr(site, "tool_available", lambda key: True)
     monkeypatch.setattr(site, "tool", lambda key: "myqueue" if key == "queue" else key)
     monkeypatch.setattr(process, "stream", lambda cmd, **kw: calls.append(cmd) or 0)
+    monkeypatch.setattr(slurm, "partition_exists", lambda p: True)
     result = CliRunner().invoke(main, ["jobs", "queue", "part"])
     assert result.exit_code == 0
     assert calls[0][0] == "myqueue"
+
+
+def test_tool_command_with_several_keys_hides_only_when_all_are_absent(monkeypatch):
+    """account usage backs one flag with a second tool, which must survive the first."""
+    from clustertool.commands.account.usage import usage
+
+    monkeypatch.setattr(site, "tool_available", lambda key: key == "account_efficiency")
+    assert usage.hidden is False
+    monkeypatch.setattr(site, "tool_available", lambda key: False)
+    assert usage.hidden is True

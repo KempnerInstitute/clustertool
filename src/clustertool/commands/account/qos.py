@@ -5,9 +5,10 @@ import click
 from clustertool import process
 from clustertool.grouping import keywords
 
-_FORMAT = "Name%28,Priority,MaxWall,MaxTRESPU%22,MaxTRES%18,GrpTRES%18"
+_FORMAT = "Name%28,Priority,MaxWall,MaxTRESPU%-32,MaxTRESPA%18,MaxTRES%18,GrpTRES%18,MaxJobsPU"
+"""Every limit qos create and qos modify can set, so the two views agree."""
 _LONG_FORMAT = (
-    "Name%28,Priority,MaxWall,GrpTRES%18,MaxTRES%18,MaxTRESPU%22,"
+    "Name%28,Priority,MaxWall,GrpTRES%18,MaxTRES%18,MaxTRESPU%-32,MaxTRESPA%18,"
     "MaxJobsPU,MaxSubmitPU,Flags%20,Preempt%18,UsageFactor"
 )
 
@@ -22,14 +23,15 @@ _LONG_FORMAT = (
     "--long",
     "long_format",
     is_flag=True,
-    help="Show the full field set (MaxJobsPU, MaxSubmitPU, Flags, Preempt, UsageFactor).",
+    help="Also show MaxSubmitPU, Flags, Preempt and UsageFactor.",
 )
 def qos(name_filter: str | None, long_format: bool) -> None:
     """List QoS definitions and their limits (via sacctmgr).
 
-    Shows each QoS with its priority, max wall time, and TRES limits (including
-    the per-user and total GPU caps). With --long, add the job-count, submit,
-    Flags, Preempt, and UsageFactor columns.
+    Shows each QoS with its priority, max wall time, and TRES limits: the
+    per-user, per-account, per-job, and total GPU caps, so every limit qos create
+    and qos modify can set is readable here. With --long, add the job-count,
+    submit, Flags, Preempt, and UsageFactor columns.
 
     \b
     Use cases:
@@ -39,14 +41,15 @@ def qos(name_filter: str | None, long_format: bool) -> None:
     \b
     Inputs:
       -f, --filter  Only show rows containing this text (the header is kept).
-      -l, --long    Show the full field set instead of the compact one.
+      -l, --long    Also show MaxSubmitPU, Flags, Preempt and UsageFactor.
     """
     cmd = ["sacctmgr", "show", "qos", "format=" + (_LONG_FORMAT if long_format else _FORMAT)]
     if not name_filter:
-        code = process.stream(cmd)
-        if code:
-            raise SystemExit(code)
+        process.passthrough(cmd, "'sacctmgr show qos' failed")
         return
-    for i, line in enumerate(process.run(cmd).splitlines()):
+    code, out, err = process.probe(cmd)
+    if code:
+        raise click.ClickException(f"'sacctmgr show qos' failed: {err.strip() or code}")
+    for i, line in enumerate(out.splitlines()):
         if i < 2 or name_filter.lower() in line.lower():
             click.echo(line)

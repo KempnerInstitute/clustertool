@@ -3,7 +3,8 @@
 Externalizes cluster-specific values (partition names, per-GPU limits, GPU type
 map, account conventions, storage paths) so the commands stay portable. Values
 load from the first file found among $CLUSTERTOOL_SITE_CONFIG, the user config,
-then the system config, deep-merged over the packaged default.
+then the system config, deep-merged over the packaged default. The tables in
+_REPLACED_TABLES are the exception: defining one replaces it outright.
 """
 
 import os
@@ -33,12 +34,23 @@ def _packaged_default() -> dict:
     return tomllib.loads(text)
 
 
-def _deep_merge(base: dict, override: dict) -> dict:
-    """Return a recursive merge of override onto base, mutating neither."""
+_REPLACED_TABLES = (("gpu_types",), ("partitions", "limits"))
+
+
+def _deep_merge(base: dict, override: dict, path: tuple[str, ...] = ()) -> dict:
+    """Return a recursive merge of override onto base, mutating neither.
+
+    Tables listed in _REPLACED_TABLES are replaced outright when the override
+    defines them; every other table merges key by key.
+    """
     result = dict(base)
     for key, value in override.items():
+        here = path + (key,)
         if isinstance(value, dict) and isinstance(result.get(key), dict):
-            result[key] = _deep_merge(result[key], value)
+            if here in _REPLACED_TABLES:
+                result[key] = dict(value)
+            else:
+                result[key] = _deep_merge(result[key], value, here)
         else:
             result[key] = value
     return result
@@ -51,8 +63,7 @@ class ConfigError(Exception):
 def _discover() -> Path | None:
     """Return the first existing site config file, or None for the default.
 
-    A path given in the environment is an explicit request, so a missing file
-    there is an error rather than a silent fall back to the packaged default.
+    A path given in the environment must exist; a missing one is an error.
     """
     env = os.environ.get(ENV_VAR)
     if env:
@@ -153,8 +164,8 @@ def partition_limits() -> dict[str, tuple[int, int]]:
 
 
 def gpu_type_partition() -> dict[str, str]:
-    """Return the GPU type to partition map used by sessions and job builder."""
-    return dict(config()["gpu_types"])
+    """Return the GPU type to partition map, keyed by lower-case type name."""
+    return {str(key).lower(): str(value) for key, value in config()["gpu_types"].items()}
 
 
 def gpu_status_types() -> list[tuple[str, str]]:
@@ -187,6 +198,11 @@ def pulse_remote_venv() -> str:
     return str(config().get("pulse", {}).get("remote_venv", ""))
 
 
+def pulse_remote_tool() -> str:
+    """Return the entry point gpu pulse --node runs inside the remote venv."""
+    return str(config().get("pulse", {}).get("remote_tool", "kempnerpulse"))
+
+
 def scratch_path() -> str:
     """Return the default networked scratch path."""
     return str(config()["storage"]["scratch"])
@@ -203,8 +219,15 @@ def tool(key: str) -> str:
 
 
 def tool_available(key: str) -> bool:
-    """Return True if the configured binary for a site tool is on PATH."""
-    return shutil.which(tool(key)) is not None
+    """Return True if the configured binary is on the PATH the child will get.
+
+    Resolved against process._child_env()'s PATH rather than this process's,
+    because that environment drops clustertool's own virtualenv bin. A tool
+    installed there would otherwise pass this check and then fail at exec.
+    """
+    from clustertool import process
+
+    return shutil.which(tool(key), path=process.child_env()["PATH"]) is not None
 
 
 def disabled_commands() -> list[str]:

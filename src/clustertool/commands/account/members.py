@@ -1,5 +1,8 @@
 """account members command."""
 
+import csv
+import sys
+
 import click
 
 from clustertool import completion, site, slurm
@@ -41,10 +44,18 @@ def members(account_name: str | None, all_accounts: bool) -> None:
     if all_accounts:
         roster = site.roster_partition()
         prefix = site.lab_account_prefix()
-        accounts = [a for a in slurm.partition_accounts(roster) if a.startswith(prefix)]
+        allowed = slurm.partition_accounts(roster)
+        if not allowed:
+            raise click.ClickException(
+                f"partition '{roster}' names no accounts, so there is no roster to read "
+                "from it. Point [accounts].roster_partition at a partition whose "
+                "AllowAccounts lists your labs"
+            )
+        accounts = [a for a in allowed if a.startswith(prefix)]
         if not accounts:
             raise click.ClickException(
-                f"could not determine lab accounts from the '{roster}' partition"
+                f"none of the {len(allowed)} account(s) on partition '{roster}' start "
+                f"with '{prefix}'; set [accounts].lab_prefix to the prefix your labs use"
             )
         pairs = []
         users = set()
@@ -53,9 +64,10 @@ def members(account_name: str | None, all_accounts: bool) -> None:
                 pairs.append((account, user))
                 users.add(user)
         full_names = slurm.user_fullnames(sorted(users))
-        click.echo("account,username,full_name")
+        writer = csv.writer(sys.stdout, lineterminator="\n")
+        writer.writerow(("account", "username", "full_name"))
         for account, user in pairs:
-            click.echo(f"{account},{user},{full_names.get(user, '')}")
+            writer.writerow((account, user, full_names.get(user, "")))
         return
 
     if not account_name:

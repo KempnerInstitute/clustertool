@@ -7,7 +7,17 @@ from collections.abc import Callable
 
 from clustertool import process, site
 
-_UNIT = {"": 1, "K": 1024, "M": 1024**2, "G": 1024**3, "T": 1024**4, "P": 1024**5}
+_UNIT = {
+    "": 1,
+    "K": 1024,
+    "M": 1024**2,
+    "G": 1024**3,
+    "T": 1024**4,
+    "P": 1024**5,
+    "E": 1024**6,
+    "Z": 1024**7,
+    "Y": 1024**8,
+}
 
 
 def parse_du_top(output: str, root: str, top_n: int) -> list[tuple[int, str]]:
@@ -51,19 +61,25 @@ def quota_cmd(
 
 
 def _to_bytes(text: str) -> float:
-    """Parse a size like '1.5T' or '200Gi' into bytes; 0 when unparseable."""
-    match = re.match(r"([0-9.]+)\s*([KkMGTP]?)", text.rstrip("i"))
+    """Parse a size like '1.5T', '200Gi' or '20k' into bytes; 0 when unparseable."""
+    match = re.match(r"([0-9.]+)\s*([KkMmGgTtPpEeZzYy]?)", text.rstrip("i"))
     if not match:
         return 0.0
     return float(match.group(1)) * _UNIT.get(match.group(2).upper(), 1)
 
 
-def _count(text: str) -> float:
-    """Parse a plain count; 0 when unparseable."""
+def _count(text: str) -> float | None:
+    """Parse a plain count; None when it cannot be read.
+
+    None keeps a suffixed or malformed count out of the percentage, so the cell
+    reads as unknown rather than as zero usage. lfs stars the used cell of the
+    inode group as well as the block group, per man lfs-quota, so the star is
+    stripped: an over-quota inode count is the one case the column exists for.
+    """
     try:
-        return float(text)
+        return float(text.rstrip("*"))
     except ValueError:
-        return 0.0
+        return None
 
 
 def _percent(value: float, cap: float, cap_text: str) -> str:
@@ -73,21 +89,63 @@ def _percent(value: float, cap: float, cap_text: str) -> str:
     return f"{100 * value / cap:.0f}%"
 
 
-def parse_quota_row(output: str) -> tuple[str, str, str, str] | None:
-    """Parse FASRC quota output into (used, quota, disk_percent, files_percent).
+_QUOTA_VALUE = re.compile(r"^(?:-|\*?[0-9.]+[KkMmGgTtPpEeZzYy]?i?\*?)$")
+"""A used, quota or limit cell. lfs marks a value that is over quota with a star."""
 
-    Handles the 5-column NFS shape and the 9-column Lustre shape, reading the
-    first data row (a line for a filesystem path). Returns None when none is
-    present.
 
-    The Lustre shape carries a soft quota and a hard limit. A site that sets only
-    the hard limit leaves the soft one at 0, so the soft column alone would report
-    no quota for a filesystem that is about to refuse writes. The effective limit
-    is the soft quota when it is set, and the hard limit otherwise.
+def _is_quota_values(fields: list[str]) -> bool:
+    """Return True if the line holds a quota row's numbers rather than prose.
+
+    lfs prints notes of its own between rows, such as a default-quota message,
+    and joining one to a wrapped mount point would invent a row.
     """
+    return bool(fields) and _QUOTA_VALUE.match(fields[0]) is not None
+
+
+def _data_rows(output: str) -> list[list[str]]:
+    """Return the quota data rows, rejoining a filesystem name that wrapped its line.
+
+    lfs quota puts the mount point on a line of its own once it outgrows the
+    column, leaving the numbers on the next line.
+    """
+    rows: list[list[str]] = []
+    pending = ""
     for line in output.splitlines():
         fields = line.split()
-        if len(fields) < 5 or not fields[0].startswith("/"):
+        if not fields:
+            continue
+        if pending and _is_quota_values(fields):
+            rows.append([pending, *fields])
+            pending = ""
+            continue
+        pending = ""
+        if len(fields) == 1 and fields[0].startswith("/"):
+            pending = fields[0]
+        elif fields[0].startswith("/"):
+            rows.append(fields)
+    return rows
+
+
+def parse_quota_row(output: str) -> tuple[str, str, str, str] | None:
+    """Parse quota-tool output into (used, quota, disk_percent, files_percent).
+
+    Reads the data rows, each a line starting with a filesystem path in either the
+    5-column VAST shape or the 9-column Lustre shape. Rows of any other width are
+    ignored, so the df table the quota tool prints for a filesystem it does not
+    track yields None rather than a misread quota.
+
+    The tool prints one block per matching quota record, and a group can have more
+    than one on the same mount point. The row reporting the most usage wins, since
+    that is the record actually constraining the group; taking whichever came
+    first would report an unused record as the group's usage.
+
+    The Lustre shape carries a soft quota and a hard limit. The effective limit is
+    the soft quota when it is set, and the hard limit otherwise.
+    """
+    best: tuple[str, str, str, str] | None = None
+    best_used = -1.0
+    for fields in _data_rows(output):
+        if len(fields) != 5 and len(fields) < 9:
             continue
         used = fields[1]
         if len(fields) >= 9:
@@ -96,15 +154,37 @@ def parse_quota_row(output: str) -> tuple[str, str, str, str] | None:
         else:
             quota = fields[2]
             files, files_quota = fields[3], fields[4]
-        disk_pct = _percent(_to_bytes(used), _to_bytes(quota), quota)
-        files_pct = _percent(_count(files), _count(files_quota), files_quota)
-        return used, quota, disk_pct, files_pct
-    return None
+        used_bytes = _to_bytes(used)
+        if used_bytes <= best_used:
+            continue
+        best_used = used_bytes
+        count, cap = _count(files), _count(files_quota)
+        files_pct = "-" if count is None or cap is None else _percent(count, cap, files_quota)
+        best = (used, quota, _percent(used_bytes, _to_bytes(quota), quota), files_pct)
+    return best
 
 
 def _effective_limit(soft: str, hard: str) -> str:
     """Return the limit actually in force, preferring a set soft quota."""
     return hard if _to_bytes(soft) == 0 and _to_bytes(hard) > 0 else soft
+
+
+def lustre_ost_count(path: str) -> int:
+    """Return how many OSTs back a Lustre path, or 0 when that cannot be determined.
+
+    A stripe count above this is accepted by lfs but silently clamped, so it is
+    worth knowing before setting one. Returns 0 rather than raising, since the
+    count is only used to sanity-check a request.
+    """
+    code, out, _ = process.probe([site.tool("lfs"), "osts", path])
+    if code != 0:
+        return 0
+    return sum(1 for line in out.splitlines() if "_UUID" in line)
+
+
+def used_bytes(text: str) -> float:
+    """Return a rendered usage figure as bytes, for ordering rows of equal percent."""
+    return _to_bytes(text)
 
 
 def percent_value(text: str) -> float:
@@ -142,9 +222,13 @@ def lab_targets(
 
 
 def fleet_targets(root: str, keyword: str) -> list[tuple[str, str]]:
-    """Return (path, name) for each directory matching keyword* under root, sorted."""
+    """Return (path, name) for each directory named keyword* directly under root.
+
+    The keyword is matched literally, so a glob character or a path separator in it
+    cannot widen the search beyond one level of root.
+    """
     targets = []
-    for path in sorted(glob.glob(f"{root}/{keyword}*")):
+    for path in sorted(glob.glob(f"{root}/{glob.escape(keyword)}*")):
         if os.path.isdir(path):
             targets.append((path, os.path.basename(path)))
     return targets

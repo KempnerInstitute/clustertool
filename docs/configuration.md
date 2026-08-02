@@ -18,6 +18,12 @@ Because the override is deep-merged over the default, a site file only needs the
 keys that differ. A center typically deploys one `/etc/clustertool/site.toml`,
 so every user on that cluster gets the right values with no per-user setup.
 
+Two tables are the exception. `[gpu_types]` and `[partitions.limits]` describe
+what a cluster actually has, so defining either one replaces it entirely rather
+than merging. List every entry you want under them: a file that sets only
+`[partitions.limits.gpu_big]` leaves every other partition with no ratio, and
+those jobs then get whatever Slurm defaults to.
+
 ## Keys
 
 The packaged default lists every key with Kempner values; it is the reference:
@@ -28,10 +34,16 @@ The packaged default lists every key with Kempner values; it is the reference:
 - `[partitions]` `base`, `requeue`, `priority_pattern`: the base GPU partitions
   that count toward the cap, the partition spanning every GPU node, and the
   regex identifying priority partitions.
-- `[partitions.limits.<name>]` `cpus_per_gpu`, `mem_per_gpu_mb`: the enforced
-  per-GPU limits used to size sessions and flag over-requests.
-- `[qos]` `base`, `default_cap`, `cluster`, `grant_fairshare`, `grant_strip`: the
-  QoS whose MaxTRESPA holds the per-account GPU cap, and a fallback cap. Then the
+- `[partitions.limits.<name>]` `cpus_per_gpu`, `mem_per_gpu_mb`: the per-GPU CPU
+  and memory policy used to size sessions and job scripts and to flag
+  over-requests. This is a local policy, not something Slurm enforces.
+- `[qos]` `base`, `default_cap`, `cluster`, `grant_fairshare`, `grant_strip`:
+  `base` is the QoS whose MaxTRESPA holds the per-account GPU cap, which
+  `gpu usage` reports each account against. Only a `gres/gpu` entry there counts
+  as a GPU cap. `default_cap` is a fallback for a cluster that enforces a cap
+  outside that QoS; it defaults to `0`, meaning no cap is assumed, and then
+  `gpu usage` reports plain GPU counts with no denominator instead of scoring
+  every account against a limit your cluster does not enforce. Then the
   three used by the admin `qos` commands: `cluster` is the Slurm cluster name
   every `sacctmgr` write targets, so **set it before running any `qos` command**
   or you will aim them at a cluster named `odyssey`; `grant_fairshare` is the
@@ -49,10 +61,14 @@ The packaged default lists every key with Kempner values; it is the reference:
 - `[pulse]` `remote_venv`: the virtualenv that `gpu pulse --node` activates on a
   remote GPU node. Leave it empty and that flag reports it is not configured.
 - `[tools]`: the binary each tool-backed command runs (`queue`, `partitions`,
-  `node_load`, `account_usage`, `account_efficiency`, `job_stats`, `quota`). A
+  `node_load`, `account_usage`, `account_efficiency`, `job_stats`, `quota`,
+  `lfs`, `ncdu`, `nvtop`, `tmux`, `sdiag`). A
   command whose tool is not on PATH is hidden from help and search, so a cluster
   without `showq` simply does not show `jobs queue`. Point a key at your
   cluster's equivalent binary, or leave it and the command stays hidden.
+  `ncdu` backs one flag rather than a whole command, so `storage home` stays
+  available and only `--ncdu` reports the tool missing. `nvtop` names the
+  binary `gpu nvtop` runs on the remote node, which is not checked locally.
 - `[commands]` `disable`: command paths to turn off at this site, e.g.
   `["jobs scope", "diag nvlink"]`. Disabled commands vanish from help, search,
   and resolution. Disable a whole group by its name, e.g. `["diag"]`.

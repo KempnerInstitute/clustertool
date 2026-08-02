@@ -2,8 +2,10 @@
 
 Parses `nvidia-smi -q -x` (and `nvidia-smi nvlink -e`) and renders a tiered
 OK/WARN/FAIL verdict per GPU and for the node, covering ECC and row-remap
-state, clock throttling, and PCIe/NVLink error counters. Hardware health only;
-for utilization and profiling see `jobs scope`.
+state, clock throttling, and PCIe/NVLink error counters. A GPU that reports
+nothing at all is a WARN rather than an OK, so that a health cron can tell a
+clean GPU from one nothing could be read from. Hardware health only; for
+utilization and profiling see `jobs scope`.
 """
 
 import json
@@ -15,7 +17,24 @@ from datetime import datetime
 from clustertool import process
 
 CORRECTABLE_ECC_WARN = 100
+"""Volatile correctable errors above which to warn.
+
+Single-bit errors are corrected in hardware and do not corrupt data, so this is
+a rate-of-change hint rather than a fault. The count is volatile, meaning since
+the last driver load, so it is not comparable between two nodes of different
+uptime.
+"""
+
+PCIE_REPLAY_WARN = 80
+"""PCIe replays above which to warn.
+
+A replay is an ordinary link-layer retry, so a nonzero counter is not a fault.
+NVIDIA's own DCGM diagnostic defaults its PCIe plugin to this same number.
+"""
+
 TEMP_MARGIN_C = 5
+"""Warn when a GPU is within this many degrees of its slowdown threshold."""
+
 SMI_TIMEOUT_S = 60
 
 OK = "OK"
@@ -25,7 +44,7 @@ NA = "n/a"
 EXIT_ERROR = 3
 
 _SEVERITY = {NA: 0, OK: 0, WARN: 1, FAIL: 2}
-_EXIT_FOR = {OK: 0, WARN: 1, FAIL: 2}
+_EXIT_FOR = {OK: 0, WARN: 1, FAIL: 4}
 
 
 class ProbeError(RuntimeError):
@@ -87,6 +106,11 @@ def _ecc_count(section, kind):
     if section is None:
         return None
     sram = _to_int(_find_text(section, f"sram_{kind}"))
+    if sram is None and kind == "uncorrectable":
+        parity = _to_int(_find_text(section, "sram_uncorrectable_parity"))
+        secded = _to_int(_find_text(section, "sram_uncorrectable_secded"))
+        if parity is not None or secded is not None:
+            sram = (parity or 0) + (secded or 0)
     dram = _to_int(_find_text(section, f"dram_{kind}"))
     if sram is not None or dram is not None:
         return (sram or 0) + (dram or 0)
@@ -141,12 +165,19 @@ def parse_smi_xml(xml_text):
                     "clocks_throttle_reason_hw_slowdown",
                     "clocks_event_reason_hw_slowdown",
                 ),
+                "hw_power_brake": _throttle_flag(
+                    throttle_node,
+                    "clocks_throttle_reason_hw_power_brake_slowdown",
+                    "clocks_event_reason_hw_power_brake_slowdown",
+                ),
             }
+            if all(v is None for v in throttle.values()):
+                throttle = None
         ecc_mode = _find_text(node, "ecc_mode/current_ecc")
-        minor = _to_int(_find_text(node, "minor_number"))
         gpus.append(
             {
-                "index": minor if minor is not None else position,
+                "index": position,
+                "minor_number": _to_int(_find_text(node, "minor_number")),
                 "name": _find_text(node, "product_name"),
                 "serial": _find_text(node, "serial"),
                 "ecc_enabled": None if ecc_mode is None else ecc_mode.lower() == "enabled",
@@ -156,13 +187,27 @@ def parse_smi_xml(xml_text):
                 "row_remap_pending": _yesno(_find_text(remap, "remapped_row_pending")),
                 "row_remap_failure": _yesno(_find_text(remap, "remapped_row_failure")),
                 "retired_pages_pending": _yesno(
-                    _find_text(node, "retired_pages/pending_retirement")
+                    _find_text(
+                        node,
+                        "retired_pages/pending_retirement",
+                        "retired_pages/pending_blacklist",
+                    )
+                ),
+                "sram_threshold_exceeded": _yesno(
+                    _find_text(ecc, "aggregate/sram_threshold_exceeded")
                 ),
                 "throttle": throttle,
                 "temp_c": _to_int(_find_text(node, "temperature/gpu_temp")),
                 "slowdown_temp_c": _to_int(_find_text(node, "temperature/gpu_temp_slow_threshold")),
+                "temp_margin_c": _to_int(_find_text(node, "temperature/gpu_temp_tlimit")),
                 "power_w": _to_float(
-                    _find_text(node, "gpu_power_readings/power_draw", "power_readings/power_draw")
+                    _find_text(
+                        node,
+                        "gpu_power_readings/power_draw",
+                        "gpu_power_readings/instant_power_draw",
+                        "gpu_power_readings/average_power_draw",
+                        "power_readings/power_draw",
+                    )
                 ),
                 "power_limit_w": _to_float(
                     _find_text(
@@ -213,6 +258,14 @@ def worst(tiers):
     return result
 
 
+_NORMAL_THROTTLE = frozenset({"sw_power_cap"})
+"""Reasons that are ordinary clock management rather than a fault.
+
+Per man nvidia-smi the SW power cap is the scaling algorithm holding a GPU at
+its configured power limit, which is the steady state of a busy datacenter GPU.
+"""
+
+
 def evaluate(gpu, nvlink):
     """Return {check: (tier, detail)} for one GPU, per the verdict rules.
 
@@ -228,6 +281,7 @@ def evaluate(gpu, nvlink):
         "row_remap_pending",
         "row_remap_failure",
         "retired_pages_pending",
+        "sram_threshold_exceeded",
     )
     if gpu.get("ecc_enabled") is False:
         checks["ecc"] = (NA, "ECC disabled")
@@ -236,6 +290,8 @@ def evaluate(gpu, nvlink):
     elif gpu.get("volatile_uncorrectable"):
         count = gpu["volatile_uncorrectable"]
         checks["ecc"] = (FAIL, f"volatile uncorrectable ECC errors: {count}")
+    elif gpu.get("sram_threshold_exceeded"):
+        checks["ecc"] = (FAIL, "SRAM uncorrectable error threshold exceeded (RMA candidate)")
     elif gpu.get("row_remap_failure"):
         checks["ecc"] = (FAIL, "row remap failure (RMA candidate)")
     elif gpu.get("row_remap_pending"):
@@ -264,24 +320,33 @@ def evaluate(gpu, nvlink):
 
     throttle = gpu.get("throttle")
     temp, slowdown = gpu.get("temp_c"), gpu.get("slowdown_temp_c")
+    margin = gpu.get("temp_margin_c")
     active = sorted(k for k, v in (throttle or {}).items() if v)
-    if throttle is None and temp is None:
+    hardware = sorted({"hw_slowdown", "hw_power_brake"} & set(active))
+    concerning = sorted(set(active) - _NORMAL_THROTTLE - set(hardware))
+    hot = temp is not None and slowdown is not None and temp >= slowdown - TEMP_MARGIN_C
+    reported = throttle is not None and any(v is not None for v in throttle.values())
+    if not reported and temp is None and margin is None:
         checks["throttle"] = (NA, "not reported")
-    elif "hw_slowdown" in active:
-        checks["throttle"] = (FAIL, "HW slowdown throttle active")
-    elif active:
-        checks["throttle"] = (WARN, f"throttling active: {', '.join(active)}")
-    elif temp is not None and slowdown is not None and temp >= slowdown - TEMP_MARGIN_C:
+    elif hardware:
+        checks["throttle"] = (FAIL, f"hardware slowdown active: {', '.join(hardware)}")
+    elif concerning:
+        checks["throttle"] = (WARN, f"throttling active: {', '.join(concerning)}")
+    elif hot:
         detail = f"temperature {temp}C within {TEMP_MARGIN_C}C of slowdown threshold {slowdown}C"
         checks["throttle"] = (WARN, detail)
+    elif slowdown is None and margin is not None and margin <= TEMP_MARGIN_C:
+        checks["throttle"] = (WARN, f"{margin}C of thermal margin left (warn at {TEMP_MARGIN_C}C)")
+    elif active:
+        checks["throttle"] = (OK, f"at the power cap, which is normal: {', '.join(active)}")
     else:
         checks["throttle"] = (OK, "")
 
     replay = gpu.get("pcie_replay")
     if replay is None:
         checks["pcie"] = (NA, "not reported")
-    elif replay > 0:
-        checks["pcie"] = (WARN, f"PCIe replay counter: {replay}")
+    elif replay > PCIE_REPLAY_WARN:
+        checks["pcie"] = (WARN, f"PCIe replay counter: {replay} (> {PCIE_REPLAY_WARN})")
     else:
         checks["pcie"] = (OK, "")
 
@@ -321,12 +386,15 @@ def build_result(parsed, nvlink_by_gpu, host=None, timestamp=None):
         if nvlink_by_gpu is not None:
             nvlink = nvlink_by_gpu.get(gpu["index"]) or None
         checks = evaluate(gpu, nvlink)
+        blind = all(tier == NA for tier, _ in checks.values())
         gpus_out.append(
             {
                 "index": gpu["index"],
+                "minor_number": gpu["minor_number"],
                 "name": gpu["name"],
                 "serial": gpu["serial"],
-                "verdict": worst(tier for tier, _ in checks.values()),
+                "verdict": WARN if blind else worst(tier for tier, _ in checks.values()),
+                "verdict_detail": "nothing could be read from this GPU" if blind else "",
                 "checks": {
                     "ecc": {
                         "status": checks["ecc"][0],
@@ -335,6 +403,7 @@ def build_result(parsed, nvlink_by_gpu, host=None, timestamp=None):
                         "aggregate_uncorrectable": gpu["aggregate_uncorrectable"],
                         "volatile_correctable": gpu["volatile_correctable"],
                         "row_remap": _row_remap_state(gpu),
+                        "sram_threshold_exceeded": gpu["sram_threshold_exceeded"],
                     },
                     "throttle": {
                         "status": checks["throttle"][0],
@@ -342,6 +411,7 @@ def build_result(parsed, nvlink_by_gpu, host=None, timestamp=None):
                         "active": sorted(k for k, v in (gpu["throttle"] or {}).items() if v),
                         "temp_c": gpu["temp_c"],
                         "slowdown_temp_c": gpu["slowdown_temp_c"],
+                        "temp_margin_c": gpu["temp_margin_c"],
                         "power_w": gpu["power_w"],
                         "power_limit_w": gpu["power_limit_w"],
                     },
@@ -374,14 +444,17 @@ def render_text(result):
     for gpu in result["gpus"]:
         name = gpu["name"] or "?"
         serial = gpu["serial"] or NA
-        lines.append(f"GPU {gpu['index']}: {name}  (serial {serial})")
+        minor = gpu["minor_number"]
+        device = f", /dev/nvidia{minor}" if minor is not None else ""
+        lines.append(f"GPU {gpu['index']}: {name}  (serial {serial}{device})")
         for check_name in ("ecc", "throttle", "pcie", "nvlink"):
             check = gpu["checks"][check_name]
             line = f"  {check_name + ':':<9} {check['status']}"
             if check["detail"]:
                 line += " - " + check["detail"]
             lines.append(line)
-        lines.append(f"  verdict:  {gpu['verdict']}")
+        note = gpu.get("verdict_detail")
+        lines.append(f"  verdict:  {gpu['verdict']}" + (f" - {note}" if note else ""))
         lines.append("")
     verdict = result["verdict"]
     suffix = ""
@@ -397,7 +470,12 @@ def render_json(result):
 
 
 def exit_code(verdict):
-    """Return the process exit status for a node verdict (0 OK, 1 WARN, 2 FAIL)."""
+    """Return the process exit status for a node verdict.
+
+    0 OK, 1 WARN, 4 FAIL. 2 is skipped throughout the diagnostics because click
+    exits 2 on a usage error, which a caller must be able to tell from a fault
+    the probe actually found.
+    """
     return _EXIT_FOR[verdict]
 
 

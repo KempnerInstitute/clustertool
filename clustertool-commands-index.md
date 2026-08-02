@@ -6,9 +6,10 @@ help, use `--help` on any command, or see [docs/commands/](docs/commands/).
 
 Scope: **user** commands need no special privilege; **admin** commands need
 elevated rights. Which rights depends on the command, so check its help: editing
-accounts or assigning a QoS takes Slurm operator rights or a coordinator of the
-account, while resuming nodes or changing a QoS definition takes a Slurm or
-system admin (`AdminLevel=Administrator`, or root/SlurmUser). Two commands are
+accounts or assigning a QoS takes `AdminLevel=Operator` or above, or a
+coordinator of the account, while resuming nodes or changing a QoS definition
+takes a Slurm or system admin (`AdminLevel=Administrator`, or root/SlurmUser):
+slurmdbd gates a QoS object at its super-user level, unlike an association. Two commands are
 admin for a different reason: `diag ib` and `gpu monitor-partition` ssh to every
 node in a partition, and where node login requires an allocation on that node,
 as `pam_slurm_adopt` enforces, only staff can reach them all. The Wraps column
@@ -27,9 +28,9 @@ names the host tool each command shells out to.
 | Command | Scope | Wraps | Description |
 | --- | --- | --- | --- |
 | `gpu usage [ACCOUNT]` | user | squeue, sacctmgr | Rank labs by base-partition GPU usage, or break one lab down by user and partition. |
-| `gpu util [PARTITION...]` | user | sinfo, squeue | GPU occupancy per partition: total, down, available, used, and percent. |
+| `gpu util [PARTITION...] [-p PARTITION]` | user | scontrol, squeue | GPU occupancy per partition: total, unavailable, used, other, free, and percent. |
 | `gpu status` | user | sinfo | GPU node counts by type and state, from the requeue partition. |
-| `gpu avail PARTITION` | user | scontrol, sinfo | Nodes with allocatable GPUs (free GPUs capped by the enforced per-GPU ratio). |
+| `gpu avail PARTITION` | user | scontrol | Nodes with allocatable GPUs (free GPUs capped by the enforced per-GPU ratio). |
 | `gpu session GPU_TYPE -A ACCOUNT` | user | salloc | Interactive single-GPU session (a100/h100/h200/rtx), sized to the per-GPU limits. |
 | `gpu monitor-partition PARTITION` | admin | ssh, nvidia-smi | Live per-node GPU/CPU/memory/network table for a partition (needs ssh to every node). |
 | `gpu monitor-job JOBID` | user | ssh, nvidia-smi | Live per-node GPU/CPU/memory/network table for a running job. |
@@ -40,19 +41,19 @@ names the host tool each command shells out to.
 
 | Command | Scope | Wraps | Description |
 | --- | --- | --- | --- |
-| `jobs list` | user | squeue | Your queued and running jobs (`-t`, `-p`, `-A`, `--start`). |
-| `jobs queue PARTITION` | user | showq | A partition's pending jobs in priority order. |
+| `jobs list [-u USER]` | user | squeue, scontrol, sacctmgr | Your queued and running jobs (`-u`, `-t`, `-p`, `-A`, `--start`). |
+| `jobs queue PARTITION` | user | showq | A partition's whole queue, waiting jobs in priority order. |
 | `jobs show JOBID...` | user | scontrol | Live detail for one or more jobs, including the pending reason. |
 | `jobs why JOBID` | user | squeue, sprio | Why a job is pending, plus its priority factor breakdown. |
 | `jobs debug JOBID` | user | sacct, scontrol | Diagnose why a finished job failed, with a suggested fix. |
 | `jobs top JOBID` | user | sstat | Live resource use of a running job's steps. |
 | `jobs stats JOBID...` | user | jobstats | Utilization for one or more jobs. |
 | `jobs scope [ARG...]` | user | jobscope | Completed-job efficiency plus DCGM profiling (bundled jobscope). |
-| `jobs history` | user | sacct | Your recent finished jobs (`-d`, `-u`). |
-| `jobs log JOBID [-f]` | user | scontrol, tail | Show, or tail, a job's stdout/stderr. |
-| `jobs script JOBID` | user | sacct | The batch script a job was submitted with. |
-| `jobs priorities PARTITION` | user | sprio | Priority factors for all pending jobs in a partition. |
-| `jobs violators PARTITION` | user | squeue, scontrol | Running jobs over the per-GPU CPU/memory norm. |
+| `jobs history` | user | sacct | Your recent jobs, running or finished (`-d`, `-u`). |
+| `jobs log JOBID [-f]` | user | scontrol, sacct, tail | Show, or tail, a job's stdout/stderr. |
+| `jobs script JOBID` | user | sacct, scontrol | The batch script a job was submitted with. |
+| `jobs priorities PARTITION` | user | sprio, sinfo | Priority factors for the eligible pending jobs in a partition. |
+| `jobs violators PARTITION` | user | scontrol, sinfo | Running jobs over the per-GPU CPU/memory norm. |
 | `jobs wait-times` | user | sacct | Submit-to-start wait distributions by partition, QOS, GPU count. |
 | `jobs failures` | user | sacct | Window failure post-mortem: rate and top exit codes, users, nodes. |
 | `jobs cancel [JOBID...] [-y]` | user | scancel | Cancel jobs; `--all` and `--pending` prompt first. |
@@ -73,9 +74,9 @@ names the host tool each command shells out to.
 | `account usage [ACCOUNT]` | user | stotal, seff-account | Cumulative CPU/GPU/TRES-hours, or efficiency (`--efficiency`). |
 | `account limits [ACCOUNT]` | user | sacctmgr | Account associations: QOS, partitions, and limits. |
 | `account top-users ACCOUNT` | user | sshare | Rank an account's members by RawUsage. |
-| `account qos [-f TEXT] [-l]` | user | sacctmgr | QOS definitions and their TRES limits (`--long` adds Flags, Preempt, UsageFactor). |
+| `account qos [-f TEXT] [-l]` | user | sacctmgr | QoS definitions and their TRES limits, per-user, per-account, per-job and total (`--long` adds Flags, Preempt, UsageFactor). |
 | `account add-user USER ACCOUNT` | admin | sacctmgr | Add a user to a fairshare account. |
-| `account remove-user USER ACCOUNT` | admin | sacctmgr | Remove a user's association with an account. |
+| `account remove-user USER ACCOUNT` | admin | sacctmgr | Remove a user's associations with an account. |
 | `account set-fairshare USER ACCOUNT SHARE` | admin | sacctmgr | Set a user's fairshare in an account. |
 
 ## nodes
@@ -84,10 +85,10 @@ names the host tool each command shells out to.
 | --- | --- | --- | --- |
 | `nodes list PARTITION...` | user | sinfo, scontrol | Node names and states for one or more partitions. |
 | `nodes partitions [-f TEXT]` | user | spart | Partitions with cores, GPUs, memory, and time limits. |
-| `nodes down [-p PARTITION]` | user | sinfo | Down and drained nodes with the scheduler's reason. |
+| `nodes down [-p PARTITION]` | user | sinfo, scontrol | Down, drained, draining and failing nodes with the scheduler's reason. |
 | `nodes load [-f TEXT]` | user | lsload | Per-node load and free CPU/GPU/memory. |
-| `nodes frag` | user | scontrol | Free GPU shards per partition and how many N-GPU jobs fit now. |
-| `nodes reservations` | user | scontrol | Active reservations on the cluster. |
+| `nodes frag [-p PARTITION] [--cpus-per-gpu N] [--mem-per-gpu MiB]` | user | scontrol | Free GPU shards per partition and how many N-GPU jobs fit now. |
+| `nodes reservations` | user | scontrol | Reservations on the cluster, active and not. |
 | `nodes resume [NODE...] [-p]` | admin | scontrol update | Return drained or down nodes to service. |
 
 ## storage
@@ -105,12 +106,12 @@ names the host tool each command shells out to.
 
 | Command | Scope | Wraps | Description |
 | --- | --- | --- | --- |
-| `diag gpu-health` | user | nvidia-smi | Node-local GPU health verdict: ECC, throttle, PCIe/NVLink (exit 0/1/2/3). |
-| `diag ib PARTITION...` | admin | ssh, ip | Nodes with InfiniBand ports DOWN (needs ssh to every node). |
-| `diag ib-affinity` | user | nvidia-smi | GPU-to-IB-NIC NUMA affinity verdict (exit 0 OK, 1 cross-NUMA, 2 no NIC reached, 3 probe error). |
-| `diag ib-counters BEFORE AFTER` | user | (none) | Diff two ib-snapshots for IB error-counter growth (exit 0 clean, 2 if any advanced, 3 unreadable file). |
+| `diag gpu-health` | user | nvidia-smi | Node-local GPU health verdict: ECC, throttle, PCIe/NVLink (exit 0 OK, 1 WARN, 3 probe error, 4 FAIL). |
+| `diag ib PARTITION...` | admin | ssh, sinfo | Nodes with InfiniBand ports DOWN (needs ssh to every node). |
+| `diag ib-affinity` | user | nvidia-smi | GPU-to-IB-NIC NUMA affinity verdict (exit 0 OK, 1 cross-NUMA, 3 probe error, 4 no NIC reached). |
+| `diag ib-counters BEFORE AFTER` | user | (none) | Diff two ib-snapshots for IB error-counter growth (exit 0 clean, 3 unreadable file, 4 if any advanced). |
 | `diag ib-snapshot [OUT]` | user | nvidia-smi, ibdev2netdev | Capture node IB/GPU topology and counters as JSON, for diffing. |
-| `diag ib-verify GOLDEN` | user | nvidia-smi, ibdev2netdev | Compare a node's snapshot against a golden one (exit 0 match, 2 drift, 3 setup error). |
+| `diag ib-verify GOLDEN` | user | nvidia-smi, ibdev2netdev | Compare a node's snapshot against a golden one (exit 0 match, 3 setup error, 4 drift). |
 | `diag io-probe -d DIR` | user | (none) | Filesystem write/read MB/s and metadata latency, with optional pass/fail gates. |
 | `diag nccl` | user | srun, torch | Multi-node FSDP NCCL sanity check inside a Slurm job. |
 | `diag nvlink` | user | nvcc, NCCL | Saturate a node's NVLink fabric with NCCL all-reduce. |

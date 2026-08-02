@@ -33,9 +33,13 @@ AFFINITY_OK = 3  # NODE or better
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 
-def quality_score(quality: str) -> int:
-    """Return the closeness score for an nvidia-smi topo connection quality."""
-    return _QUALITY.get(quality, 0)
+def quality_score(quality: str) -> int | None:
+    """Return the closeness score for an nvidia-smi topo connection quality.
+
+    None means the token is not one nvidia-smi's legend documents, which is a
+    parse shortfall rather than a distant link, and must not be reported as one.
+    """
+    return _QUALITY.get(quality)
 
 
 def parse_topo(raw: str) -> dict[str, dict[str, str]]:
@@ -67,13 +71,19 @@ def affinity_rows(matrix: dict[str, dict[str, str]]) -> list[tuple[str, str, str
     """Return (gpu, best_nic, best_quality, verdict) per GPU from a topo matrix.
 
     The verdict is OK for NODE or closer, WARN when the best link crosses a NUMA
-    boundary, and FAIL when the GPU reaches no NIC.
+    boundary, FAIL when the GPU reaches no NIC, and UNKNOWN when a cell holds a
+    token the legend does not define, which a later driver may well introduce.
     """
     rows = []
     for gpu, conns in matrix.items():
-        best_nic, best_q = max(conns.items(), key=lambda item: quality_score(item[1]))
+        best_nic, best_q = max(conns.items(), key=lambda item: quality_score(item[1]) or -1)
         score = quality_score(best_q)
-        verdict = "OK" if score >= AFFINITY_OK else "WARN" if score > 0 else "FAIL"
+        if score is None:
+            verdict = "UNKNOWN"
+        elif score >= AFFINITY_OK:
+            verdict = "OK"
+        else:
+            verdict = "WARN" if score > 0 else "FAIL"
         rows.append((gpu, best_nic, best_q, verdict))
     return rows
 
@@ -282,26 +292,93 @@ _ERROR_COUNTERS = frozenset(
         "local_link_integrity_errors",
         "excessive_buffer_overrun_errors",
         "VL15_dropped",
-        "port_xmit_wait",
     }
 )
 
+_CONGESTION_COUNTERS = frozenset({"port_xmit_wait"})
+"""Counters that grow on a healthy fabric under load.
+
+port_xmit_wait counts ticks the port had data to send but no credits to send it,
+so it rises with congestion, not with faults. It reads in the billions on a busy
+node whose error counters are all zero, which is why a change in it is reported
+but is not a fault.
+"""
+
+
+def require_snapshot(snapshot, label: str) -> dict:
+    """Return the snapshot, or raise ValueError naming which argument is not one.
+
+    json.loads accepts anything well-formed, so a file of the wrong shape would
+    otherwise reach the comparison and fail with a traceback and an exit code the
+    command does not document.
+    """
+    if not isinstance(snapshot, dict):
+        raise ValueError(f"{label} is not an ib-snapshot: expected an object")
+    ib = snapshot.get("ib")
+    if "ib" in snapshot and not isinstance(ib, dict):
+        raise ValueError(f"{label} is not an ib-snapshot: its ib section is not an object")
+    hcas = (ib or {}).get("hcas")
+    if hcas is not None and not isinstance(hcas, list):
+        raise ValueError(f"{label} is not an ib-snapshot: its hcas field is not a list")
+    for hca in hcas or []:
+        if not isinstance(hca, dict) or "name" not in hca:
+            raise ValueError(f"{label} is not an ib-snapshot: an hca entry has no name")
+        ports = hca.get("ports", [])
+        if not isinstance(ports, list):
+            raise ValueError(f"{label} is not an ib-snapshot: an hca's ports field is not a list")
+        for port in ports:
+            if not isinstance(port, dict) or "port" not in port:
+                raise ValueError(f"{label} is not an ib-snapshot: a port entry has no number")
+            counters = port.get("counters", {})
+            if not isinstance(counters, dict):
+                raise ValueError(
+                    f"{label} is not an ib-snapshot: a port's counters field is not an object"
+                )
+    host = snapshot.get("hostname")
+    if host is not None and not isinstance(host, str):
+        raise ValueError(f"{label} is not an ib-snapshot: its hostname is not text")
+    return snapshot
+
 
 def counters_by_port(snapshot: dict) -> dict[str, dict]:
-    """Return {hca/portN: counters} from an ib-snapshot."""
+    """Return {hca/portN: counters} from an ib-snapshot, InfiniBand ports only.
+
+    An adapter in Ethernet mode exposes the same counter files, and on many hosts
+    they read back as errors. They are not InfiniBand counters, so including them
+    would judge the fabric on ports that are not part of it.
+    """
     result = {}
     for hca in snapshot.get("ib", {}).get("hcas", []):
         for port in hca.get("ports", []):
+            link_layer = port.get("link_layer")
+            if link_layer is not None and link_layer != "InfiniBand":
+                continue
             result[f"{hca['name']}/port{port['port']}"] = port.get("counters") or {}
     return result
+
+
+SATURATED_COUNTER_VALUES = frozenset({15, 255, 65535, 4294967295})
+"""Values an IBTA PortCounters field stops at, by its 4, 8, 16 and 32 bit widths."""
 
 
 def counter_deltas(before: dict, after: dict) -> tuple[list[tuple], bool]:
     """Diff two snapshots' per-port counters.
 
     Returns (rows, any_error) where rows is
-    (port, counter, before, after, delta, is_error) for every non-zero delta,
-    and any_error is True when an error-class counter advanced.
+    (port, counter, before, after, delta, is_error) for every counter worth
+    reporting, and any_error is True when an error-class counter advanced.
+
+    A counter unreadable on both sides is skipped: that is a property of the port,
+    not a change. One readable and one not is reported with a delta of None rather
+    than treated as zero, which would turn an unreadable baseline into a
+    full-magnitude error. An error counter that went backwards was reset
+    between the snapshots, so its whole after value is new and unaccounted for;
+    that counts as an error rather than as no growth. A congestion counter is
+    listed when it moves but never marked an error.
+
+    An error counter sitting at the top of its field is also reported, even
+    though its delta is zero: IBTA counters stop there rather than wrapping, so a
+    pegged one records nothing further and its zero is not evidence of health.
     """
     a = counters_by_port(before)
     b = counters_by_port(after)
@@ -310,39 +387,97 @@ def counter_deltas(before: dict, after: dict) -> tuple[list[tuple], bool]:
     for port in sorted(set(a) | set(b)):
         a_counters, b_counters = a.get(port, {}), b.get(port, {})
         for counter in sorted(set(a_counters) | set(b_counters)):
-            before_v = a_counters.get(counter) or 0
-            after_v = b_counters.get(counter) or 0
+            before_v = a_counters.get(counter)
+            after_v = b_counters.get(counter)
+            is_error_counter = counter in _ERROR_COUNTERS
+            if before_v is None and after_v is None:
+                continue
+            if before_v is None or after_v is None:
+                rows.append((port, counter, before_v, after_v, None, is_error_counter))
+                any_error = any_error or is_error_counter
+                continue
             delta = after_v - before_v
             if delta == 0:
+                if is_error_counter and after_v in SATURATED_COUNTER_VALUES:
+                    rows.append((port, counter, before_v, after_v, delta, True))
+                    any_error = True
                 continue
-            is_error = counter in _ERROR_COUNTERS and delta > 0
+            is_error = is_error_counter and delta != 0
             rows.append((port, counter, before_v, after_v, delta, is_error))
             any_error = any_error or is_error
     return rows, any_error
 
 
+def _cuda_runtime(errors: dict) -> str | None:
+    """Return the CUDA runtime version nvidia-smi reports, or None.
+
+    ib-verify compares this against the golden, and nothing wrote it, so that
+    check could never fire in the workflow the command documents.
+    """
+    code, out, _ = process.probe(["nvidia-smi", "--query", "--display=COMPUTE"], timeout=30)
+    if code != 0:
+        errors["nvidia-smi --query --display=COMPUTE"] = f"exited {code}"
+        return None
+    for line in out.splitlines():
+        if "CUDA Version" in line:
+            return line.split(":", 1)[1].strip() or None
+    return None
+
+
+def _read_hcas_recording(ib_root, errors: dict) -> list:
+    """Read the HCA tree, recording a failure in probe_errors rather than raising.
+
+    Every other field goes through out(), which records why a probe did not run.
+    Without this an unreadable /sys/class/infiniband produced an empty ib section
+    with nothing in probe_errors, so a node with no RDMA stack looked the same as
+    a node whose fabric is fine, and an OSError left the command with a traceback
+    and exit 1, which the family reserves for a real finding.
+    """
+    try:
+        return read_hcas(ib_root)
+    except OSError as exc:
+        errors[str(ib_root)] = f"could not be read: {exc}"
+        return []
+
+
 def collect_snapshot(ib_root: str = "/sys/class/infiniband", timestamp: str | None = None) -> dict:
-    """Probe the node and return the IB/GPU snapshot dict (the ib-snapshot schema)."""
+    """Probe the node and return the IB/GPU snapshot dict (the ib-snapshot schema).
+
+    A probe that could not run records why under probe_errors, so an empty field
+    means the node really has nothing to report rather than that the tool was
+    missing or timed out.
+    """
+    errors: dict[str, str] = {}
 
     def out(cmd):
-        return process.probe(cmd, timeout=30)[1]
+        code, stdout, _ = process.probe(cmd, timeout=30)
+        if code == 127:
+            errors[cmd[0]] = "not installed"
+        elif code == 124:
+            errors[" ".join(cmd)] = "timed out after 30s"
+        elif code:
+            errors[" ".join(cmd)] = f"exited {code}"
+        return stdout
 
     driver = out(["nvidia-smi", "--query-gpu=driver_version", "--format=csv,noheader,nounits"])
     driver_lines = driver.splitlines()
     stamp = timestamp or datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")
-    return {
+    snapshot = {
         "schema_version": 1,
         "timestamp_utc": stamp,
         "hostname": os.uname().nodename,
         "system": {
             "uname": out(["uname", "-a"]).strip(),
             "nvidia_driver": driver_lines[0].strip() if driver_lines else None,
+            "cuda_runtime": _cuda_runtime(errors),
         },
         "gpus": parse_gpu_csv(
             out(["nvidia-smi", f"--query-gpu={_GPU_QUERY}", "--format=csv,noheader,nounits"])
         ),
         "topology": {"raw": out(["nvidia-smi", "topo", "-m"])},
         "nvlink": {"raw": out(["nvidia-smi", "nvlink", "--status"])},
-        "ib": {"hcas": read_hcas(ib_root)},
+        "ib": {"hcas": _read_hcas_recording(ib_root, errors)},
         "ibdev2netdev": parse_ibdev2netdev(out(["ibdev2netdev"])),
     }
+    snapshot["probe_errors"] = errors
+    return snapshot

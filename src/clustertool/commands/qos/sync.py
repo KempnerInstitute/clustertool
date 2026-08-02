@@ -9,6 +9,16 @@ from clustertool.commands.qos import _gate
 from clustertool.grouping import admin, keywords
 
 
+def _check_names(**values: str) -> None:
+    """Reject a name sacctmgr would read as a list, which would widen the change."""
+    for label, value in values.items():
+        if not qoslib.valid_name(value):
+            raise click.ClickException(
+                f"invalid --{label.replace('_', '-')} {value!r}: a name cannot contain "
+                "a comma or whitespace, which sacctmgr would read as a list"
+            )
+
+
 @admin
 @keywords("reconcile", "membership", "align", "priority", "account")
 @click.command("sync")
@@ -29,9 +39,16 @@ def sync(
     """Reconcile a QoS's holders to an account's current membership (via sacctmgr).
 
     Grants the QoS to account members who lack it and revokes it from holders no
-    longer in the account, on the given partition. Idempotent and cron-friendly.
+    longer in the account, on the given partition. Membership is the account's
+    base association, so a user whose partition association lingers after their
+    membership was removed is revoked. Granting works exactly as 'qos grant'
+    does, so it also makes the QoS the association's default and strips the
+    site's catch-all and the partition-named QoS: a member who had chosen a
+    different default gets it overwritten on every run. Idempotent and
+    cron-friendly.
     Dry run by default; re-run with --execute to apply, confirming unless --yes.
-    Operator or coordinator only.
+    Slurm operator, or a coordinator of the account; a site that sets
+    DisableCoordDBD in slurmdbd.conf restricts this to operators.
 
     \b
     Use cases:
@@ -46,11 +63,19 @@ def sync(
       -x, --execute    Apply the change instead of previewing it.
       -y, --yes        Skip the confirmation prompt.
     """
+    _check_names(partition=partition, account=account)
     if not qoslib.qos_exists(qos_name):
         raise click.ClickException(f"QoS {qos_name} is not defined")
+    if not qoslib.partition_exists(partition, cluster=cluster):
+        raise click.ClickException(f"no such partition: {partition}")
     if not qoslib.account_exists(account, cluster=cluster):
         raise click.ClickException(f"account {account} has no associations on this cluster")
-    members = set(qoslib.account_members(account, cluster=cluster))
+    members = set(qoslib.account_base_members(account, cluster=cluster))
+    if not members:
+        raise click.ClickException(
+            f"account {account} has no base associations, so every holder would be "
+            "revoked. Refusing rather than stripping access on a partial read"
+        )
     account_regex = f"^{re.escape(account)}$"
     holders = {
         row[0]
@@ -68,6 +93,16 @@ def sync(
         plan += qoslib.grant_plan(user, account, partition, qos_name, qos_name, cluster)
     for user in to_del:
         plan += qoslib.revoke_plan(user, account, partition, qos_name, cluster)
-    summary = f"Sync QoS {qos_name} on {partition}: +{len(to_add)} / -{len(to_del)} user(s)?"
+    if not plan:
+        click.echo(
+            f"QoS {qos_name} is already in sync with {account} on {partition}: the "
+            f"{len(to_del)} user(s) listed as holders carry it only by inheritance, "
+            "so there is no association-level entry to remove"
+        )
+        return
+    where = f"{account} on {partition}"
+    if cluster:
+        where += f" ({cluster})"
+    summary = f"Sync QoS {qos_name} for {where}: +{len(to_add)} / -{len(to_del)} user(s)?"
     if _gate.apply(plan, execute, yes, summary):
         raise SystemExit(1)

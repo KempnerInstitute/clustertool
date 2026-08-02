@@ -4,7 +4,7 @@ import os
 
 import click
 
-from clustertool import process
+from clustertool import process, site
 from clustertool.grouping import keywords
 from clustertool.storage import humanize_bytes, parse_du_top
 
@@ -15,7 +15,13 @@ from clustertool.storage import humanize_bytes, parse_du_top
     "-s", "--scan", is_flag=True, help="Also scan home and list its largest subdirectories."
 )
 @click.option(
-    "-n", "--top", "top_n", type=int, default=10, show_default=True, help="Directories to list."
+    "-n",
+    "--top",
+    "top_n",
+    type=click.IntRange(min=1),
+    default=10,
+    show_default=True,
+    help="Directories to list.",
 )
 @click.option("--ncdu", is_flag=True, help="Launch the interactive ncdu explorer on home instead.")
 def home(scan: bool, top_n: int, ncdu: bool) -> None:
@@ -23,8 +29,10 @@ def home(scan: bool, top_n: int, ncdu: bool) -> None:
 
     Runs 'df -h ~' to show your home quota (Size), usage, and available space.
     With --scan, also lists the --top N largest subdirectories (default 10) so
-    you can find what to clean up. With --ncdu, opens the interactive ncdu
-    explorer instead.
+    you can find what to clean up. --scan reads every directory under home and
+    prints nothing until it finishes, which on a large home takes minutes. With
+    --ncdu, opens the interactive explorer named by [tools].ncdu instead, which
+    replaces --scan rather than combining with it.
 
     \b
     Use cases:
@@ -39,12 +47,20 @@ def home(scan: bool, top_n: int, ncdu: bool) -> None:
     """
     home_dir = os.path.expanduser("~")
     if ncdu:
-        code = process.stream(["ncdu", home_dir])
-        if code:
-            raise SystemExit(code)
+        if scan:
+            raise click.UsageError("--ncdu explores home interactively, so it replaces --scan")
+        explorer = site.tool("ncdu")
+        if not site.tool_available("ncdu"):
+            raise click.ClickException(
+                f"this command needs '{explorer}', which was not found on this host. "
+                "Install it, or set [tools].ncdu in your site config"
+            )
+        if process.stream([explorer, home_dir]):
+            raise click.ClickException(f"{explorer} failed for {home_dir}")
         return
 
-    process.stream(["df", "-h", home_dir])
+    if process.stream(["df", "-h", home_dir]):
+        raise click.ClickException(f"'df' failed for {home_dir}")
     if not scan:
         return
     click.echo()

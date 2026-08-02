@@ -12,7 +12,7 @@ from clustertool.grouping import keywords
 def priorities(partition: str) -> None:
     """Show priority factors for pending jobs in a partition (via sprio).
 
-    Lists each pending job's total priority and its fairshare, age, and other
+    Lists the eligible pending jobs' total priority and its fairshare, age, and other
     factor contributions, so you can compare where jobs rank.
 
     \b
@@ -21,7 +21,7 @@ def priorities(partition: str) -> None:
 
     \b
     Inputs:
-      PARTITION  Slurm partition name (e.g. kempner_h100).
+      PARTITION  Slurm partition name.
     """
     if not slurm.partition_nodes(partition):
         raise click.ClickException(f"partition '{partition}' does not exist, or has no nodes.")

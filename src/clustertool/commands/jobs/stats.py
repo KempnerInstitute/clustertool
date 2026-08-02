@@ -16,7 +16,7 @@ from clustertool.grouping import ToolCommand, keywords
     shell_complete=completion.complete_job_ids,
 )
 def stats(jobids: tuple[str, ...]) -> None:
-    """Show utilization for one or more jobs (via jobstats).
+    """Show utilization for one or more jobs (via the site job-stats tool).
 
     Reports named jobs one at a time. To sweep your recent jobs and rank them by
     efficiency instead, use 'jobs scope'.
