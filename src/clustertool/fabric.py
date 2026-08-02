@@ -33,9 +33,13 @@ AFFINITY_OK = 3  # NODE or better
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 
-def quality_score(quality: str) -> int:
-    """Return the closeness score for an nvidia-smi topo connection quality."""
-    return _QUALITY.get(quality, 0)
+def quality_score(quality: str) -> int | None:
+    """Return the closeness score for an nvidia-smi topo connection quality.
+
+    None means the token is not one nvidia-smi's legend documents, which is a
+    parse shortfall rather than a distant link, and must not be reported as one.
+    """
+    return _QUALITY.get(quality)
 
 
 def parse_topo(raw: str) -> dict[str, dict[str, str]]:
@@ -67,13 +71,19 @@ def affinity_rows(matrix: dict[str, dict[str, str]]) -> list[tuple[str, str, str
     """Return (gpu, best_nic, best_quality, verdict) per GPU from a topo matrix.
 
     The verdict is OK for NODE or closer, WARN when the best link crosses a NUMA
-    boundary, and FAIL when the GPU reaches no NIC.
+    boundary, FAIL when the GPU reaches no NIC, and UNKNOWN when a cell holds a
+    token the legend does not define, which a later driver may well introduce.
     """
     rows = []
     for gpu, conns in matrix.items():
-        best_nic, best_q = max(conns.items(), key=lambda item: quality_score(item[1]))
+        best_nic, best_q = max(conns.items(), key=lambda item: quality_score(item[1]) or -1)
         score = quality_score(best_q)
-        verdict = "OK" if score >= AFFINITY_OK else "WARN" if score > 0 else "FAIL"
+        if score is None:
+            verdict = "UNKNOWN"
+        elif score >= AFFINITY_OK:
+            verdict = "OK"
+        else:
+            verdict = "WARN" if score > 0 else "FAIL"
         rows.append((gpu, best_nic, best_q, verdict))
     return rows
 

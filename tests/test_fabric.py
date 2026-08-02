@@ -15,7 +15,8 @@ def test_quality_score():
     assert fabric.quality_score("NODE") == 3
     assert fabric.quality_score("SYS") == 1
     assert fabric.quality_score("X") == 0
-    assert fabric.quality_score("?") == 0
+    assert fabric.quality_score("?") is None
+    assert fabric.quality_score("C2C") is None
 
 
 def test_parse_topo_real_node():
@@ -211,3 +212,14 @@ def test_require_snapshot_accepts_a_real_one():
     snap = {"ib": {"hcas": [{"name": "mlx5_0", "ports": []}]}}
     assert fabric.require_snapshot(snap, "BEFORE x.json") is snap
     assert fabric.require_snapshot({"gpus": []}, "AFTER y.json") == {"gpus": []}
+
+
+def test_affinity_rows_flags_an_unknown_token_rather_than_calling_it_a_fault():
+    """A token the legend does not define is a gap in the parse, not distant hardware."""
+    rows = fabric.affinity_rows({"GPU0": {"NIC0": "C2C"}})
+    assert rows == [("GPU0", "NIC0", "C2C", "UNKNOWN")]
+
+
+def test_affinity_rows_still_prefers_a_known_token_over_an_unknown_one():
+    rows = fabric.affinity_rows({"GPU0": {"NIC0": "C2C", "NIC1": "PIX"}})
+    assert rows == [("GPU0", "NIC1", "PIX", "OK")]

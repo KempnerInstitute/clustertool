@@ -2449,7 +2449,7 @@ def test_diag_ib_does_not_certify_a_fabric_it_never_reached(monkeypatch):
     assert result.exit_code == 1
     assert "0 down, 0 ok" in result.output
     assert "2 unreachable" in result.output
-    assert "unreachable: n1, n2" in result.output
+    assert "n1: Permission denied" in result.output
 
 
 def test_diag_ib_reports_a_host_without_infiniband(monkeypatch):
@@ -4467,3 +4467,81 @@ def test_gpu_pulse_ignores_a_spoofed_user(monkeypatch):
     result = CliRunner().invoke(main, ["gpu", "pulse", "--job", "1"])
     assert result.exit_code == 1
     assert "belongs to someoneelse" in result.output
+
+
+def test_diag_ib_reports_active_defer(monkeypatch):
+    """State 5 is ACTIVE_DEFER, which the word ACTIVE is a substring of."""
+    monkeypatch.setattr(qos, "partition_exists", lambda p: True)
+    monkeypatch.setattr(slurm, "partition_nodes", lambda p: [("n1", "idle")])
+    monkeypatch.setattr(
+        process,
+        "probe",
+        lambda cmd, **kw: (0, "mlx5_0/ports/1 5: ACTIVE_DEFER\n__clustertool_ports__ 1\n", ""),
+    )
+    result = CliRunner().invoke(main, ["diag", "ib", "p"])
+    assert result.exit_code == 4
+    assert "ACTIVE_DEFER" in result.output
+
+
+def test_diag_ib_refuses_a_partition_that_returned_no_nodes(monkeypatch):
+    """sinfo hides a partition the caller's group cannot use, so empty is not proof."""
+    monkeypatch.setattr(qos, "partition_exists", lambda p: True)
+    monkeypatch.setattr(slurm, "partition_nodes", lambda p: [])
+    result = CliRunner().invoke(main, ["diag", "ib", "p"])
+    assert result.exit_code == 3
+    assert "not proof" in result.output
+
+
+def test_diag_ib_checks_every_name_before_probing(monkeypatch):
+    """A typo at the end of the list must not discard a fault found earlier in it."""
+    monkeypatch.setattr(qos, "partition_exists", lambda p: p != "typo")
+    monkeypatch.setattr(slurm, "partition_nodes", lambda p: pytest.fail("probed anyway"))
+    result = CliRunner().invoke(main, ["diag", "ib", "good", "typo"])
+    assert result.exit_code == 3
+    assert "'typo' does not exist" in result.output
+
+
+def test_diag_ib_reports_why_a_host_was_unreachable(monkeypatch):
+    monkeypatch.setattr(qos, "partition_exists", lambda p: True)
+    monkeypatch.setattr(slurm, "partition_nodes", lambda p: [("n1", "idle")])
+    monkeypatch.setattr(
+        process,
+        "probe",
+        lambda cmd, **kw: (
+            255,
+            "",
+            "Warning: Permanently added 'n1' to the list of known hosts.\n"
+            "Access denied by pam_slurm_adopt: you have no active jobs on this node\n",
+        ),
+    )
+    result = CliRunner().invoke(main, ["diag", "ib", "p"])
+    assert result.exit_code == 1
+    assert "n1: Access denied by pam_slurm_adopt" in result.output
+
+
+def test_diag_ib_affinity_rejects_a_non_string_raw(tmp_path):
+    """json.loads accepts null there, and .strip() would then traceback out as exit 1."""
+    path = tmp_path / "s.json"
+    path.write_text('{"topology": {"raw": null}}')
+    result = CliRunner().invoke(main, ["diag", "ib-affinity", "--snapshot", str(path)])
+    assert result.exit_code == 3
+    assert "not text" in result.output
+
+
+def test_diag_ib_affinity_rejects_a_file_that_is_not_utf8(tmp_path):
+    path = tmp_path / "s.json"
+    path.write_bytes(b"\xf0\x9d\x00\xff\x9d")
+    result = CliRunner().invoke(main, ["diag", "ib-affinity", "--snapshot", str(path)])
+    assert result.exit_code == 3
+    assert "cannot read" in result.output
+
+
+def test_diag_ib_affinity_reports_an_unknown_quality_as_a_parse_gap(tmp_path):
+    path = tmp_path / "s.json"
+    path.write_text(
+        json.dumps({"topology": {"raw": "\tGPU0\tNIC0\nGPU0\t X \tC2C\nNIC0\tC2C\t X \n"}})
+    )
+    result = CliRunner().invoke(main, ["diag", "ib-affinity", "--snapshot", str(path)])
+    assert result.exit_code == 3
+    assert "does not know: C2C" in result.output
+    assert "reach no NIC" not in result.output

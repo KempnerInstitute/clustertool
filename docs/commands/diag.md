@@ -55,7 +55,7 @@ least one port is not ACTIVE. 2 is unused throughout the diagnostics, since clic
 Check GPU-to-IB-NIC NUMA affinity (via `nvidia-smi topo -m`).
 
 Each GPU's best link to an InfiniBand NIC should be `NODE`-level or closer; a
-`SYS` link (across the CPU interconnect) costs 30-50% of cross-node bandwidth.
+`SYS` link crosses the CPU interconnect, which can cost a large fraction of the bandwidth the NIC could otherwise reach.
 Run it on a GPU node. The exit code is 0 all NODE or better, 1 a GPU crosses
 NUMA (WARN), 3 probe or parse error, 4 a GPU reaches no NIC (FAIL). 2 is unused throughout the diagnostics, since click exits 2 on a usage error.
 

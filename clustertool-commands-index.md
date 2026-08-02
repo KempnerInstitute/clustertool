@@ -107,7 +107,7 @@ names the host tool each command shells out to.
 | Command | Scope | Wraps | Description |
 | --- | --- | --- | --- |
 | `diag gpu-health` | user | nvidia-smi | Node-local GPU health verdict: ECC, throttle, PCIe/NVLink (exit 0 OK, 1 WARN, 3 probe error, 4 FAIL). |
-| `diag ib PARTITION...` | admin | ssh, ip | Nodes with InfiniBand ports DOWN (needs ssh to every node). |
+| `diag ib PARTITION...` | admin | ssh, sinfo | Nodes with InfiniBand ports DOWN (needs ssh to every node). |
 | `diag ib-affinity` | user | nvidia-smi | GPU-to-IB-NIC NUMA affinity verdict (exit 0 OK, 1 cross-NUMA, 3 probe error, 4 no NIC reached). |
 | `diag ib-counters BEFORE AFTER` | user | (none) | Diff two ib-snapshots for IB error-counter growth (exit 0 clean, 3 unreadable file, 4 if any advanced). |
 | `diag ib-snapshot [OUT]` | user | nvidia-smi, ibdev2netdev | Capture node IB/GPU topology and counters as JSON, for diffing. |

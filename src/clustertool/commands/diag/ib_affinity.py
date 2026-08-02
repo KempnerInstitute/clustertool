@@ -23,7 +23,8 @@ def ib_affinity(ctx: click.Context, snapshot: str | None) -> None:
     """Check GPU-to-IB-NIC NUMA affinity (via nvidia-smi topo -m).
 
     Each GPU's best link to an InfiniBand NIC should be NODE-level or closer; a
-    SYS link (across the CPU interconnect) costs 30-50% of cross-node bandwidth.
+    SYS link crosses the CPU interconnect, which can cost a large fraction of the
+    bandwidth the NIC could otherwise reach.
     Run it on a GPU node. The exit code is 0 all NODE or better, 1 a GPU crosses
     NUMA, 3 probe or parse error, 4 a GPU reaches no NIC. 2 is unused throughout
     the diagnostics, since click exits 2 on a usage error.
@@ -40,7 +41,7 @@ def ib_affinity(ctx: click.Context, snapshot: str | None) -> None:
     if snapshot:
         try:
             raw = json.loads(pathlib.Path(snapshot).read_text())["topology"]["raw"]
-        except OSError as exc:
+        except (OSError, UnicodeDecodeError) as exc:
             click.echo(f"ib-affinity: error: cannot read {snapshot}: {exc}", err=True)
             ctx.exit(3)
         except json.JSONDecodeError as exc:
@@ -50,6 +51,13 @@ def ib_affinity(ctx: click.Context, snapshot: str | None) -> None:
             click.echo(
                 f"ib-affinity: error: {snapshot} is valid JSON but not an ib-snapshot "
                 "file (no topology.raw)",
+                err=True,
+            )
+            ctx.exit(3)
+        if not isinstance(raw, str):
+            click.echo(
+                f"ib-affinity: error: {snapshot} is valid JSON but not an ib-snapshot "
+                f"file (topology.raw is {type(raw).__name__}, not text)",
                 err=True,
             )
             ctx.exit(3)
@@ -82,20 +90,35 @@ def ib_affinity(ctx: click.Context, snapshot: str | None) -> None:
     click.echo(f"{len(matrix)} GPU(s) x {nic_count} NIC(s)")
     click.echo(f"{'GPU':<6} {'BEST NIC':<9} {'QUALITY':<8} VERDICT")
     fails = warns = 0
+    unknown = []
     for gpu, best_nic, best_q, verdict in rows:
-        detail = verdict if verdict != "WARN" else f"WARN (across {best_q})"
+        detail = verdict
+        if verdict == "WARN":
+            detail = f"WARN ({best_q}: crosses the NUMA interconnect)"
+        elif verdict == "UNKNOWN":
+            unknown.append(best_q)
         click.echo(f"{gpu:<6} {best_nic:<9} {best_q:<8} {detail}")
         if verdict == "FAIL":
             fails += 1
         elif verdict == "WARN":
             warns += 1
 
+    if unknown:
+        names = ", ".join(sorted(set(unknown)))
+        click.echo(
+            f"\nerror: the topology matrix holds a connection quality this tool does "
+            f"not know: {names}. That is a gap in the parse, not a fault in the "
+            f"hardware, so no verdict is given",
+            err=True,
+        )
+        ctx.exit(3)
     if fails:
         click.echo(f"\nFAIL: {fails} GPU(s) reach no NIC")
         ctx.exit(4)
     if warns:
         click.echo(
-            f"\nWARN: {warns} GPU(s) cross a NUMA boundary (expect 30-50% cross-node BW loss)"
+            f"\nWARN: {warns} GPU(s) reach their nearest NIC only across the NUMA "
+            "interconnect, which can cost a large fraction of the achievable bandwidth"
         )
         ctx.exit(1)
     click.echo("\nOK: every GPU is NODE-level or closer to an IB NIC")
