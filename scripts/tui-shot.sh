@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Render the dashboard in a real terminal of a given size and print what it drew.
 # Usage: scripts/tui-shot.sh COLS ROWS [seconds]
 set -u
 cols=${1:-100}; rows=${2:-30}; wait=${3:-2}

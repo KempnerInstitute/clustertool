@@ -10,6 +10,7 @@ import pwd
 import socket
 
 from clustertool import site
+from clustertool.process import CommandError
 
 
 @dataclasses.dataclass(frozen=True)
@@ -19,21 +20,26 @@ class Identity:
     user: str
     full_name: str
     host: str
-    cluster: str
+    site_name: str
 
 
 def identity() -> Identity:
-    """Return the caller's identity from the uid, never from the environment."""
+    """Return the caller's identity from the uid, never from the environment.
+
+    The site name rather than the QoS cluster, which the site config documents as
+    the cluster the admin qos commands write to and which would label every
+    deployment with the packaged default.
+    """
     from clustertool import slurm
 
     user = pwd.getpwuid(os.getuid()).pw_name
     try:
         full = slurm.user_fullnames([user]).get(user, "")
-    except Exception:
+    except CommandError:
         full = ""
     return Identity(
         user=user,
         full_name=full,
         host=socket.gethostname().split(".")[0],
-        cluster=site.qos_cluster(),
+        site_name=site.site_name(),
     )

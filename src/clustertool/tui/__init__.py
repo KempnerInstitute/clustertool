@@ -1,10 +1,6 @@
 """Interactive dashboard for the me command.
 
-Imported only when the optional tui extra is installed and stdout is a terminal.
-The me command must not import this at module scope, so a site without the extra
-keeps the one-shot output and the dependency stays optional.
+Nothing is re-exported here. The app module imports textual, so a re-export
+would pull it in for anyone importing the data layer, and the data layer is
+written to be tested without it.
 """
-
-from clustertool.tui.app import run
-
-__all__ = ["run"]

@@ -10,20 +10,36 @@ from clustertool import site, slurm, storage
 from clustertool.grouping import keywords
 
 
+def _caller() -> str:
+    """Return the caller's username from the uid.
+
+    A uid with no passwd entry raises, which happens in a container or during a
+    directory outage, so it is reported as something the caller can act on
+    rather than as a traceback.
+    """
+    try:
+        return pwd.getpwuid(os.getuid()).pw_name
+    except KeyError as exc:
+        raise click.UsageError(f"could not determine who you are ({exc}); pass -u USER") from exc
+
+
 def _wants_dashboard(user: str | None, plain: bool, access: bool) -> bool:
-    """Return True when this invocation should open the interactive dashboard.
+    """Return True when this invocation asks for the interactive dashboard.
 
     The dashboard covers the caller only, so naming another user falls back to
-    the one-shot summary, as does asking for the access map, redirecting the
-    output, or running where the optional tui extra is not installed.
+    the one-shot summary, as does asking for the access map or redirecting the
+    output. Both streams must be a terminal: with stdout a terminal and stdin
+    not, the app draws but no keypress can reach it, leaving something that
+    cannot be quit. A dumb terminal cannot render it at all.
+
+    Whether the optional extra is installed is settled by importing it, not
+    asked here, so the check and the import cannot disagree.
     """
-    if plain or user or access or not sys.stdout.isatty():
+    if plain or user or access:
         return False
-    try:
-        import textual  # noqa: F401
-    except ModuleNotFoundError:
+    if os.environ.get("TERM", "") in ("", "dumb"):
         return False
-    return True
+    return sys.stdout.isatty() and sys.stdin.isatty()
 
 
 def _show_access(user: str) -> None:
@@ -76,14 +92,22 @@ def me(user: str | None, plain: bool, access: bool) -> None:
     \b
     Inputs:
       -u, --user    Show this user instead of the current one.
+      --plain       Print the one-shot summary instead of the dashboard.
       -a, --access  Also show your accounts, submission map, and priority tiers.
+
+    Run in a terminal with no other flags, this opens an interactive dashboard
+    where the optional tui extra is installed. Naming a user, asking for the
+    access map, or redirecting the output prints the one-shot summary instead.
     """
     if _wants_dashboard(user, plain, access):
-        from clustertool.tui import run
-
-        run()
-        return
-    user = user or pwd.getpwuid(os.getuid()).pw_name
+        try:
+            from clustertool.tui.app import run
+        except ImportError:
+            pass
+        else:
+            run()
+            return
+    user = user or _caller()
     click.echo(f"clustertool overview for {user}")
 
     jobs = slurm.my_jobs(user)
