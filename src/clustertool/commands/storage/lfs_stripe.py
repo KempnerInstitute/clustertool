@@ -22,8 +22,13 @@ def lfs_stripe(path: str, count: int | None, yes: bool) -> None:
     """Show or set Lustre striping for a path (via lfs).
 
     Without --count, print the layout of PATH itself and not of anything inside it
-    (lfs getstripe -d). With --count, set the stripe count for newly created files
-    under PATH (lfs setstripe); existing files are not restriped.
+    (lfs getstripe -d). With --count, set the stripe count for files created in
+    PATH from then on (lfs setstripe).
+
+    Two limits on what "from then on" covers, both from lfs-setstripe: existing
+    files keep the layout they were written with, and a directory copies its
+    parent's default only at the moment it is created, so files written into a
+    subdirectory that already exists keep the old count as well.
 
     A count spreads each new file over that many OSTs, so it trades throughput on
     large files against more metadata work and wider exposure to a single OST
@@ -33,6 +38,8 @@ def lfs_stripe(path: str, count: int | None, yes: bool) -> None:
     rather than setting zero stripes, and -1 stripes over every available OST. A
     count above the number of OSTs is refused, since lfs would silently clamp it;
     use lfs setstripe -C directly if you really want more than one stripe per OST.
+    That check needs the OST count, and a path whose filesystem does not report
+    one is set without it.
 
     Setting a count changes the default for everyone who writes new files there,
     so it prompts for confirmation unless -y. Lustre allows it only on a directory
@@ -65,10 +72,20 @@ def lfs_stripe(path: str, count: int | None, yes: bool) -> None:
         )
     if osts and count > osts:
         raise click.ClickException(
-            f"invalid --count {count}: {path} has {osts} OSTs, and lfs would clamp "
-            f"the count to that. Use -c {osts} or -c -1 for all of them"
+            f"invalid --count {count}: the filesystem holding {path} has {osts} OSTs, "
+            f"and lfs would clamp the count to that. Use -c {osts} or -c -1 for all "
+            "of them"
+        )
+    if not os.path.isdir(path):
+        raise click.ClickException(
+            f"{path} is not a directory. A stripe count is the default a directory "
+            "gives the files created in it; a file's layout is fixed when it is written"
         )
     if not yes:
+        click.echo(
+            f"Files already in {path}, and subdirectories that already exist, keep "
+            "their current layout. This sets the count for files created from now on."
+        )
         click.confirm(_prompt(path, count, osts), abort=True)
     process.passthrough(
         [lfs, "setstripe", "-c", str(count), path], f"'{lfs} setstripe' failed for {path}"
@@ -78,8 +95,8 @@ def lfs_stripe(path: str, count: int | None, yes: bool) -> None:
 def _prompt(path: str, count: int, osts: int) -> str:
     """Return the confirmation question, spelling out what the special counts mean."""
     if count == _FILESYSTEM_DEFAULT:
-        return f"Reset new files under {path} to the filesystem default stripe count?"
+        return f"Reset new files in {path} to the filesystem default stripe count?"
     if count == _ALL_OSTS:
         spread = f"all {osts} OSTs" if osts else "every available OST"
-        return f"Stripe new files under {path} across {spread}?"
-    return f"Set stripe count {count} for new files under {path}?"
+        return f"Stripe new files in {path} across {spread}?"
+    return f"Set stripe count {count} for new files in {path}?"

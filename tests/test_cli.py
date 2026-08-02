@@ -4645,3 +4645,21 @@ def test_storage_scratch_does_not_print_the_purge_note_after_a_failure(monkeypat
     result = CliRunner().invoke(main, ["storage", "scratch"])
     assert result.exit_code == 1
     assert "deleted after" not in result.output
+
+
+def test_storage_lfs_stripe_refuses_a_file(tmp_path, monkeypatch):
+    """A file's layout is fixed when it is written; only a directory has a default."""
+    monkeypatch.setattr(storage, "lustre_ost_count", lambda path: 8)
+    target = tmp_path / "f"
+    target.write_text("")
+    result = CliRunner().invoke(main, ["storage", "lfs-stripe", str(target), "-c", "2", "-y"])
+    assert result.exit_code == 1
+    assert "is not a directory" in result.output
+
+
+def test_storage_lfs_stripe_says_what_the_change_does_not_cover(tmp_path, monkeypatch):
+    monkeypatch.setattr(storage, "lustre_ost_count", lambda path: 8)
+    result = CliRunner().invoke(
+        main, ["storage", "lfs-stripe", str(tmp_path), "-c", "2"], input="n\n"
+    )
+    assert "subdirectories that already exist" in result.output

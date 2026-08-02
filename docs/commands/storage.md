@@ -104,7 +104,9 @@ scratch path (`/n/netscratch` with the packaged Kempner profile).
 Show or set Lustre striping for a path (via `lfs`). Without `--count`, print the
 layout of PATH itself and not of anything inside it (`lfs getstripe -d`). With
 `--count`, set the stripe count for newly created files under PATH (`lfs
-setstripe`); existing files are not restriped.
+setstripe`); existing files are not restriped, and neither are subdirectories
+that already exist, since a directory copies its parent's default only when it
+is created.
 
 A count spreads each new file over that many OSTs, so it trades throughput on
 large files against more metadata work and wider exposure to a single OST going
