@@ -51,6 +51,8 @@ grant_strip = ["normal"]
 # Venv on remote GPU nodes that `gpu pulse --node` activates to run kempnerpulse.
 # Leave empty to disable remote launch at a site without a shared install.
 remote_venv = "/n/holylfs06/LABS/kempner_shared/Everyone/common_envs/kempnerpulse/.venv"
+# Entry point to run inside that venv. Defaults to kempnerpulse.
+remote_tool = "kempnerpulse"
 
 [gpu_types]
 a100 = "kempner"

@@ -198,6 +198,11 @@ def pulse_remote_venv() -> str:
     return str(config().get("pulse", {}).get("remote_venv", ""))
 
 
+def pulse_remote_tool() -> str:
+    """Return the entry point gpu pulse --node runs inside the remote venv."""
+    return str(config().get("pulse", {}).get("remote_tool", "kempnerpulse"))
+
+
 def scratch_path() -> str:
     """Return the default networked scratch path."""
     return str(config()["storage"]["scratch"])

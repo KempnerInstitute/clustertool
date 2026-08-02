@@ -2108,10 +2108,11 @@ def test_pulse_split_args():
 def test_pulse_remote_command():
     from clustertool.commands.gpu.pulse import _remote_command
 
-    cmd = _remote_command("/venv", ["--once"])
+    cmd = _remote_command("/venv", "kempnerpulse", ["--once"])
     assert "source /venv/bin/activate" in cmd
     assert cmd.endswith("exec kempnerpulse --once")
     assert "nvidia-smi" in cmd
+    assert _remote_command("/venv", "othertool", []).endswith("exec othertool")
 
 
 def test_gpu_pulse_node_dry_run():
@@ -4697,3 +4698,40 @@ def test_gpu_nvtop_uses_the_configured_binaries(monkeypatch, tmp_path):
     remote = next(cmd for cmd in calls if "send-keys" in cmd)
     assert "if command -v myviewer" in remote[-2]
     assert "&&" not in remote[-2]
+
+
+def test_gpu_pulse_documents_its_own_options():
+    """--help reaches the pulse tool, so the wrapper's flags need their own route."""
+    result = CliRunner().invoke(main, ["gpu", "pulse", "--wrapper-help"])
+    for flag in ("--node", "--job", "--dry-run"):
+        assert flag in result.output
+
+
+def test_gpu_session_drops_a_default_salloc_refuses(monkeypatch):
+    """man salloc: --mem and --mem-per-gpu are mutually exclusive, not last-wins."""
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(
+        main, ["gpu", "session", "h100", "-A", "lab", "--mem-per-gpu=100000"]
+    )
+    assert result.exit_code == 0
+    assert not any(arg.startswith("--mem=") for arg in calls[0])
+    assert "--mem-per-gpu=100000" in calls[0]
+    assert any(arg.startswith("--cpus-per-task=") for arg in calls[0])
+
+
+def test_gpu_session_drops_cpus_per_task_for_cpus_per_gpu(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(
+        main, ["gpu", "session", "h100", "-A", "lab", "--cpus-per-gpu", "8"]
+    )
+    assert result.exit_code == 0
+    assert not any(arg.startswith("--cpus-per-task=") for arg in calls[0])
+    assert any(arg.startswith("--mem=") for arg in calls[0])
+
+
+def test_gpu_session_keeps_both_defaults_by_default(monkeypatch):
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["gpu", "session", "h100", "-A", "lab"])
+    assert result.exit_code == 0
+    assert any(arg.startswith("--mem=") for arg in calls[0])
+    assert any(arg.startswith("--cpus-per-task=") for arg in calls[0])

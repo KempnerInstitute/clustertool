@@ -36,6 +36,9 @@ def _split_args(args: tuple[str, ...]) -> tuple[str | None, str | None, list[str
             job = arg.split("=", 1)[1]
         elif arg == "--dry-run":
             dry_run = True
+        elif arg == "--wrapper-help":
+            click.echo(_WRAPPER_HELP)
+            raise SystemExit(0)
         else:
             forward.append(arg)
     if node is not None and not node:
@@ -49,15 +52,26 @@ def _split_args(args: tuple[str, ...]) -> tuple[str | None, str | None, list[str
     return node, job, forward, dry_run
 
 
-def _remote_command(venv: str, args: list[str]) -> str:
-    """Build the shell command that runs kempnerpulse from a venv on a GPU node."""
+_WRAPPER_HELP = """Options this wrapper handles itself, rather than forwarding:
+
+  --node NODE     Run the dashboard on NODE over ssh.
+  --job JOBID     Run it on the first node of one of your own running jobs.
+  --dry-run       Print the ssh command instead of running it.
+  --wrapper-help  Show this text.
+
+Everything else goes to the pulse tool unchanged. --help reaches it, not this
+wrapper, so it lists that tool's own options."""
+
+
+def _remote_command(venv: str, tool: str, args: list[str]) -> str:
+    """Build the shell command that runs the pulse tool from a venv on a GPU node."""
     check = (
         "command -v nvidia-smi >/dev/null 2>&1 || "
         "{ echo 'no nvidia-smi on the target node' >&2; exit 1; }"
     )
     activate = shlex.quote(f"{venv}/bin/activate")
     forward = " ".join(shlex.quote(arg) for arg in args)
-    return f"{check}; source {activate} && exec kempnerpulse {forward}".rstrip()
+    return f"{check}; source {activate} && exec {shlex.quote(tool)} {forward}".rstrip()
 
 
 @keywords("dcgm", "realtime", "monitor", "htop", "remote")
@@ -71,8 +85,8 @@ def pulse(args: tuple[str, ...]) -> None:
 
     All arguments are forwarded to kempnerpulse unchanged, so its full option set
     is available. '--help' reaches kempnerpulse, not this wrapper, so it lists
-    kempnerpulse's options; --node, --job and --dry-run below are this wrapper's
-    own and are documented here and in docs/commands/gpu.md.
+    kempnerpulse's options; run 'gpu pulse --wrapper-help' for --node, --job and
+    --dry-run, which are this wrapper's own.
 
     Run it on a GPU node, or launch it on a remote node with --node NODE (or --job
     JOBID to target a running job's first node): this tool ssh's in and runs
@@ -120,7 +134,7 @@ def pulse(args: tuple[str, ...]) -> None:
         node,
         "bash",
         "-lc",
-        shlex.quote(_remote_command(venv, forward)),
+        shlex.quote(_remote_command(venv, site.pulse_remote_tool(), forward)),
     ]
     if dry_run:
         click.echo(" ".join(ssh_cmd))
