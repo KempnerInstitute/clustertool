@@ -68,7 +68,7 @@ names the host tool each command shells out to.
 
 | Command | Scope | Wraps | Description |
 | --- | --- | --- | --- |
-| `account members [ACCOUNT]` | user | sacctmgr, getent | Users in an account, or all lab accounts as CSV (`--all`). |
+| `account members [ACCOUNT]` | user | sshare, scontrol, sacctmgr, getent | Users in an account, or all lab accounts as CSV (`--all`). |
 | `account fairshare [ACCOUNT]` | user | sshare | Fairshare standing and priority (yours, or an account's members). |
 | `account balance [ACCOUNT]` | user | sshare | Rank accounts by over/under-served fair-share ratio. |
 | `account usage [ACCOUNT]` | user | stotal, seff-account | Cumulative CPU/GPU/TRES-hours, or efficiency (`--efficiency`). |
@@ -107,13 +107,13 @@ names the host tool each command shells out to.
 | Command | Scope | Wraps | Description |
 | --- | --- | --- | --- |
 | `diag gpu-health` | user | nvidia-smi | Node-local GPU health verdict: ECC, throttle, PCIe/NVLink (exit 0 OK, 1 WARN, 3 probe error, 4 FAIL). |
-| `diag ib PARTITION...` | admin | ssh, sinfo | Nodes with InfiniBand ports DOWN (needs ssh to every node). |
+| `diag ib PARTITION...` | admin | ssh, sinfo, scontrol | Nodes with an InfiniBand port that is not ACTIVE, needing ssh to every node (exit 0 clean, 1 unreachable or no IB, 3 no such partition or none visible, 4 a port not ACTIVE). |
 | `diag ib-affinity` | user | nvidia-smi | GPU-to-IB-NIC NUMA affinity verdict (exit 0 OK, 1 cross-NUMA, 3 probe error, 4 no NIC reached). |
-| `diag ib-counters BEFORE AFTER` | user | (none) | Diff two ib-snapshots for IB error-counter growth (exit 0 clean, 3 unreadable file, 4 if any advanced). |
+| `diag ib-counters BEFORE AFTER` | user | (none) | Diff two ib-snapshots for IB error-counter growth (exit 0 clean, 3 unreadable or mismatched snapshots, 4 a counter advanced, reset, saturated, or unreadable). |
 | `diag ib-snapshot [OUT]` | user | nvidia-smi, ibdev2netdev | Capture node IB/GPU topology and counters as JSON, for diffing. |
 | `diag ib-verify GOLDEN` | user | nvidia-smi, ibdev2netdev | Compare a node's snapshot against a golden one (exit 0 match, 3 setup error, 4 drift). |
-| `diag io-probe -d DIR` | user | (none) | Filesystem write/read MB/s and metadata latency, with optional pass/fail gates. |
-| `diag nccl` | user | srun, torch | Multi-node FSDP NCCL sanity check inside a Slurm job. |
+| `diag io-probe -d DIR` | user | (none) | Filesystem write/read MiB/s and metadata latency, with optional pass/fail gates (exit 0 report or pass, 3 setup or IO error, 4 a gate missed). |
+| `diag nccl` | user | srun, nvidia-smi, torch | Multi-node FSDP NCCL sanity check inside a Slurm job. |
 | `diag nvlink` | user | nvcc, NCCL | Saturate a node's NVLink fabric with NCCL all-reduce. |
 | `diag scheduler` | user | sdiag | Slurm scheduler diagnostics (cycle, backfill, queue depth). |
 
