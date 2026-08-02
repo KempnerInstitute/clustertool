@@ -31,7 +31,19 @@ Screen {
     padding: 0 1;
 }
 
-#jobs:focus,
+#jobs-table {
+    height: auto;
+    max-height: 1fr;
+}
+
+#jobs-detail {
+    height: auto;
+    padding: 1 1 0 1;
+    color: $text-muted;
+    border-top: dashed $panel-lighten-2;
+}
+
+#jobs:focus-within,
 #storage:focus,
 #standing:focus {
     border: round $accent;

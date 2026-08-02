@@ -202,7 +202,7 @@ async def test_tab_cycles_the_panels():
     app = _app()
     async with app.run_test(size=(100, 24)) as pilot:
         await pilot.pause()
-        assert app.focused.id == "jobs"
+        assert app.focused.id == "jobs-table"
         await pilot.press("tab")
         assert app.focused.id == "storage"
         await pilot.press("tab")
@@ -235,7 +235,8 @@ def test_help_lists_only_keys_that_are_bound():
     from clustertool.tui.app import HELP, MeApp
 
     aliases = {"?": "question_mark"}
-    bound = {binding[0] for binding in MeApp.BINDINGS}
+    from_widgets = {"up", "down"}
+    bound = {binding[0] for binding in MeApp.BINDINGS} | from_widgets
     listed = {
         line.split()[0]
         for line in HELP.splitlines()
@@ -308,3 +309,126 @@ async def test_a_bracket_in_a_name_does_not_break_the_bar(hostile):
     async with app.run_test(size=(100, 12)) as pilot:
         await pilot.pause()
         assert hostile in str(app.query_one("#status").render())
+
+
+SAMPLE_JOBS = [
+    data.JobRow(
+        "111", "RUNNING", "kempner_h100", 4, "2:14:00", "None", ["gpu8a15", "gpu8a16"], "gres/gpu=4"
+    ),
+    data.JobRow("222", "PENDING", "kempner", 4, "0:00", "Priority", [], "gres/gpu=4"),
+]
+
+
+def test_jobs_asks_for_the_allocation_and_a_separator(monkeypatch):
+    """The default format pads to fixed widths and truncates a long TRES string."""
+    import clustertool.process as proc
+
+    seen = []
+    monkeypatch.setattr(proc, "probe", lambda cmd, **kw: (seen.append(cmd), (0, "", ""))[1])
+    data.jobs("alice")
+    joined = " ".join(seen[0])
+    assert "tres-alloc" in joined
+    assert "JobID:|" in joined
+
+
+def test_jobs_parses_a_pending_and_a_running_row(monkeypatch):
+    import clustertool.process as proc
+
+    out = (
+        "111|RUNNING|kempner_h100|2:14:00|None|cpu=96,gres/gpu=4|gpu8a[15-16]|\n"
+        "222|PENDING|kempner|0:00|Priority|cpu=64,gres/gpu=4||\n"
+    )
+    import clustertool.slurm as slurm_module
+
+    monkeypatch.setattr(proc, "probe", lambda cmd, **kw: (0, out, ""))
+    monkeypatch.setattr(
+        slurm_module, "expand_hostlist", lambda nl: ["gpu8a15", "gpu8a16"] if nl else []
+    )
+    rows = data.jobs("alice")
+    assert [r.jobid for r in rows] == ["111", "222"]
+    assert rows[0].gpus == 4
+    assert rows[1].pending and not rows[0].pending
+    assert rows[1].where == "(Priority)"
+
+
+def test_jobs_raises_rather_than_reporting_none(monkeypatch):
+    """An empty list would read as having no jobs, which is a different fact."""
+    import clustertool.process as proc
+
+    monkeypatch.setattr(proc, "probe", lambda cmd, **kw: (1, "", "slurmctld down"))
+    with pytest.raises(data.CommandError, match="could not read your jobs"):
+        data.jobs("alice")
+
+
+def test_where_names_the_node_or_the_wait():
+    one = data.JobRow("1", "RUNNING", "p", 0, "1:00", "None", ["n1"], "")
+    many = data.JobRow("1", "RUNNING", "p", 0, "1:00", "None", ["n1", "n2", "n3"], "")
+    waiting = data.JobRow("1", "PENDING", "p", 0, "0:00", "Resources", [], "")
+    unknown = data.JobRow("1", "PENDING", "p", 0, "0:00", "None", [], "")
+    assert one.where == "n1"
+    assert many.where == "n1 +2"
+    assert waiting.where == "(Resources)"
+    assert unknown.where == "-"
+
+
+async def test_arrow_keys_move_the_detail():
+    from clustertool.tui.panels.jobs import JobsPanel
+
+    app = _app()
+    async with app.run_test(size=(100, 22)) as pilot:
+        await pilot.pause()
+        panel = app.query_one(JobsPanel)
+        panel.show(SAMPLE_JOBS)
+        await pilot.pause()
+        assert panel.selected.jobid == "111"
+        assert "kempner_h100" in panel._detail_text()
+        await pilot.press("down")
+        await pilot.pause()
+        assert panel.selected.jobid == "222"
+        assert "waiting: Priority" in panel._detail_text()
+
+
+async def test_an_empty_table_says_no_jobs_not_nothing():
+    from clustertool.tui.panels.jobs import JobsPanel
+
+    app = _app()
+    async with app.run_test(size=(100, 22)) as pilot:
+        await pilot.pause()
+        panel = app.query_one(JobsPanel)
+        panel.show([])
+        await pilot.pause()
+        assert panel.selected is None
+        assert "No jobs" in panel._detail_text()
+
+
+async def test_a_failed_refresh_keeps_the_rows_and_says_so():
+    """A scheduler hiccup must leave the panel stale, not looking like an empty queue."""
+    from clustertool.tui.panels.jobs import JobsPanel
+
+    app = _app()
+    async with app.run_test(size=(100, 22)) as pilot:
+        await pilot.pause()
+        panel = app.query_one(JobsPanel)
+        panel.show(SAMPLE_JOBS)
+        await pilot.pause()
+        panel.fail("controller busy")
+        await pilot.pause()
+        text = panel._detail_text()
+        assert "stale: controller busy" in text
+        assert "111" in text
+
+
+async def test_the_cursor_survives_a_refresh():
+    from clustertool.tui.panels.jobs import JobsPanel
+
+    app = _app()
+    async with app.run_test(size=(100, 22)) as pilot:
+        await pilot.pause()
+        panel = app.query_one(JobsPanel)
+        panel.show(SAMPLE_JOBS)
+        await pilot.pause()
+        await pilot.press("down")
+        await pilot.pause()
+        panel.show(SAMPLE_JOBS)
+        await pilot.pause()
+        assert panel.selected.jobid == "222"
