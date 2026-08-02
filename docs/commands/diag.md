@@ -136,13 +136,19 @@ setup error, 4 drift. 2 is unused throughout the diagnostics, since click exits 
 Probe a filesystem's write/read throughput and metadata latency (not a
 benchmark).
 
-Writes a bounded file (fsync included), re-reads it after asking the kernel to
-drop its page cache, and times create/stat/delete on a batch of small files,
-against a scratch subdirectory of the target. Where the cache cannot be dropped
-the report says so, and the read figure is then memory rather than storage. Run it on a compute node (wrap in `srun`) to probe
-from there. Set `--min-write`, `--min-read`, or `--max-meta-ms` to turn it into a
-pass/fail gate. The exit code is 0 report or pass, 3 setup or IO error, 4 a gate
-missed. 2 is unused throughout the diagnostics, since click exits 2 on a usage error.
+Writes a bounded file of random data (fsync included), re-reads it after
+dropping its page cache, and times create/stat/delete on a batch of small files,
+against a scratch subdirectory of the target. Where the pages did not actually
+leave memory the report says so, and the read figure is then memory rather than
+storage. `posix_fadvise` reports success on tmpfs while evicting nothing, so
+tmpfs and ramfs are refused rather than measured, and on a network filesystem a
+dropped client cache still leaves the server's own cache in play. Each chunk is
+fresh random data, since a compressing or deduplicating backend does not store a
+repeated one. Every figure is MiB and MiB/s. Run it on a compute node (wrap in
+`srun`) to probe from there. Set `--min-write`, `--min-read`, or `--max-meta-ms`
+to turn it into a pass/fail gate. The exit code is 0 report or pass, 3 setup or
+IO error, 4 a gate missed. 2 is unused throughout the diagnostics, since click
+exits 2 on a usage error.
 
 **Use cases**
 - Spot-check whether a filesystem is responsive from a node.
@@ -172,6 +178,14 @@ NCCL works. Requires torch in the environment (activate your env, or pass
 - `--python`: Python interpreter with torch (default: python).
 - `--timeout`: Seconds before the check is aborted (default 300).
 - `--dry-run`: Print the srun command instead of running it.
+
+Tasks per node comes from `SLURM_NTASKS_PER_NODE` where Slurm set it, which per
+`man sbatch` is only when `--ntasks-per-node` was given, and otherwise from
+`SLURM_NTASKS` and `SLURM_NNODES`. The test gives each local task one GPU, so a
+step whose tasks per node does not match the node's GPU count is refused: with
+fewer tasks the ranks would share device 0 and pass without touching NVLink.
+Exit codes are 0 on success and 1 on any error, including the timeout, which is
+reported as a timeout.
 
 ## `diag nvlink [BYTES_PER_GPU] [WARMUP] [REPORT_EVERY] [--gpus N] [--nvcc PATH] [--rebuild] [--dry-run]`
 

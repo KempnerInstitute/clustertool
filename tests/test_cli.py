@@ -2209,7 +2209,7 @@ def test_diag_nccl_dry_run():
     assert result.exit_code == 0
     assert "timeout 300 srun" in result.output
     assert "--ntasks-per-node=" in result.output
-    assert result.output.strip().endswith("-u <nccl_fsdp_test.py>")
+    assert result.output.strip().endswith("'<nccl_fsdp_test.py>'")
 
 
 def test_diag_nccl_no_slurm(monkeypatch):
@@ -4768,3 +4768,72 @@ def test_gpu_session_keeps_both_defaults_by_default(monkeypatch):
     assert result.exit_code == 0
     assert any(arg.startswith("--mem=") for arg in calls[0])
     assert any(arg.startswith("--cpus-per-task=") for arg in calls[0])
+
+
+def _nccl_env(monkeypatch, **overrides):
+    for name in (
+        "SLURM_NTASKS_PER_NODE",
+        "SLURM_NTASKS",
+        "SLURM_NNODES",
+        "SLURM_TASKS_PER_NODE",
+        "SLURM_PROCID",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    for name, value in overrides.items():
+        monkeypatch.setenv(name, value)
+
+
+def test_diag_nccl_derives_tasks_per_node_without_the_optional_variable(monkeypatch):
+    """man sbatch sets SLURM_NTASKS_PER_NODE only when --ntasks-per-node was given."""
+    import importlib
+
+    nccl_mod = importlib.import_module("clustertool.commands.diag.nccl")
+
+    _nccl_env(monkeypatch, SLURM_NTASKS="8", SLURM_NNODES="2")
+    assert nccl_mod._tasks_per_node() == "4"
+    _nccl_env(monkeypatch, SLURM_TASKS_PER_NODE="2(x4)", SLURM_NNODES="4")
+    assert nccl_mod._tasks_per_node() == "2"
+    _nccl_env(monkeypatch, SLURM_NTASKS_PER_NODE="3")
+    assert nccl_mod._tasks_per_node() == "3"
+    _nccl_env(monkeypatch)
+    assert nccl_mod._tasks_per_node() is None
+
+
+def test_diag_nccl_refuses_a_task_count_that_does_not_match_the_gpus(monkeypatch):
+    """The test gives each local task one GPU, so fewer tasks would share device 0."""
+    _nccl_env(monkeypatch, SLURM_NTASKS="1", SLURM_NNODES="1", SLURM_PROCID="0")
+    monkeypatch.setattr(process, "probe", lambda cmd, **kw: (0, "GPU 0: x\nGPU 1: y\n", ""))
+    result = CliRunner().invoke(main, ["diag", "nccl"])
+    assert result.exit_code == 1
+    assert "--ntasks-per-node=2" in result.output
+
+
+def test_diag_nccl_names_what_the_step_did_not_report(monkeypatch):
+    _nccl_env(monkeypatch)
+    result = CliRunner().invoke(main, ["diag", "nccl"])
+    assert result.exit_code == 1
+    assert "the tasks per node" in result.output
+
+
+def test_diag_nccl_reports_a_timeout_as_a_timeout(monkeypatch, tmp_path):
+    _nccl_env(monkeypatch, SLURM_NTASKS="1", SLURM_NNODES="1", SLURM_PROCID="0")
+    monkeypatch.setenv("SLURM_SUBMIT_DIR", str(tmp_path))
+    monkeypatch.setattr(process, "probe", lambda cmd, **kw: (127, "", ""))
+    monkeypatch.setattr(process, "succeeds", lambda cmd: True)
+    monkeypatch.setattr(slurm, "first_hostname", lambda: "n1")
+    monkeypatch.setattr(process, "stream", lambda cmd, extra_env=None: 124)
+    result = CliRunner().invoke(main, ["diag", "nccl", "--timeout", "5"])
+    assert result.exit_code == 1
+    assert "did not finish within 5s" in result.output
+    assert list(tmp_path.glob("nccl_fsdp_test_*.py")) == []
+
+
+def test_diag_nccl_cleans_up_when_the_setup_after_staging_fails(monkeypatch, tmp_path):
+    """The staged script must not outlive a failure between staging and the run."""
+    _nccl_env(monkeypatch, SLURM_NTASKS="1", SLURM_NNODES="1", SLURM_PROCID="0")
+    monkeypatch.setenv("SLURM_SUBMIT_DIR", str(tmp_path))
+    monkeypatch.setattr(process, "probe", lambda cmd, **kw: (127, "", ""))
+    monkeypatch.setattr(process, "succeeds", lambda cmd: True)
+    monkeypatch.setattr(slurm, "first_hostname", lambda: (_ for _ in ()).throw(OSError("boom")))
+    CliRunner().invoke(main, ["diag", "nccl"])
+    assert list(tmp_path.glob("nccl_fsdp_test_*.py")) == []

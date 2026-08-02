@@ -93,6 +93,7 @@ job_stats = "jobstats"
 quota = "quota"
 lfs = "lfs"
 ncdu = "ncdu"
+sdiag = "sdiag"
 nvtop = "nvtop"
 tmux = "tmux"
 
