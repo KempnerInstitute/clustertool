@@ -240,14 +240,20 @@ def partition_nodes(partition: str) -> list[tuple[str, str]]:
     sinfo refuses -a together with -p, so a partition the caller's group cannot
     use comes back empty rather than hidden. The caller distinguishes that from a
     mistyped name by asking whether the partition exists.
+
+    -p takes a comma-separated list and -N prints one row per node and partition,
+    so a node in two of the named partitions appears twice. Each node is returned
+    once, with the state of its first row, since a node has one state.
     """
     code, out, err = process.probe(["sinfo", "-h", "-N", "-p", partition, "-o", "%N %t"])
     if code != 0:
         raise CommandError(f"could not list the nodes in {partition}: {err.strip() or code}")
     rows: list[tuple[str, str]] = []
+    seen: set[str] = set()
     for line in out.splitlines():
         fields = line.split()
-        if len(fields) >= 2:
+        if len(fields) >= 2 and fields[0] not in seen:
+            seen.add(fields[0])
             rows.append((fields[0], fields[1]))
     return rows
 
@@ -903,12 +909,23 @@ _BAD_NODE_STATES = (
     "RESERVED",
     "COMPLETING",
     "FAIL",
-    "POWER_DOWN",
-    "POWERED_DOWN",
-    "POWERING_DOWN",
+    "POWER",
     "INVAL",
     "BLOCKED",
+    "FUTURE",
+    "UNKNOWN",
+    "PERFCTRS",
+    "NPC",
+    "REBOOT",
 )
+"""Substrings of a scontrol State= field naming a node that cannot take new work.
+
+Per man sinfo: PERFCTRS/NPC renders a node "not usable for any other jobs",
+FUTURE is "not fully configured", and UNKNOWN means the state "has not yet been
+determined", which every node reports briefly after a slurmctld restart. POWER
+covers the POWER_DOWN, POWERED_DOWN, POWERING_DOWN and POWERING_UP spellings,
+and REBOOT the REBOOT_REQUESTED and REBOOT_ISSUED ones.
+"""
 
 
 _UNSCHEDULABLE_CODES = (

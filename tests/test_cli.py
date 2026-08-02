@@ -1261,7 +1261,7 @@ def test_gpu_session_extra_args(monkeypatch):
 
 def test_nodes_down(monkeypatch):
     calls = _capture_stream(monkeypatch)
-    monkeypatch.setattr(qos, "partition_exists", lambda p, cluster=None: True)
+    monkeypatch.setattr(slurm, "partition_exists", lambda p, cluster=None: True)
     result = CliRunner().invoke(main, ["nodes", "down", "-p", "kempner"])
     assert result.exit_code == 0
     assert calls[0] == ["sinfo", "-R", "-o", "%60E %12u %19H %N", "-p", "kempner"]
@@ -1317,7 +1317,7 @@ def test_nodes_frag_skips_gpu_less_partitions(monkeypatch):
 
 def test_nodes_frag_rejects_an_unknown_partition(monkeypatch):
     monkeypatch.setattr(slurm, "node_capacity", lambda: [])
-    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: False)
+    monkeypatch.setattr(slurm, "partition_exists", lambda name, cluster=None: False)
     result = CliRunner().invoke(main, ["nodes", "frag", "-p", "no_such_partition"])
     assert result.exit_code != 0
     assert "does not exist" in result.output
@@ -1326,7 +1326,7 @@ def test_nodes_frag_rejects_an_unknown_partition(monkeypatch):
 def test_nodes_frag_distinguishes_a_cpu_only_partition(monkeypatch):
     """bigmem exists; saying it might not would send the user looking for a typo."""
     monkeypatch.setattr(slurm, "node_capacity", lambda: [])
-    monkeypatch.setattr(qos, "partition_exists", lambda name, cluster=None: True)
+    monkeypatch.setattr(slurm, "partition_exists", lambda name, cluster=None: True)
     result = CliRunner().invoke(main, ["nodes", "frag", "-p", "bigmem"])
     assert result.exit_code != 0
     assert "has no GPU nodes" in result.output
@@ -4956,3 +4956,42 @@ def test_jobs_failures_keeps_cancellations_out_of_the_rate(monkeypatch):
     assert result.exit_code == 0
     assert "failure rate: 0.0%" in result.output
     assert "1 cancellation(s) are excluded" in result.output
+
+
+def test_nodes_list_counts_each_node_once(monkeypatch):
+    """sinfo -N prints one row per node and partition, so a comma list repeats nodes."""
+    sample = "n1 idle\nn1 idle\nn2 mix\n"
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, sample, ""))
+    result = CliRunner().invoke(main, ["nodes", "list", "p1,p2"])
+    assert result.exit_code == 0
+    assert "(2 node(s))" in result.output
+
+
+def test_nodes_list_spells_out_every_sinfo_flag(monkeypatch):
+    """A node in a maintenance reservation reads as idle without its flag."""
+    sample = "n1 idle$\nn2 idle~\nn3 idle*\n"
+    monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (0, sample, ""))
+    result = CliRunner().invoke(main, ["nodes", "list", "p"])
+    assert result.exit_code == 0
+    assert "maintenance reservation" in result.output
+    assert "powered off" in result.output
+    assert "not responding" in result.output
+
+
+def test_frag_excludes_states_that_cannot_take_work(monkeypatch):
+    """man sinfo: PERFCTRS renders a node not usable, FUTURE is not fully configured."""
+    sample = "\n".join(
+        f"NodeName={name} State={state} Partitions=p CfgTRES=cpu=8,gres/gpu=4 "
+        "AllocTRES= CPUEfctv=8 CPUAlloc=0 RealMemory=1000 MemSpecLimit=0 AllocMem=0"
+        for name, state in (
+            ("ok", "IDLE"),
+            ("fut", "FUTURE"),
+            ("unk", "UNKNOWN"),
+            ("npc", "IDLE+PERFCTRS"),
+            ("up", "IDLE+POWERING_UP"),
+            ("reb", "IDLE+REBOOT_REQUESTED"),
+        )
+    )
+    monkeypatch.setattr(slurm, "_run", lambda cmd: sample)
+    rows = {row["name"]: row["available"] for row in slurm.node_capacity()}
+    assert rows == {"ok": True, "fut": False, "unk": False, "npc": False, "up": False, "reb": False}

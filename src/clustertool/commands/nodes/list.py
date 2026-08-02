@@ -5,6 +5,19 @@ import click
 from clustertool import completion, slurm
 from clustertool.grouping import keywords
 
+_FLAGS = {
+    "*": "not responding, takes no new work",
+    "~": "powered off",
+    "#": "powering up",
+    "!": "pending power down",
+    "%": "powering down",
+    "$": "in a maintenance reservation, takes no new work",
+    "@": "pending reboot",
+    "^": "reboot issued",
+    "-": "planned by backfill for a higher-priority job",
+}
+"""The trailing state flags man sinfo documents, in its own words."""
+
 
 @keywords("hosts", "machines", "state")
 @click.command("list")
@@ -22,8 +35,9 @@ def list_nodes(partitions: tuple[str, ...]) -> None:
     alloc is full, comp is finishing a job, resv is held by a reservation, drain
     and drng take no new work, down is offline, inval registered resources that do
     not match its configuration, and plnd is reserved by the backfill scheduler
-    for a higher-priority job. Two flags can follow: * means the node is not
-    responding, and - that backfill has planned it for a higher-priority job.
+    for a higher-priority job. A flag can follow, and man sinfo documents nine;
+    each is spelled out beside the node, since several of them mean the node
+    cannot take work whatever its base state reads.
 
     \b
     Use cases:
@@ -44,12 +58,8 @@ def list_nodes(partitions: tuple[str, ...]) -> None:
             click.echo()
             continue
         for node, state in rows:
-            notes = []
-            if state.endswith("*"):
-                notes.append("not responding")
-            if state.endswith("-"):
-                notes.append("planned by backfill")
-            note = f"  ({', '.join(notes)})" if notes else ""
+            flag = _FLAGS.get(state[-1:], "")
+            note = f"  ({flag})" if flag else ""
             click.echo(f"  {node:<20} {state:<8}{note}".rstrip())
-        click.echo(f"  ({len(rows)} node(s))")
+        click.echo(f"  ({len({node for node, _ in rows})} node(s))")
         click.echo()
