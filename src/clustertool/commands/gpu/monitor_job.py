@@ -1,6 +1,7 @@
 """gpu monitor-job command."""
 
 import os
+import pwd
 
 import click
 
@@ -29,9 +30,7 @@ def monitor_job(jobid: str, interval: int) -> None:
       --interval  Refresh interval in seconds (default 5).
     """
     owner = slurm.job_owner(jobid)
-    me = os.environ.get("USER", "")
-    if owner and not me:
-        raise click.ClickException("cannot tell whose job this is: $USER is not set")
+    me = pwd.getpwuid(os.getuid()).pw_name
     if owner and owner != me:
         raise click.ClickException(
             f"job {jobid} belongs to {owner}, not you. Node login is gated on having "

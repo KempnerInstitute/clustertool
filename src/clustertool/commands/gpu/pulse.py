@@ -1,6 +1,7 @@
 """gpu pulse command."""
 
 import os
+import pwd
 import shlex
 import sys
 
@@ -92,9 +93,7 @@ def pulse(args: tuple[str, ...]) -> None:
     node, job, forward, dry_run = _split_args(args)
     if job and not node:
         owner = slurm.job_owner(job)
-        me = os.environ.get("USER", "")
-        if owner and not me:
-            raise click.ClickException("cannot tell whose job this is: $USER is not set")
+        me = pwd.getpwuid(os.getuid()).pw_name
         if owner and owner != me:
             raise click.ClickException(
                 f"job {job} belongs to {owner}, not you. Node login is gated on having "

@@ -1,6 +1,7 @@
 """gpu nvtop command."""
 
 import os
+import pwd
 
 import click
 
@@ -66,9 +67,7 @@ def nvtop(jobid: str, attach: bool) -> None:
       --attach/--no-attach  Attach after creating the session (default attach).
     """
     owner = slurm.job_owner(jobid)
-    me = os.environ.get("USER", "")
-    if owner and not me:
-        raise click.ClickException("cannot tell whose job this is: $USER is not set")
+    me = pwd.getpwuid(os.getuid()).pw_name
     if owner and owner != me:
         raise click.ClickException(
             f"job {jobid} belongs to {owner}, not you. Node login is gated on having "

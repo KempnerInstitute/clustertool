@@ -4442,3 +4442,28 @@ def test_resumable_states_match_what_slurm_prints():
     assert "REBOOT_REQUESTED" in slurm.RESUMABLE_STATES
     assert "REBOOT_ISSUED" in slurm.RESUMABLE_STATES
     assert "REBOOT" not in slurm.RESUMABLE_STATES
+
+
+def test_gpu_monitor_job_ignores_a_spoofed_user(monkeypatch):
+    """$USER is writable by the caller, so it cannot stand in for the real uid."""
+    monkeypatch.setenv("USER", "someoneelse")
+    monkeypatch.setattr(slurm, "job_owner", lambda jobid: "someoneelse")
+    result = CliRunner().invoke(main, ["gpu", "monitor-job", "1"])
+    assert result.exit_code == 1
+    assert "belongs to someoneelse" in result.output
+
+
+def test_gpu_nvtop_ignores_a_spoofed_user(monkeypatch):
+    monkeypatch.setenv("USER", "someoneelse")
+    monkeypatch.setattr(slurm, "job_owner", lambda jobid: "someoneelse")
+    result = CliRunner().invoke(main, ["gpu", "nvtop", "1"])
+    assert result.exit_code == 1
+    assert "belongs to someoneelse" in result.output
+
+
+def test_gpu_pulse_ignores_a_spoofed_user(monkeypatch):
+    monkeypatch.setenv("USER", "someoneelse")
+    monkeypatch.setattr(slurm, "job_owner", lambda jobid: "someoneelse")
+    result = CliRunner().invoke(main, ["gpu", "pulse", "--job", "1"])
+    assert result.exit_code == 1
+    assert "belongs to someoneelse" in result.output

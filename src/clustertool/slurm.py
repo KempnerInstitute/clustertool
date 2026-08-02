@@ -521,21 +521,31 @@ def job_owner(jobid: str) -> str:
     passed for the same reason job_exists passes it, since squeue otherwise omits
     a suspended job, which scancel and scontrol both still act on.
     """
+    if "," in jobid:
+        raise CommandError(
+            f"'{jobid}' names more than one job. squeue answers a list in its own sort "
+            "order, so only one of the owners would be checked. Give a single job id"
+        )
     code, out, err = process.probe(["squeue", "-t", "all", "-j", jobid, "-h", "-O", "username:64"])
     if code != 0:
         if "invalid job id" in (out + err).lower():
             return ""
         raise CommandError(f"could not check who owns job {jobid}: {err.strip() or code}")
-    return next((line.strip() for line in out.splitlines() if line.strip()), "")
+    owners = {line.strip() for line in out.splitlines() if line.strip()}
+    if len(owners) > 1:
+        raise CommandError(f"job {jobid} reports more than one owner: {', '.join(sorted(owners))}")
+    return owners.pop() if owners else ""
 
 
 def job_nodes(jobid: str) -> list[str]:
     """Return the expanded hostnames allocated to a job.
 
     An empty list means the job exists but holds no nodes yet, as a pending job
-    does. A job Slurm does not know raises, so the two are not confused.
+    does. A job Slurm does not know raises, so the two are not confused. -t all
+    is passed for the reason job_owner passes it: a suspended job still holds its
+    nodes, and squeue's default states would report it as holding none.
     """
-    code, out, err = process.probe(["squeue", "-j", jobid, "-h", "-o", "%N"])
+    code, out, err = process.probe(["squeue", "-t", "all", "-j", jobid, "-h", "-o", "%N"])
     if code != 0:
         raise CommandError(f"job '{jobid}' not found: {err.strip() or out.strip() or code}")
     compact = out.strip()

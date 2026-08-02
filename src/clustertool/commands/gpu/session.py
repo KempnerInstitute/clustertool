@@ -1,6 +1,7 @@
 """gpu session command."""
 
 import os
+import pwd
 import socket
 
 import click
@@ -15,7 +16,7 @@ def _jupyter_command(port: int) -> list[str]:
     salloc runs a given command on the submitting host, so srun is what places it
     on the allocation. The server binds to the node's own hostname.
     """
-    user = os.environ.get("USER", "")
+    user = pwd.getpwuid(os.getuid()).pw_name
     login_host = socket.gethostname()
     tunnel = f"ssh -N -L {port}:$(hostname):{port} {user}@{login_host}"
     inner = (
@@ -101,8 +102,6 @@ def session(
         cmd += ["--cpus-per-task=" + str(cpus), "--mem=" + str(mem_mb)]
     cmd += ["-t", time_limit, *salloc_args]
     if jupyter:
-        if not os.environ.get("USER"):
-            raise click.ClickException("cannot build the ssh tunnel: $USER is not set")
         cmd += _jupyter_command(port)
     if process.stream(cmd):
         raise click.ClickException(f"salloc failed for partition {partition}")

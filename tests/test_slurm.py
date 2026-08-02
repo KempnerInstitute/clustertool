@@ -474,3 +474,29 @@ def test_account_members_raises_when_sshare_fails(monkeypatch):
     monkeypatch.setattr(process, "probe", lambda cmd, timeout=None: (1, "", "no plugin"))
     with pytest.raises(slurm.CommandError):
         slurm.account_members("lab")
+
+
+def test_job_owner_refuses_a_comma_list(monkeypatch):
+    """squeue answers a list in its own sort order, so one owner would stand for all."""
+    monkeypatch.setattr(process, "probe", lambda *a, **k: (0, "someone\n", ""))
+    with pytest.raises(slurm.CommandError, match="names more than one job"):
+        slurm.job_owner("1,2")
+
+
+def test_job_owner_refuses_disagreeing_owners(monkeypatch):
+    monkeypatch.setattr(process, "probe", lambda *a, **k: (0, "alice\nbob\n", ""))
+    with pytest.raises(slurm.CommandError, match="more than one owner"):
+        slurm.job_owner("1")
+
+
+def test_job_nodes_asks_for_every_state(monkeypatch):
+    """A suspended job still holds its nodes, and squeue's defaults would omit it."""
+    seen = []
+
+    def fake(cmd, **kwargs):
+        seen.append(cmd)
+        return (0, "", "")
+
+    monkeypatch.setattr(process, "probe", fake)
+    assert slurm.job_nodes("1") == []
+    assert "-t" in seen[0] and "all" in seen[0]
