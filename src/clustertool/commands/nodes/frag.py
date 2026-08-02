@@ -2,7 +2,7 @@
 
 import click
 
-from clustertool import completion, qos, slurm
+from clustertool import completion, slurm
 from clustertool.grouping import keywords
 
 _SHAPES = (1, 2, 4)
@@ -68,7 +68,7 @@ def frag(partition: str | None, cpus_per_gpu: int | None, mem_per_gpu: int | Non
     if partition:
         nodes = [n for n in nodes if partition in n["partitions"]]
         if not nodes:
-            if not qos.partition_exists(partition):
+            if not slurm.partition_exists(partition):
                 raise click.ClickException(f"partition '{partition}' does not exist")
             raise click.ClickException(f"partition '{partition}' has no GPU nodes")
 

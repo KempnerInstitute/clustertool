@@ -2,7 +2,7 @@
 
 import click
 
-from clustertool import completion, process, qos
+from clustertool import completion, process, slurm
 from clustertool.grouping import keywords
 
 
@@ -29,9 +29,9 @@ def down(partition: str | None) -> None:
     Inputs:
       -p, --partition  Limit to one partition.
     """
-    cmd = ["sinfo", "-R", "-o", "%60E %12u %19H %N"]
+    cmd = ["sinfo", "-a", "-R", "-o", "%60E %12u %19H %N"]
     if partition:
-        if not qos.partition_exists(partition):
+        if not slurm.partition_exists(partition):
             raise click.ClickException(f"partition '{partition}' does not exist")
         cmd += ["-p", partition]
     process.passthrough(cmd, "'sinfo -R' failed")

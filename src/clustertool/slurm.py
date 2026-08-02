@@ -226,9 +226,12 @@ def partition_nodes(partition: str) -> list[tuple[str, str]]:
     """Return (node, state) rows for a partition.
 
     Raises if sinfo fails, since callers read an empty result as a partition that
-    does not exist, and an unreachable controller is not the user's typo.
+    does not exist, and an unreachable controller is not the user's typo. -a is
+    passed because man sinfo otherwise hides a partition the caller's group
+    cannot use, which would read as a partition with no nodes rather than one
+    they may not submit to.
     """
-    code, out, err = process.probe(["sinfo", "-h", "-N", "-p", partition, "-o", "%N %t"])
+    code, out, err = process.probe(["sinfo", "-a", "-h", "-N", "-p", partition, "-o", "%N %t"])
     if code != 0:
         raise CommandError(f"could not list the nodes in {partition}: {err.strip() or code}")
     rows: list[tuple[str, str]] = []
@@ -816,6 +819,7 @@ _BAD_NODE_STATES = (
     "POWERED_DOWN",
     "POWERING_DOWN",
     "INVAL",
+    "BLOCKED",
 )
 
 
@@ -858,7 +862,8 @@ def node_capacity() -> list[dict]:
                 "partitions": [p for p in kv.get("Partitions", "").split(",") if p],
                 "state": state,
                 "available": not any(bad in state.upper() for bad in _BAD_NODE_STATES),
-                "cpu_free": _int_field(kv.get("CPUTot")) - _int_field(kv.get("CPUAlloc")),
+                "cpu_free": (_int_field(kv.get("CPUEfctv")) or _int_field(kv.get("CPUTot")))
+                - _int_field(kv.get("CPUAlloc")),
                 "mem_free_mb": max(
                     0,
                     _int_field(kv.get("RealMemory"))

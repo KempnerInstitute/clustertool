@@ -2,7 +2,7 @@
 
 import click
 
-from clustertool import completion, qos, slurm
+from clustertool import completion, slurm
 from clustertool.grouping import keywords
 
 
@@ -36,10 +36,10 @@ def list_nodes(partitions: tuple[str, ...]) -> None:
     """
     for partition in partitions:
         rows = slurm.partition_nodes(partition)
+        if not rows and not slurm.partition_exists(partition):
+            raise click.ClickException(f"partition '{partition}' does not exist")
         click.echo(f"== {partition} ==")
         if not rows:
-            if not qos.partition_exists(partition):
-                raise click.ClickException(f"partition '{partition}' does not exist")
             click.echo("  (no nodes)")
             click.echo()
             continue

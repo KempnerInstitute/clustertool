@@ -1261,7 +1261,7 @@ def test_nodes_down(monkeypatch):
     monkeypatch.setattr(qos, "partition_exists", lambda p, cluster=None: True)
     result = CliRunner().invoke(main, ["nodes", "down", "-p", "kempner"])
     assert result.exit_code == 0
-    assert calls[0] == ["sinfo", "-R", "-o", "%60E %12u %19H %N", "-p", "kempner"]
+    assert calls[0] == ["sinfo", "-a", "-R", "-o", "%60E %12u %19H %N", "-p", "kempner"]
 
 
 def test_nodes_load_default(monkeypatch):
@@ -2242,6 +2242,7 @@ def test_gpu_avail_cpus_per_gpu_override(monkeypatch):
 
 
 def test_jobs_violators(monkeypatch):
+    monkeypatch.setattr(slurm, "partition_nodes", lambda p: [("n1", "idle")])
     jobs = [
         ("101", "alice", 200, 8, 100000),
         ("102", "bob", 96, 4, 2000000),
@@ -2259,6 +2260,7 @@ def test_jobs_violators(monkeypatch):
 
 def test_jobs_violators_ignores_a_job_at_exactly_the_norm(monkeypatch):
     """--mem=360G is 368640 MiB, which is the ceiling the site enforces, not over it."""
+    monkeypatch.setattr(slurm, "partition_nodes", lambda p: [("n1", "idle")])
     jobs = [("at_limit", "alice", 24, 1, 368640)]
     monkeypatch.setattr(slurm, "running_jobs_reqtres", lambda p: jobs)
     result = CliRunner().invoke(main, ["jobs", "violators", "kempner_h100"])
@@ -2269,6 +2271,7 @@ def test_jobs_violators_ignores_a_job_at_exactly_the_norm(monkeypatch):
 
 def test_jobs_violators_ranks_the_worst_first(monkeypatch):
     """A job just over must not sit above one at ten times the norm."""
+    monkeypatch.setattr(slurm, "partition_nodes", lambda p: [("n1", "idle")])
     jobs = [
         ("marginal", "alice", 24, 1, 380000),
         ("severe", "bob", 24, 1, 3686400),
@@ -2282,6 +2285,7 @@ def test_jobs_violators_ranks_the_worst_first(monkeypatch):
 
 
 def test_jobs_violators_h200(monkeypatch):
+    monkeypatch.setattr(slurm, "partition_nodes", lambda p: [("n1", "idle")])
     monkeypatch.setattr(slurm, "running_jobs_reqtres", lambda p: [("301", "x", 200, 2, 10000)])
     result = CliRunner().invoke(main, ["jobs", "violators", "kempner_h200"])
     assert result.exit_code == 0

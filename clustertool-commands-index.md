@@ -85,9 +85,9 @@ names the host tool each command shells out to.
 | --- | --- | --- | --- |
 | `nodes list PARTITION...` | user | sinfo, scontrol | Node names and states for one or more partitions. |
 | `nodes partitions [-f TEXT]` | user | spart | Partitions with cores, GPUs, memory, and time limits. |
-| `nodes down [-p PARTITION]` | user | sinfo | Down and drained nodes with the scheduler's reason. |
+| `nodes down [-p PARTITION]` | user | sinfo, scontrol | Down, drained, draining and failing nodes with the scheduler's reason. |
 | `nodes load [-f TEXT]` | user | lsload | Per-node load and free CPU/GPU/memory. |
-| `nodes frag` | user | scontrol | Free GPU shards per partition and how many N-GPU jobs fit now. |
+| `nodes frag [-p PARTITION] [--cpus-per-gpu N] [--mem-per-gpu MiB]` | user | scontrol | Free GPU shards per partition and how many N-GPU jobs fit now. |
 | `nodes reservations` | user | scontrol | Active reservations on the cluster. |
 | `nodes resume [NODE...] [-p]` | admin | scontrol update | Return drained or down nodes to service. |
 
