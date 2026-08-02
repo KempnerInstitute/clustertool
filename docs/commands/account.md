@@ -162,8 +162,7 @@ user's other accounts are untouched. Prompts for confirmation unless `-y`. Slurm
 
 Set a user's fairshare in an account (via `sacctmgr`). SHARE is an integer number
 of raw shares, or `parent` to inherit the account's shares; anything else is
-refused. This changes the user's base association in the account, and their
-partition-scoped associations inherit it where they are set to `parent`. Prompts
+refused. The condition carries no partition, so sacctmgr matches every association the user holds in the account and overwrites each one, including a partition association set to `parent`. The associations it will change are listed before you confirm. Prompts
 for confirmation unless `-y`. Slurm operator, or a coordinator of the account; a site that sets
 `DisableCoordDBD` in `slurmdbd.conf` restricts this to operators.
 

@@ -50,8 +50,7 @@ def remove_user(
       -y, --yes        Skip the confirmation prompt.
     """
     _write.check_names(user=user, account=account, partition=partition, cluster=cluster)
-    if partition is not None:
-        _write.check_names(partition=partition)
+    _write.check_targets(user, account, cluster)
     rows = _write.associations(user, account, cluster)
     if not rows:
         raise click.ClickException(f"{user} has no association with account {account}")
@@ -62,7 +61,7 @@ def remove_user(
                 f"{user} has no association with account {account} on partition {partition}"
             )
 
-    click.echo(f"Associations to remove for {user} in {account}:")
+    click.echo(f"Associations to remove for {_write.where(user, account, cluster)}:")
     _write.describe(rows)
     click.echo(
         "Removing an association destroys its recorded usage; per man sacctmgr a "
@@ -70,7 +69,10 @@ def remove_user(
         "standing restarts from zero."
     )
     if not yes:
-        click.confirm(f"Remove {len(rows)} association(s)?", abort=True)
+        click.confirm(
+            f"Remove {len(rows)} association(s) for {_write.where(user, account, cluster)}?",
+            abort=True,
+        )
     cmd = ["sacctmgr", "-i", "remove", "user", f"name={user}", f"account={account}"]
     cmd.append(_write.cluster_scope(cluster))
     if partition is not None:

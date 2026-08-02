@@ -107,7 +107,10 @@ def test_child_env_drops_the_slurm_query_variables(monkeypatch):
         "SACCT_FORMAT",
         "SINFO_FORMAT",
         "SLURM_TIME_FORMAT",
-        "SLURM_CLUSTERS",
     ):
         assert name not in env, name
     assert env["SLURM_JOB_ID"] == "123"
+    assert env["SLURM_CLUSTERS"] == "x", (
+        "SLURM_CLUSTERS selects the target cluster, per man sbatch, so dropping it "
+        "would send a submission somewhere the caller did not ask for"
+    )

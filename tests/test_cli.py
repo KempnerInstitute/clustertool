@@ -1947,6 +1947,7 @@ def test_account_writes_reject_a_comma(monkeypatch):
 
 def test_account_set_fairshare_rejects_a_nonsense_share(monkeypatch):
     calls = _capture_stream(monkeypatch)
+    _stub_write_targets(monkeypatch)
     result = CliRunner().invoke(
         main, ["account", "set-fairshare", "alice", "kempner_dev", "nonsense", "-y"]
     )
@@ -1993,8 +1994,14 @@ def test_diag_help_sections_ib_as_admin():
     assert re.search(r"^\s+ib\s", out[admin_idx:], re.M)
 
 
+def _stub_write_targets(monkeypatch):
+    """The account write commands check the user, account and cluster resolve first."""
+    monkeypatch.setattr(_write, "check_targets", lambda user, account, cluster: None)
+
+
 def test_account_remove_user(monkeypatch):
     calls = _capture_stream(monkeypatch)
+    _stub_write_targets(monkeypatch)
     monkeypatch.setattr(qos, "show_assoc_rows", lambda u, a, c=None: ["|normal"])
     result = CliRunner().invoke(main, ["account", "remove-user", "alice", "kempner_dev", "-y"])
     assert result.exit_code == 0
@@ -2021,11 +2028,12 @@ def test_account_remove_user_lists_every_association(monkeypatch):
         ],
     )
     calls = _capture_stream(monkeypatch)
+    _stub_write_targets(monkeypatch)
     result = CliRunner().invoke(
         main, ["account", "remove-user", "alice", "kempner_dev"], input="n\n"
     )
     assert result.exit_code != 0
-    assert "Remove 3 association(s)?" in result.output
+    assert "Remove 3 association(s) for alice in kempner_dev on odyssey?" in result.output
     assert "kempner_h200_priority" in result.output
     assert "kemp_mlcommons_rtx" in result.output
     assert calls == []
@@ -2038,6 +2046,7 @@ def test_account_remove_user_can_target_one_partition(monkeypatch):
         lambda u, a, c=None: ["|normal", "kempner_h200_priority|kemp_gpu16_id42"],
     )
     calls = _capture_stream(monkeypatch)
+    _stub_write_targets(monkeypatch)
     result = CliRunner().invoke(
         main,
         ["account", "remove-user", "alice", "kempner_dev", "-p", "kempner_h200_priority", "-y"],
@@ -2050,6 +2059,7 @@ def test_account_remove_user_can_target_one_partition(monkeypatch):
 def test_account_remove_user_with_no_association(monkeypatch):
     monkeypatch.setattr(qos, "show_assoc_rows", lambda u, a, c=None: [])
     calls = _capture_stream(monkeypatch)
+    _stub_write_targets(monkeypatch)
     result = CliRunner().invoke(main, ["account", "remove-user", "alice", "kempner_dev", "-y"])
     assert result.exit_code != 0
     assert "no association with account kempner_dev" in result.output
@@ -2058,6 +2068,7 @@ def test_account_remove_user_with_no_association(monkeypatch):
 
 def test_account_set_fairshare(monkeypatch):
     calls = _capture_stream(monkeypatch)
+    _stub_write_targets(monkeypatch)
     monkeypatch.setattr(qos, "show_assoc_rows", lambda u, a, c=None: ["|normal"])
     result = CliRunner().invoke(
         main, ["account", "set-fairshare", "alice", "kempner_dev", "50", "-y"]
@@ -5025,3 +5036,54 @@ def test_account_usage_refuses_a_user_that_does_not_exist(monkeypatch):
     assert result.exit_code == 1
     assert "no such user" in result.output
     assert calls == []
+
+
+def test_jobs_set_priority_refuses_a_job_list(monkeypatch):
+    """man scontrol reads JobId as a list, and an array id as every element."""
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "set-priority", "1,2", "500", "-y"])
+    assert result.exit_code == 1
+    assert "names more than one job" in result.output
+    assert calls == []
+
+
+def test_jobs_set_priority_refuses_another_users_job(monkeypatch):
+    monkeypatch.setattr(slurm, "job_owner", lambda jid: "someoneelse")
+    result = CliRunner().invoke(main, ["jobs", "set-priority", "1", "500", "-y"])
+    assert result.exit_code == 1
+    assert "belongs to someoneelse" in result.output
+
+
+def test_account_remove_user_names_the_real_cause(monkeypatch):
+    """A typo'd user, account or cluster all read as 'no association' otherwise."""
+    calls = _capture_stream(monkeypatch)
+    monkeypatch.setattr(qos, "cluster_exists", lambda c: False)
+    result = CliRunner().invoke(
+        main, ["account", "remove-user", "alice", "kempner_dev", "-c", "nope", "-y"]
+    )
+    assert result.exit_code == 1
+    assert "no such cluster" in result.output
+    monkeypatch.setattr(qos, "cluster_exists", lambda c: True)
+    monkeypatch.setattr(slurm, "user_exists", lambda u: False)
+    result = CliRunner().invoke(main, ["account", "remove-user", "nope", "kempner_dev", "-y"])
+    assert result.exit_code == 1
+    assert "no such user" in result.output
+    monkeypatch.setattr(slurm, "user_exists", lambda u: True)
+    monkeypatch.setattr(slurm, "account_exists", lambda a: False)
+    result = CliRunner().invoke(main, ["account", "remove-user", "alice", "nope", "-y"])
+    assert result.exit_code == 1
+    assert "does not exist" in result.output
+    assert calls == []
+
+
+def test_account_set_fairshare_shows_the_current_shares(monkeypatch):
+    _stub_write_targets(monkeypatch)
+    _capture_stream(monkeypatch)
+    monkeypatch.setattr(_write, "associations", lambda u, a, c: [("", "normal")])
+    result = CliRunner().invoke(
+        main,
+        ["account", "set-fairshare", "alice", "kempner_dev", "50", "-c", "elsewhere"],
+        input="n\n",
+    )
+    assert "alice in kempner_dev on elsewhere" in result.output
+    assert "Set fairshare to 50 on 1 association(s)" in result.output

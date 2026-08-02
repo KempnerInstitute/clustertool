@@ -10,7 +10,15 @@ class CommandError(RuntimeError):
 
 
 _SLURM_QUERY_PREFIXES = ("SQUEUE_", "SACCT_", "SINFO_", "SCONTROL_", "SPRIO_", "SSHARE_", "SSTAT_")
-_SLURM_QUERY_VARS = frozenset({"SLURM_TIME_FORMAT", "SLURM_CLUSTERS", "SLURM_BITSTR_LEN"})
+_SLURM_QUERY_VARS = frozenset({"SLURM_TIME_FORMAT", "SLURM_BITSTR_LEN"})
+"""Environment settings that reshape a query this tool always asks explicitly.
+
+SLURM_CLUSTERS is deliberately not here. man sbatch and man scontrol give it as
+the environment form of --clusters, so it selects the target rather than
+filtering a result, and dropping it would send a submission or an update to a
+different cluster than the caller asked for while jobs submit promises to
+forward its arguments unchanged.
+"""
 
 
 def _child_env() -> dict[str, str]:

@@ -5,7 +5,7 @@ import re
 import click
 
 from clustertool import qos as qoslib
-from clustertool import site
+from clustertool import site, slurm
 
 
 def check_names(**values: str) -> None:
@@ -59,6 +59,26 @@ def cluster_scope(cluster: str | None) -> str:
     system, so an unscoped write acts on every cluster at a multi-cluster site.
     """
     return f"cluster={cluster or site.qos_cluster()}"
+
+
+def check_targets(user: str, account: str, cluster: str | None) -> None:
+    """Fail with the real cause when a read against these would return no rows.
+
+    sacctmgr answers a query naming a user, an account or a cluster that does not
+    exist with an empty result and exit 0, so all three read as "this user has no
+    association with this account" and the cluster is never even mentioned.
+    """
+    if cluster and not qoslib.cluster_exists(cluster):
+        raise click.ClickException(f"no such cluster: {cluster}")
+    if not slurm.user_exists(user):
+        raise click.ClickException(f"no such user on this host: {user}")
+    if not slurm.account_exists(account):
+        raise click.ClickException(f"account '{account}' does not exist")
+
+
+def where(user: str, account: str, cluster: str | None) -> str:
+    """Return a phrase naming everything a write is scoped to, for a prompt."""
+    return f"{user} in {account} on {cluster_scope(cluster).split('=', 1)[1]}"
 
 
 def associations(user: str, account: str, cluster: str | None) -> list[tuple[str, str]]:

@@ -24,7 +24,7 @@ def set_fairshare(user: str, account: str, share: str, cluster: str | None, yes:
     fourth: this sets the shares on the user's base association in the account and
     on every partition-scoped one they hold there, overwriting a partition
     association currently set to parent rather than leaving it to inherit. Each is
-    listed with its current shares before you confirm. Prompts unless -y.
+    listed before you confirm. Prompts unless -y.
 
     Slurm operator, or a coordinator of the account; a site that sets
     DisableCoordDBD in slurmdbd.conf restricts this to operators.
@@ -43,14 +43,17 @@ def set_fairshare(user: str, account: str, share: str, cluster: str | None, yes:
     """
     _write.check_names(user=user, account=account, cluster=cluster)
     _write.check_fairshare(share)
+    _write.check_targets(user, account, cluster)
     rows = _write.associations(user, account, cluster)
     if not rows:
         raise click.ClickException(f"{user} has no association with account {account}")
-    click.echo(f"Associations to set to fairshare {share} for {user} in {account}:")
-    for partition, current_qos in rows:
-        click.echo(f"  {partition or '(no partition)':<28} QoS: {current_qos or '-'}")
+    scope = _write.where(user, account, cluster)
+    click.echo(f"Associations to set to fairshare {share} for {scope}:")
+    _write.describe(rows)
     if not yes:
-        click.confirm(f"Set fairshare on {len(rows)} association(s)?", abort=True)
+        click.confirm(
+            f"Set fairshare to {share} on {len(rows)} association(s) for {scope}?", abort=True
+        )
     cmd = [
         "sacctmgr",
         "-i",
