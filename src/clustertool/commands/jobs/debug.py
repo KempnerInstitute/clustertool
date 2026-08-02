@@ -75,6 +75,26 @@ def _diagnose(info: dict) -> list[tuple[str, str]]:
     return findings
 
 
+def _memory_line(peak_mb: float | None, total_mb: float | None, tasks: int, asked: str) -> str:
+    """Render the memory line, keeping one task's peak apart from the whole job's use.
+
+    man sacct defines MaxRSS as the highest watermark of any single task, while
+    ReqMem is the allocation's request. Printing the two side by side told a
+    multi-rank job it had used a fraction of what it asked for, so the total
+    across tasks is what the request is compared against.
+    """
+    want = f"{asked} requested" if asked else "none recorded"
+    if total_mb is None and peak_mb is None:
+        return f"not recorded, {want}"
+    if tasks > 1 and total_mb is not None:
+        used = f"peak {total_mb:.0f} MiB used across {tasks} tasks"
+        if peak_mb is not None:
+            used += f" ({peak_mb:.0f} MiB in the heaviest)"
+        return f"{used}, {want}"
+    figure = total_mb if total_mb is not None else peak_mb
+    return f"peak {figure:.0f} MiB used, {want}"
+
+
 def _log_findings(log_text: str) -> list[tuple[str, str]]:
     """Return [(cause, suggestion)] for the patterns seen in the job's log.
 
@@ -136,7 +156,7 @@ def debug(jobid: str) -> None:
         )
         return
 
-    maxrss_mb = slurm.job_maxrss_mb(jobid)
+    peak_mb, total_mb, tasks = slurm.job_memory_mb(jobid)
     log_text = slurm.job_output_tail(jobid)
     findings = _diagnose(info)
     observations = _log_findings(log_text)
@@ -146,9 +166,8 @@ def debug(jobid: str) -> None:
     click.echo(f"State:    {info['state']} (exit {info['exit_code']})")
     limit = info["timelimit"].strip() or "no limit recorded"
     click.echo(f"Elapsed:  {info['elapsed']} / {limit}")
-    peak = "not recorded" if maxrss_mb is None else f"peak {maxrss_mb:.0f} MB used"
     asked = info["req_mem"].strip()
-    click.echo(f"Memory:   {peak}, {asked + ' requested' if asked else 'none recorded'}")
+    click.echo(f"Memory:   {_memory_line(peak_mb, total_mb, tasks, asked)}")
     if info.get("nodelist"):
         click.echo(f"Nodes:    {info['nodelist']}")
     click.echo("")

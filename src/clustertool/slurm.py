@@ -173,10 +173,12 @@ def account_exists(account: str) -> bool:
 def partition_exists(partition: str) -> bool:
     """Return True if the cluster has this partition, even with no nodes in it.
 
-    Raises if the query fails, so an unreachable controller is not reported as a
-    partition that does not exist.
+    -a is passed because man scontrol scopes it to partitions that are hidden or
+    unavailable to the caller's group, and without it a partition the caller
+    cannot submit to is reported as one that does not exist. Raises if the query
+    fails, so an unreachable controller is not reported the same way either.
     """
-    code, out, err = process.probe(["scontrol", "show", "partition", partition])
+    code, out, err = process.probe(["scontrol", "-a", "show", "partition", partition])
     if code == 0:
         return True
     if "not found" in (out + err).lower():
@@ -445,21 +447,32 @@ def _field(text: str, key: str) -> str:
     return match.group(1) if match else ""
 
 
-def running_jobs_reqtres(partition: str) -> list[tuple[str, str, int, int, int]]:
-    """Return (jobid, user, cpu, gpu, mem_mb) for running jobs in a partition."""
-    out = _run(["scontrol", "show", "job", "-o"])
+def running_jobs_alloctres(partition: str) -> list[tuple[str, str, int, int, int]]:
+    """Return (jobid, user, cpu, gpu, mem_mb) for running jobs in a partition.
+
+    AllocTRES is what the job holds; ReqTRES is what it asked for. They differ
+    whenever Slurm rounds a request up to a whole node or a whole socket, which
+    is exactly the case a per-GPU norm exists to catch, so reading the request
+    both understated the job and hid the jobs holding the most.
+
+    The array element id is reported rather than the raw job id, since the raw id
+    of element 1 can be the array's own id and would send a follow-up query to
+    the whole array.
+    """
+    out = _run(["scontrol", "-a", "show", "job", "-o"])
     jobs: list[tuple[str, str, int, int, int]] = []
     for line in out.splitlines():
         if "JobId=" not in line or _field(line, "JobState") != "RUNNING":
             continue
         if partition not in _field(line, "Partition").split(","):
             continue
-        req = _field(line, "ReqTRES")
+        alloc = _field(line, "AllocTRES")
         user = _field(line, "UserId").split("(")[0]
-        mem_mb = round(_tres_mem_mb(req))
-        jobs.append(
-            (_field(line, "JobId"), user, _tres_int(req, "cpu"), parse_gpu_count(req), mem_mb)
-        )
+        mem_mb = round(_tres_mem_mb(alloc))
+        array_job = _field(line, "ArrayJobId")
+        array_task = _field(line, "ArrayTaskId")
+        jobid = f"{array_job}_{array_task}" if array_job and array_task else _field(line, "JobId")
+        jobs.append((jobid, user, _tres_int(alloc, "cpu"), parse_gpu_count(alloc), mem_mb))
     return jobs
 
 
@@ -652,19 +665,41 @@ def job_accounting(jobid: str) -> dict:
     return info
 
 
-def job_maxrss_mb(jobid: str) -> float | None:
-    """Return the peak MaxRSS across a job's steps in MB, or None if unrecorded.
+def job_memory_mb(jobid: str) -> tuple[float | None, float | None, int]:
+    """Return (peak per-task MiB, total across tasks MiB, task count) for a job.
 
-    Slurm leaves the field blank for a job whose steps it never sampled, such as
-    one still running, and None keeps that apart from a job that really did use
-    no measurable memory. Raises if accounting could not be read, so a failed
-    query is not reported as a job that used none.
+    man sacct defines MaxRSS as the highest watermark of any one task, while
+    ReqMem is the whole allocation's request, so reporting MaxRSS against ReqMem
+    compares one rank against every rank. TRESUsageInTot carries the sum over
+    ranks and is what the request should be read against; on a single-task job
+    the two agree.
+
+    Either figure is None when Slurm never sampled the step, as for a job still
+    running, which keeps that apart from a job that used no measurable memory.
+    Raises if accounting could not be read.
     """
-    code, out, err = process.probe(["sacct", "-j", jobid, "-n", "-P", "-o", "MaxRSS"])
+    code, out, err = process.probe(
+        ["sacct", "-j", jobid, "-n", "-P", "-o", "MaxRSS,TRESUsageInTot,NTasks"]
+    )
     if code != 0:
         raise CommandError(f"could not read job {jobid}'s memory use: {err.strip() or code}")
-    values = [_mem_to_mb(row.strip()) for row in out.splitlines() if row.strip()]
-    return max(values) if values else None
+    peaks, totals, tasks = [], [], 0
+    for row in out.splitlines():
+        parts = row.split("|")
+        if len(parts) < 3:
+            continue
+        if parts[0].strip():
+            peaks.append(_mem_to_mb(parts[0].strip()))
+        used = _tres_mem_mb(parts[1])
+        if used:
+            totals.append(used)
+        if parts[2].strip().isdigit():
+            tasks = max(tasks, int(parts[2].strip()))
+    return (
+        max(peaks) if peaks else None,
+        max(totals) if totals else None,
+        tasks,
+    )
 
 
 _TOKEN = re.compile(r"\\(.)|%(\d*)(.?)")
@@ -953,10 +988,15 @@ def sacct_window_rows(
 ) -> list[list[str]]:
     """Return split sacct rows for a window, scoped by user, account, or partition.
 
+    -D is passed because man sacct otherwise shows only the most recent record
+    for a job id, and a requeued job has one record per incarnation. Without it
+    a job preempted nine times and then cancelled reports as one cancellation,
+    and the preemptions and node failures that caused the requeues are invisible.
+
     Raises if sacct fails, so a bad time string, an unknown user, or an
     unreachable slurmdbd is not reported as a window in which nothing ran.
     """
-    cmd = ["sacct", "-X", "-n", "-P", "-o", fields, "-S", start, "-E", end]
+    cmd = ["sacct", "-X", "-D", "-n", "-P", "-o", fields, "-S", start, "-E", end]
     if account:
         cmd += ["-A", account, "-a"]
     elif partition:

@@ -122,22 +122,28 @@ def test_node_info_missing(monkeypatch):
         slurm.node_info("nope")
 
 
-def test_running_jobs_reqtres(monkeypatch):
+def test_running_jobs_alloctres(monkeypatch):
+    """AllocTRES is what a job holds; a whole-node grant is exactly what the norm catches."""
     out = (
         "JobId=101 UserId=alice(1001) JobState=RUNNING Partition=kempner_h100 "
-        "ReqTRES=cpu=200,mem=100000M,node=1,gres/gpu=8\n"
+        "ReqTRES=cpu=16,mem=1000M,node=1,gres/gpu=1 "
+        "AllocTRES=cpu=200,mem=100000M,node=1,gres/gpu=8\n"
         "JobId=102 UserId=bob(1002) JobState=RUNNING Partition=kempner_h100,kempner "
-        "ReqTRES=cpu=96,mem=2000000M,gres/gpu=4\n"
+        "ReqTRES=cpu=96,mem=2000000M,gres/gpu=4 "
+        "AllocTRES=cpu=96,mem=2000000M,gres/gpu=4\n"
         "JobId=103 UserId=carol(1003) JobState=PENDING Partition=kempner_h100 "
-        "ReqTRES=cpu=8,mem=100M,gres/gpu=1\n"
+        "AllocTRES=cpu=8,mem=100M,gres/gpu=1\n"
         "JobId=104 UserId=dave(1004) JobState=RUNNING Partition=kempner "
-        "ReqTRES=cpu=8,mem=100M,gres/gpu=1\n"
+        "AllocTRES=cpu=8,mem=100M,gres/gpu=1\n"
+        "JobId=999 ArrayJobId=105 ArrayTaskId=3 UserId=eve(1005) JobState=RUNNING "
+        "Partition=kempner_h100 AllocTRES=cpu=8,mem=100M,gres/gpu=1\n"
     )
     monkeypatch.setattr(slurm, "_run", lambda cmd: out)
-    jobs = slurm.running_jobs_reqtres("kempner_h100")
+    jobs = slurm.running_jobs_alloctres("kempner_h100")
     assert jobs == [
         ("101", "alice", 200, 8, 100000),
         ("102", "bob", 96, 4, 2000000),
+        ("105_3", "eve", 8, 1, 100),
     ]
 
 
@@ -509,3 +515,26 @@ def test_is_schedulable_state():
         assert slurm.is_schedulable_state(code), code
     for code in ("down", "down*", "drain", "drng", "resv", "inval", "maint", "idle*", "mix*"):
         assert not slurm.is_schedulable_state(code), code
+
+
+def test_job_memory_mb_separates_one_task_from_the_whole_job(monkeypatch):
+    """man sacct: MaxRSS is the highest watermark of any one task, ReqMem the allocation."""
+    out = "|||\n9660876K|cpu=01:00:00,mem=4286156648K,fs/disk=1|1024\n"
+    monkeypatch.setattr(process, "probe", lambda cmd, **kw: (0, out, ""))
+    peak, total, tasks = slurm.job_memory_mb("1")
+    assert tasks == 1024
+    assert round(peak) == 9434
+    assert round(total) == 4185700
+
+
+def test_job_memory_mb_is_none_when_nothing_was_sampled(monkeypatch):
+    monkeypatch.setattr(process, "probe", lambda cmd, **kw: (0, "||\n", ""))
+    assert slurm.job_memory_mb("1") == (None, None, 0)
+
+
+def test_window_rows_asks_for_every_record(monkeypatch):
+    """A requeued job has one record per incarnation, and sacct shows only the last."""
+    seen = []
+    monkeypatch.setattr(process, "probe", lambda cmd, **kw: (seen.append(cmd), (0, "", ""))[1])
+    slurm.sacct_window_rows("JobID,State", "2026-01-01", "2026-01-02", partition="p")
+    assert "-D" in seen[0]

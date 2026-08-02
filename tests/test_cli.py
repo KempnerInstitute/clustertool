@@ -522,7 +522,7 @@ def test_jobs_debug_command(monkeypatch):
             "nodelist": "node01",
         },
     )
-    monkeypatch.setattr(slurm, "job_maxrss_mb", lambda jid: 2.0)
+    monkeypatch.setattr(slurm, "job_memory_mb", lambda jid: (2.0, 2.0, 1))
     monkeypatch.setattr(
         slurm, "job_output_tail", lambda jid: "ModuleNotFoundError: no module named x"
     )
@@ -596,7 +596,7 @@ def test_jobs_debug_does_not_invent_a_signal_for_oom(monkeypatch):
             "states": {"OUT_OF_MEMORY": 1},
         },
     )
-    monkeypatch.setattr(slurm, "job_maxrss_mb", lambda j: 0.0)
+    monkeypatch.setattr(slurm, "job_memory_mb", lambda j: (0.0, 0.0, 1))
     monkeypatch.setattr(slurm, "job_output_tail", lambda j: "")
     result = CliRunner().invoke(main, ["jobs", "debug", "123"])
     assert result.exit_code == 0
@@ -621,7 +621,7 @@ def test_jobs_debug_does_not_blame_memory_for_a_cancellation(monkeypatch):
             "states": {"CANCELLED": 1},
         },
     )
-    monkeypatch.setattr(slurm, "job_maxrss_mb", lambda j: 0.0)
+    monkeypatch.setattr(slurm, "job_memory_mb", lambda j: (0.0, 0.0, 1))
     monkeypatch.setattr(slurm, "job_output_tail", lambda j: "")
     result = CliRunner().invoke(main, ["jobs", "debug", "123"])
     assert result.exit_code == 0
@@ -646,7 +646,7 @@ def test_jobs_debug_still_reads_a_signal_that_adds_information(monkeypatch):
             "states": {"FAILED": 1},
         },
     )
-    monkeypatch.setattr(slurm, "job_maxrss_mb", lambda j: 0.0)
+    monkeypatch.setattr(slurm, "job_memory_mb", lambda j: (0.0, 0.0, 1))
     monkeypatch.setattr(slurm, "job_output_tail", lambda j: "")
     result = CliRunner().invoke(main, ["jobs", "debug", "123"])
     assert result.exit_code == 0
@@ -2325,7 +2325,7 @@ def test_jobs_violators(monkeypatch):
         ("103", "carol", 96, 4, 1440000),
         ("104", "dave", 400, 0, 100000),
     ]
-    monkeypatch.setattr(slurm, "running_jobs_reqtres", lambda p: jobs)
+    monkeypatch.setattr(slurm, "running_jobs_alloctres", lambda p: jobs)
     result = CliRunner().invoke(main, ["jobs", "violators", "kempner_h100"])
     assert result.exit_code == 0
     assert "101" in result.output
@@ -2338,7 +2338,7 @@ def test_jobs_violators_ignores_a_job_at_exactly_the_norm(monkeypatch):
     """--mem=360G is 368640 MiB, which is the ceiling the site enforces, not over it."""
     monkeypatch.setattr(slurm, "partition_nodes", lambda p: [("n1", "idle")])
     jobs = [("at_limit", "alice", 24, 1, 368640)]
-    monkeypatch.setattr(slurm, "running_jobs_reqtres", lambda p: jobs)
+    monkeypatch.setattr(slurm, "running_jobs_alloctres", lambda p: jobs)
     result = CliRunner().invoke(main, ["jobs", "violators", "kempner_h100"])
     assert result.exit_code == 0
     assert "at_limit" not in result.output
@@ -2352,7 +2352,7 @@ def test_jobs_violators_ranks_the_worst_first(monkeypatch):
         ("marginal", "alice", 24, 1, 380000),
         ("severe", "bob", 24, 1, 3686400),
     ]
-    monkeypatch.setattr(slurm, "running_jobs_reqtres", lambda p: jobs)
+    monkeypatch.setattr(slurm, "running_jobs_alloctres", lambda p: jobs)
     result = CliRunner().invoke(main, ["jobs", "violators", "kempner_h100"])
     assert result.exit_code == 0
     assert result.output.index("severe") < result.output.index("marginal")
@@ -2362,7 +2362,7 @@ def test_jobs_violators_ranks_the_worst_first(monkeypatch):
 
 def test_jobs_violators_h200(monkeypatch):
     monkeypatch.setattr(slurm, "partition_nodes", lambda p: [("n1", "idle")])
-    monkeypatch.setattr(slurm, "running_jobs_reqtres", lambda p: [("301", "x", 200, 2, 10000)])
+    monkeypatch.setattr(slurm, "running_jobs_alloctres", lambda p: [("301", "x", 200, 2, 10000)])
     result = CliRunner().invoke(main, ["jobs", "violators", "kempner_h200"])
     assert result.exit_code == 0
     assert "301" in result.output
@@ -2370,7 +2370,7 @@ def test_jobs_violators_h200(monkeypatch):
 
 def test_jobs_violators_partition_without_a_policy(monkeypatch):
     """A real partition with no configured ratio is not the same as a typo."""
-    monkeypatch.setattr(slurm, "running_jobs_reqtres", lambda p: [])
+    monkeypatch.setattr(slurm, "running_jobs_alloctres", lambda p: [])
     monkeypatch.setattr(slurm, "partition_nodes", lambda p: [("n1", "idle")])
     result = CliRunner().invoke(main, ["jobs", "violators", "sapphire"])
     assert result.exit_code != 0
@@ -2378,7 +2378,7 @@ def test_jobs_violators_partition_without_a_policy(monkeypatch):
 
 
 def test_jobs_violators_unknown_partition(monkeypatch):
-    monkeypatch.setattr(slurm, "running_jobs_reqtres", lambda p: [])
+    monkeypatch.setattr(slurm, "running_jobs_alloctres", lambda p: [])
     monkeypatch.setattr(slurm, "partition_nodes", lambda p: [])
     result = CliRunner().invoke(main, ["jobs", "violators", "some_partition"])
     assert result.exit_code != 0
@@ -2387,7 +2387,7 @@ def test_jobs_violators_unknown_partition(monkeypatch):
 
 def test_jobs_violators_rejects_a_zero_norm_flag(monkeypatch):
     """Dividing by the norm makes zero and negative values meaningless, not merely odd."""
-    monkeypatch.setattr(slurm, "running_jobs_reqtres", lambda p: [("201", "eve", 8, 1, 1000)])
+    monkeypatch.setattr(slurm, "running_jobs_alloctres", lambda p: [("201", "eve", 8, 1, 1000)])
     for flag, value in (("--cpus-per-gpu", "0"), ("--mem-per-gpu", "0"), ("--cpus-per-gpu", "-4")):
         result = CliRunner().invoke(main, ["jobs", "violators", "kempner_h100", flag, value])
         assert result.exit_code != 0
@@ -2396,7 +2396,7 @@ def test_jobs_violators_rejects_a_zero_norm_flag(monkeypatch):
 
 def test_jobs_violators_rejects_a_zero_norm_from_the_site_config(monkeypatch):
     """A flag range cannot guard the policy path, which supplies the same divisor."""
-    monkeypatch.setattr(slurm, "running_jobs_reqtres", lambda p: [("201", "eve", 8, 1, 1000)])
+    monkeypatch.setattr(slurm, "running_jobs_alloctres", lambda p: [("201", "eve", 8, 1, 1000)])
     monkeypatch.setattr(slurm, "partition_nodes", lambda p: [("n1", "idle")])
     monkeypatch.setattr(slurm, "PARTITION_LIMITS", {"broken": (0, 0)})
     result = CliRunner().invoke(main, ["jobs", "violators", "broken"])
@@ -2405,7 +2405,7 @@ def test_jobs_violators_rejects_a_zero_norm_from_the_site_config(monkeypatch):
 
 
 def test_jobs_violators_override(monkeypatch):
-    monkeypatch.setattr(slurm, "running_jobs_reqtres", lambda p: [("201", "eve", 100, 2, 10000)])
+    monkeypatch.setattr(slurm, "running_jobs_alloctres", lambda p: [("201", "eve", 100, 2, 10000)])
     monkeypatch.setattr(slurm, "partition_nodes", lambda p: [("n1", "idle")])
     result = CliRunner().invoke(
         main, ["jobs", "violators", "custom", "--cpus-per-gpu", "40", "--mem-per-gpu", "100000"]
@@ -2415,7 +2415,7 @@ def test_jobs_violators_override(monkeypatch):
 
 
 def test_jobs_violators_old_flag_rejected(monkeypatch):
-    monkeypatch.setattr(slurm, "running_jobs_reqtres", lambda p: [])
+    monkeypatch.setattr(slurm, "running_jobs_alloctres", lambda p: [])
     result = CliRunner().invoke(
         main, ["jobs", "violators", "custom", "--cpu-per-gpu", "40", "--mem-per-gpu", "100000"]
     )
@@ -4354,7 +4354,7 @@ def test_job_accounting_counts_array_elements_not_rows(monkeypatch):
 def test_jobs_violators_checks_the_partition_even_when_both_norms_are_given(monkeypatch):
     """The existence check sat inside the branch that only ran when norms were missing."""
     monkeypatch.setattr(slurm, "partition_nodes", lambda p: [])
-    monkeypatch.setattr(slurm, "running_jobs_reqtres", lambda p: [])
+    monkeypatch.setattr(slurm, "running_jobs_alloctres", lambda p: [])
     result = CliRunner().invoke(
         main, ["jobs", "violators", "nope", "--cpus-per-gpu", "4", "--mem-per-gpu", "1000"]
     )
@@ -4876,3 +4876,28 @@ def test_qos_gate_reports_the_reason_sacctmgr_put_on_stdout(monkeypatch):
         )
         text = out.getvalue().decode() + err.getvalue().decode()
     assert "Nothing modified" in text
+
+
+def test_jobs_debug_reports_the_whole_job_not_one_task(monkeypatch):
+    """MaxRSS is one rank's watermark; comparing it to ReqMem understates a big job."""
+    monkeypatch.setattr(
+        slurm,
+        "job_accounting",
+        lambda jid: {
+            "state": "COMPLETED",
+            "exit_code": "0:0",
+            "elapsed": "01:00:00",
+            "timelimit": "02:00:00",
+            "req_mem": "16237328M",
+            "nodelist": "n[1-16]",
+            "element_count": 1,
+            "states": {"COMPLETED": 1},
+            "first_element": "1",
+        },
+    )
+    monkeypatch.setattr(slurm, "job_memory_mb", lambda jid: (9434.0, 4185700.0, 1024))
+    monkeypatch.setattr(slurm, "job_output_tail", lambda jid: "")
+    result = CliRunner().invoke(main, ["jobs", "debug", "1"])
+    assert result.exit_code == 0
+    assert "4185700 MiB used across 1024 tasks" in result.output
+    assert "9434 MiB in the heaviest" in result.output

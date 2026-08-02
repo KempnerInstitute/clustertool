@@ -22,7 +22,7 @@ from clustertool.grouping import keywords
     help="Memory-per-GPU norm in MiB, Slurm's own unit (overrides the default).",
 )
 def violators(partition: str, cpus_per_gpu: int | None, mem_per_gpu: int | None) -> None:
-    """List running jobs requesting more CPU or memory per GPU than the norm.
+    """List running jobs holding more CPU or memory per GPU than the norm.
 
     Norms default to the per-partition policy your site sets under
     [partitions.limits]. For a partition with no configured policy, pass
@@ -73,7 +73,7 @@ def violators(partition: str, cpus_per_gpu: int | None, mem_per_gpu: int | None)
         )
 
     rows = []
-    for jobid, user, cpu, gpu, mem_mb in slurm.running_jobs_reqtres(partition):
+    for jobid, user, cpu, gpu, mem_mb in slurm.running_jobs_alloctres(partition):
         if gpu <= 0:
             continue
         over = max((cpu / gpu) / cpus_per_gpu, (mem_mb / gpu) / mem_per_gpu)
