@@ -16,9 +16,12 @@ from clustertool.grouping import keywords
     shell_complete=completion.complete_partitions,
 )
 def down(partition: str | None) -> None:
-    """List nodes not accepting work, with the scheduler's reason (via sinfo).
+    """List the nodes sinfo -R reports, with the scheduler's reason.
 
-    Covers down, drained, draining and failing nodes, as sinfo -R reports them.
+    man sinfo scopes -R to nodes that are down, drained, draining or failing, so
+    this is not every node that cannot take work: a reserved node, one in
+    maintenance, one powered down, and one whose base state is idle but which is
+    not responding are all missing from it. Reads nothing and changes nothing.
 
     \b
     Use cases:

@@ -187,6 +187,27 @@ def partition_exists(partition: str) -> bool:
     raise CommandError(f"could not check whether partition {partition} exists: {detail}")
 
 
+def canonical_account(account: str) -> str | None:
+    """Return an account's name as slurmdbd spells it, or None if it does not exist.
+
+    Slurm matches an account name without regard to case, but a site tool keyed on
+    the string it was handed will not find the rows sacct returns under the
+    canonical spelling, so the caller passes on what the database holds.
+    """
+    code, out, err = process.probe(
+        ["sacctmgr", "-n", "-P", "show", "account", f"name={account}", "format=Account"]
+    )
+    if code != 0:
+        raise CommandError(
+            f"could not check whether account {account} exists: {err.strip() or code}"
+        )
+    for line in out.splitlines():
+        name = line.strip()
+        if name:
+            return name
+    return None
+
+
 def user_exists(user: str) -> bool:
     """Return True if the name resolves to an account on this host.
 

@@ -46,7 +46,7 @@ def list_nodes(partitions: tuple[str, ...]) -> None:
 
     \b
     Inputs:
-      PARTITION...  One or more Slurm partition names (e.g. kempner_h100).
+      PARTITION...  One or more Slurm partition names.
     """
     for partition in partitions:
         rows = slurm.partition_nodes(partition)

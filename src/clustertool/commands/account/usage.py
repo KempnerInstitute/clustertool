@@ -2,18 +2,24 @@
 
 import datetime
 import os
+import pwd
 
 import click
 
-from clustertool import completion, process, site
-from clustertool.grouping import keywords
+from clustertool import completion, process, site, slurm
+from clustertool.grouping import ToolCommand, keywords
 
 
 @keywords("hours", "spend", "cost")
-@click.command("usage")
+@click.command("usage", cls=ToolCommand, tool_key=("account_usage", "account_efficiency"))
 @click.argument("account", required=False, shell_complete=completion.complete_accounts)
 @click.option(
-    "-d", "--days", type=int, default=30, show_default=True, help="Period length in days."
+    "-d",
+    "--days",
+    type=click.IntRange(min=1),
+    default=30,
+    show_default=True,
+    help="Period length in days.",
 )
 @click.option("-u", "--user", default=None, help="User to report (default: you).")
 @click.option(
@@ -45,7 +51,16 @@ def usage(account: str | None, days: int, user: str | None, efficiency: bool) ->
     """
     if account and user:
         raise click.UsageError("Give an ACCOUNT or --user, not both.")
-    scope = ["-A", account] if account else ["-u", user or os.environ.get("USER", "")]
+    if account:
+        canonical = slurm.canonical_account(account)
+        if canonical is None:
+            raise click.ClickException(f"account '{account}' not found")
+        scope = ["-A", canonical]
+    else:
+        target = user or pwd.getpwuid(os.getuid()).pw_name
+        if not slurm.user_exists(target):
+            raise click.ClickException(f"no such user on this host: {target}")
+        scope = ["-u", target]
     end_dt = datetime.datetime.now()
     start = (end_dt - datetime.timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%S")
     end = end_dt.strftime("%Y-%m-%dT%H:%M:%S")

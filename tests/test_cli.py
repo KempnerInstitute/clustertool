@@ -1034,16 +1034,18 @@ def test_account_fairshare_account(monkeypatch):
 
 
 def test_account_usage_self(monkeypatch):
-    monkeypatch.setenv("USER", "alice")
+    monkeypatch.setattr(slurm, "user_exists", lambda user: True)
+    me = pwd.getpwuid(os.getuid()).pw_name
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["account", "usage", "--days", "7"])
     assert result.exit_code == 0
     assert calls[0][0] == "stotal"
-    assert calls[0][1:3] == ["-u", "alice"]
+    assert calls[0][1:3] == ["-u", me]
     assert "-S" in calls[0] and "-E" in calls[0] and "-d" in calls[0]
 
 
 def test_account_usage_efficiency_account(monkeypatch):
+    monkeypatch.setattr(slurm, "canonical_account", lambda a: a)
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["account", "usage", "kempner_dev", "--efficiency"])
     assert result.exit_code == 0
@@ -4995,3 +4997,31 @@ def test_frag_excludes_states_that_cannot_take_work(monkeypatch):
     monkeypatch.setattr(slurm, "_run", lambda cmd: sample)
     rows = {row["name"]: row["available"] for row in slurm.node_capacity()}
     assert rows == {"ok": True, "fut": False, "unk": False, "npc": False, "up": False, "reb": False}
+
+
+def test_account_usage_passes_the_canonical_account_spelling(monkeypatch):
+    """The site tool keys on the string it was handed, and sacct returns the canonical one."""
+    monkeypatch.setattr(slurm, "canonical_account", lambda a: a.lower())
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["account", "usage", "KEMPNER_DEV", "-d", "1"])
+    assert result.exit_code == 0
+    assert calls[0][1:3] == ["-A", "kempner_dev"]
+
+
+def test_account_usage_refuses_an_account_that_does_not_exist(monkeypatch):
+    """Otherwise a typo reports zero hours and exits 0."""
+    monkeypatch.setattr(slurm, "canonical_account", lambda a: None)
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["account", "usage", "nope", "-d", "1"])
+    assert result.exit_code == 1
+    assert "not found" in result.output
+    assert calls == []
+
+
+def test_account_usage_refuses_a_user_that_does_not_exist(monkeypatch):
+    monkeypatch.setattr(slurm, "user_exists", lambda user: False)
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["account", "usage", "-u", "nope", "-d", "1"])
+    assert result.exit_code == 1
+    assert "no such user" in result.output
+    assert calls == []

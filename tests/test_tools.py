@@ -116,3 +116,13 @@ def test_configured_tool_name_is_used(monkeypatch):
     result = CliRunner().invoke(main, ["jobs", "queue", "part"])
     assert result.exit_code == 0
     assert calls[0][0] == "myqueue"
+
+
+def test_tool_command_with_several_keys_hides_only_when_all_are_absent(monkeypatch):
+    """account usage backs one flag with a second tool, which must survive the first."""
+    from clustertool.commands.account.usage import usage
+
+    monkeypatch.setattr(site, "tool_available", lambda key: key == "account_efficiency")
+    assert usage.hidden is False
+    monkeypatch.setattr(site, "tool_available", lambda key: False)
+    assert usage.hidden is True

@@ -34,28 +34,36 @@ def annotate_paths(group: click.Group, prefix: str = "") -> None:
 
 
 class ToolCommand(click.Command):
-    """A command backed by a site tool; hidden and erroring when it is absent."""
+    """A command backed by a site tool; hidden and erroring when it is absent.
 
-    def __init__(self, *args, tool_key: str, **kwargs) -> None:
-        self._tool_key = tool_key
+    tool_key may name several tools, for a command whose flags reach different
+    binaries. It then hides only when every one of them is missing, and leaves
+    the per-flag check to the command, since one flag's tool being absent should
+    not withdraw the others.
+    """
+
+    def __init__(self, *args, tool_key: str | tuple[str, ...], **kwargs) -> None:
+        self._tool_keys = (tool_key,) if isinstance(tool_key, str) else tuple(tool_key)
         super().__init__(*args, **kwargs)
 
     @property
     def hidden(self) -> bool:
-        return not site.tool_available(self._tool_key)
+        return not any(site.tool_available(key) for key in self._tool_keys)
 
     @hidden.setter
     def hidden(self, value: bool) -> None:
         pass
 
     def invoke(self, ctx: click.Context):
-        if not site.tool_available(self._tool_key):
-            raise click.ClickException(
-                f"this command needs '{site.tool(self._tool_key)}', which was not found on "
-                f"this host. Install it, or set [tools].{self._tool_key} in your site config "
-                "(see docs/configuration.md)."
-            )
-        return super().invoke(ctx)
+        if not self.hidden:
+            return super().invoke(ctx)
+        names = ", ".join(f"'{site.tool(key)}'" for key in self._tool_keys)
+        keys = " or ".join(f"[tools].{key}" for key in self._tool_keys)
+        noun = "needs" if len(self._tool_keys) == 1 else "needs one of"
+        raise click.ClickException(
+            f"this command {noun} {names}, which was not found on this host. "
+            f"Install it, or set {keys} in your site config (see docs/configuration.md)."
+        )
 
 
 class SectionedGroup(click.Group):

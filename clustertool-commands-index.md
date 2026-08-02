@@ -76,7 +76,7 @@ names the host tool each command shells out to.
 | `account top-users ACCOUNT` | user | sshare | Rank an account's members by RawUsage. |
 | `account qos [-f TEXT] [-l]` | user | sacctmgr | QoS definitions and their TRES limits, per-user, per-account, per-job and total (`--long` adds Flags, Preempt, UsageFactor). |
 | `account add-user USER ACCOUNT` | admin | sacctmgr | Add a user to a fairshare account. |
-| `account remove-user USER ACCOUNT` | admin | sacctmgr | Remove a user's association with an account. |
+| `account remove-user USER ACCOUNT` | admin | sacctmgr | Remove a user's associations with an account. |
 | `account set-fairshare USER ACCOUNT SHARE` | admin | sacctmgr | Set a user's fairshare in an account. |
 
 ## nodes
