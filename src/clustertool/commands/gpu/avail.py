@@ -11,15 +11,15 @@ from clustertool.grouping import keywords
 @click.argument("partition", shell_complete=completion.complete_partitions)
 @click.option(
     "--cpus-per-gpu",
-    type=int,
+    type=click.IntRange(min=0),
     default=None,
-    help="Cores per GPU (overrides the partition default).",
+    help="Cores per GPU (overrides the partition default; 0 removes the cap).",
 )
 @click.option(
     "--mem-per-gpu",
-    type=int,
+    type=click.IntRange(min=0),
     default=None,
-    help="Memory per GPU in MB (overrides the partition default).",
+    help="Memory per GPU in MiB (overrides the partition default; 0 removes the cap).",
 )
 def avail(partition: str, cpus_per_gpu: int | None, mem_per_gpu: int | None) -> None:
     """List nodes with GPUs you can actually allocate, most first.
@@ -45,7 +45,9 @@ def avail(partition: str, cpus_per_gpu: int | None, mem_per_gpu: int | None) -> 
     Inputs:
       PARTITION       Slurm partition name (e.g. kempner_h100).
       --cpus-per-gpu  Cores per GPU (overrides the per-partition default).
-      --mem-per-gpu   Memory per GPU in MB (overrides the per-partition default).
+      --mem-per-gpu   Memory per GPU in MiB, Slurm's own unit for --mem
+                      (overrides the per-partition default). Either flag set to
+                      0 drops that cap.
     """
     default = slurm.PARTITION_LIMITS.get(partition)
     if cpus_per_gpu is None and default:
@@ -86,7 +88,7 @@ def avail(partition: str, cpus_per_gpu: int | None, mem_per_gpu: int | None) -> 
         click.echo("  (no nodes with allocatable GPUs)")
         return
     click.echo(
-        f"  {'NODE':<20} {'AVAIL_GPU':>9} {'FREE_GPU':>8} {'FREE_CPU':>8} {'FREE_MEM_GB':>12}"
+        f"  {'NODE':<20} {'AVAIL_GPU':>9} {'FREE_GPU':>8} {'FREE_CPU':>8} {'FREE_MEM_GIB':>12}"
     )
     for node, avail_gpu, free_gpu, free_cpu, free_mem_gb in rows:
         click.echo(f"  {node:<20} {avail_gpu:>9} {free_gpu:>8} {free_cpu:>8} {free_mem_gb:>12}")

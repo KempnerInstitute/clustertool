@@ -293,21 +293,37 @@ def _status_bucket(state: str) -> str:
     return bucket
 
 
+def _has_gpu_gres(gres: str) -> bool:
+    """Return True if a sinfo %G field names a gpu resource.
+
+    sinfo writes the configured gres as name:type:count, and prints the literal
+    (null) for a node with none, which is not the TRES syntax parse_gpu_count
+    reads.
+    """
+    return any(part.strip().startswith("gpu:") for part in gres.split(","))
+
+
 def gpu_node_status() -> list[tuple[str, dict[str, int]]]:
     """Return [(gpu_type, {bucket: count})] for the site requeue partition.
 
     Each node is mapped to a GPU type from its features and a status bucket from
     its state. Types come back in a fixed order, omitting any with no nodes.
+
+    A node with no GPU is skipped. The requeue partition is configured, not
+    guaranteed to be GPU-only, and a site that points it at a partition spanning
+    the whole cluster would otherwise get every CPU node counted here.
     """
     partition = site.requeue_partition()
-    code, out, err = process.probe(["sinfo", "-h", "-N", "-p", partition, "-o", "%N|%t|%f"])
+    code, out, err = process.probe(["sinfo", "-h", "-N", "-p", partition, "-o", "%N|%t|%f|%G"])
     if code != 0:
         raise CommandError(f"could not read partition {partition}: {err.strip() or code}")
     counts: dict[str, dict[str, int]] = {}
     seen: set[str] = set()
     for line in out.splitlines():
         fields = line.split("|")
-        if len(fields) < 3 or fields[0] in seen:
+        if len(fields) < 4 or fields[0] in seen:
+            continue
+        if not _has_gpu_gres(fields[3]):
             continue
         seen.add(fields[0])
         gtype = _gpu_type_from_features(fields[2])
@@ -402,7 +418,7 @@ def pending_at_cap(account: str, partitions: tuple[str, ...] | list[str]) -> int
             "%r",
         ]
     )
-    return sum(1 for line in out.splitlines() if "MaxGRESPerAccount" in line)
+    return sum(1 for line in out.splitlines() if line.strip().startswith("QOSMaxGRESPerAccount"))
 
 
 _MEM_RE = re.compile(r"(?:^|,)mem=(\d+(?:\.\d+)?)([KMGT]?)")

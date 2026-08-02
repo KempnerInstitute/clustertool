@@ -66,7 +66,8 @@ def test_priority_partitions(monkeypatch):
 
 
 def test_pending_at_cap(monkeypatch):
-    sample = "MaxGRESPerAccount\nResources\nMaxGRESPerAccount\n"
+    """The per-user cap is a different reason and must not be counted as the account's."""
+    sample = "QOSMaxGRESPerAccount\nResources\nQOSMaxGRESPerAccount\nQOSMaxGRESPerUser\n"
     monkeypatch.setattr(slurm, "_run", lambda cmd: sample)
     assert slurm.pending_at_cap("acct_a", slurm.BASE_PARTITIONS) == 2
 

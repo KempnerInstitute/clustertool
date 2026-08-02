@@ -27,8 +27,10 @@ def util(partitions: tuple[str, ...], named: tuple[str, ...]) -> None:
 
     USED is the GPUs held by jobs submitted to that partition. TOTAL, UNAVAIL and
     FREE describe the partition's nodes, read in one scontrol pass: the GPUs those
-    nodes have, those on nodes that cannot take a new job (down, drained, reserved,
-    or in maintenance), and those still unallocated on nodes that can.
+    nodes have, the unallocated ones on nodes that cannot take a new job (down,
+    drained, reserved, in maintenance, blocked, or not responding), and those
+    still unallocated on nodes that can. A busy GPU on a drained node is counted
+    in USED or OTHER, not in UNAVAIL.
 
     OTHER is what jobs from partitions sharing the same nodes hold, which is why
     USED plus FREE need not reach TOTAL. On a cluster where a requeue or priority

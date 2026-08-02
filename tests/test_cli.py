@@ -71,13 +71,14 @@ def test_slurm_error_is_clean(monkeypatch):
 def test_gpu_node_status_parsing(monkeypatch):
     sample = "\n".join(
         [
-            "hg1|idle|amd,gpu,h100,cc9.0",
-            "hg2|mix|amd,gpu,h100,cc9.0",
-            "hg3|drain*|amd,gpu,h100,cc9.0",
-            "hg4|alloc|amd,gpu,h200,cc9.0",
-            "hg5|down|intel,gpu,a100,cc8.0",
-            "hg6|mix|intel,gpu,a100-mig,cc8.0",
-            "hg7|resv|amd,gpu,rtx6000pro",
+            "hg1|idle|amd,gpu,h100,cc9.0|gpu:nvidia_h100_80gb_hbm3:4(S:0-1)",
+            "hg2|mix|amd,gpu,h100,cc9.0|gpu:nvidia_h100_80gb_hbm3:4(S:0-1)",
+            "hg3|drain*|amd,gpu,h100,cc9.0|gpu:nvidia_h100_80gb_hbm3:4(S:0-1)",
+            "hg4|alloc|amd,gpu,h200,cc9.0|gpu:nvidia_h200:4(S:0-1)",
+            "hg5|down|intel,gpu,a100,cc8.0|gpu:nvidia_a100-sxm4-40gb:4(S:0-1)",
+            "hg6|mix|intel,gpu,a100-mig,cc8.0|gpu:nvidia_a100_1g.5gb:8",
+            "hg7|resv|amd,gpu,rtx6000pro|gpu:nvidia_rtx_pro_6000:8(S:0-1)",
+            "hc1|idle|intel,avx|(null)",
         ]
     )
     monkeypatch.setattr(slurm.process, "probe", lambda cmd, timeout=None: (0, sample, ""))
@@ -4663,3 +4664,19 @@ def test_storage_lfs_stripe_says_what_the_change_does_not_cover(tmp_path, monkey
         main, ["storage", "lfs-stripe", str(tmp_path), "-c", "2"], input="n\n"
     )
     assert "subdirectories that already exist" in result.output
+
+
+def test_gpu_node_status_skips_nodes_with_no_gpu(monkeypatch):
+    """The requeue partition is configured, not guaranteed to hold only GPU nodes."""
+    sample = "hg1|idle|amd,gpu,h100|gpu:nvidia_h100_80gb_hbm3:4\nhc1|idle|intel,avx|(null)\n"
+    monkeypatch.setattr(slurm.process, "probe", lambda cmd, timeout=None: (0, sample, ""))
+    rows = dict(slurm.gpu_node_status())
+    assert sum(sum(counts.values()) for counts in rows.values()) == 1
+
+
+def test_gpu_usage_refuses_an_empty_base_partition_list(monkeypatch):
+    """Otherwise squeue -p '' returns nothing and reads as no usage."""
+    monkeypatch.setattr(site, "base_partitions", tuple)
+    result = CliRunner().invoke(main, ["gpu", "usage"])
+    assert result.exit_code == 1
+    assert "no base partitions configured" in result.output

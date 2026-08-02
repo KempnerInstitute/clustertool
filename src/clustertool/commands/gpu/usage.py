@@ -26,6 +26,11 @@ def usage(account: str | None) -> None:
     Inputs:
       ACCOUNT  Slurm account name (e.g. kempner_sham_lab). Omit for all labs.
     """
+    if not slurm.BASE_PARTITIONS:
+        raise click.ClickException(
+            "no base partitions configured ([partitions].base in the site config). "
+            "Without them this would report no usage rather than no configuration"
+        )
     if account is None:
         _all_labs()
     else:
@@ -121,7 +126,7 @@ def _section(title: str, account: str, partitions, in_cap: bool, cap: int | None
         if pending:
             click.echo(
                 f"  note: {pending} job(s) pending because the lab is at the cap "
-                "(MaxGRESPerAccount)"
+                "(QOSMaxGRESPerAccount)"
             )
     elif in_cap:
         click.echo(f"  ACCOUNT TOTAL: {total} GPU")

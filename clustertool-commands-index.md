@@ -30,7 +30,7 @@ names the host tool each command shells out to.
 | `gpu usage [ACCOUNT]` | user | squeue, sacctmgr | Rank labs by base-partition GPU usage, or break one lab down by user and partition. |
 | `gpu util [PARTITION...] [-p PARTITION]` | user | scontrol, squeue | GPU occupancy per partition: total, unavailable, used, other, free, and percent. |
 | `gpu status` | user | sinfo | GPU node counts by type and state, from the requeue partition. |
-| `gpu avail PARTITION` | user | scontrol, sinfo | Nodes with allocatable GPUs (free GPUs capped by the enforced per-GPU ratio). |
+| `gpu avail PARTITION` | user | scontrol | Nodes with allocatable GPUs (free GPUs capped by the enforced per-GPU ratio). |
 | `gpu session GPU_TYPE -A ACCOUNT` | user | salloc | Interactive single-GPU session (a100/h100/h200/rtx), sized to the per-GPU limits. |
 | `gpu monitor-partition PARTITION` | admin | ssh, nvidia-smi | Live per-node GPU/CPU/memory/network table for a partition (needs ssh to every node). |
 | `gpu monitor-job JOBID` | user | ssh, nvidia-smi | Live per-node GPU/CPU/memory/network table for a running job. |

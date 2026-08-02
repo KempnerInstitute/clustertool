@@ -26,7 +26,7 @@ percent.
 
 `USED` is the GPUs held by jobs submitted to that partition. `TOTAL`, `UNAVAIL`
 and `FREE` describe the partition's nodes, read in one `scontrol` pass: the GPUs
-those nodes have, those on nodes that cannot take a new job (down, drained,
+those nodes have, the unallocated ones on nodes that cannot take a new job (down, drained,
 reserved, in maintenance, completing, failing, powered down, not responding, or
 registered with invalid resources), and those still unallocated on nodes that can.
 
@@ -50,10 +50,12 @@ With no PARTITION, reports the site base partitions.
 ## `gpu status`
 
 Show GPU node status by type and state (via `sinfo`). Reads the site's requeue
-partition, which spans every GPU node, and breaks the nodes down by GPU type and
-state. Idle, Mixed, and Alloc nodes are up; Resv is reserved; Drain is draining;
-Down is offline. Each column aggregates the related Slurm states: a node planned
-by the backfill scheduler counts as Idle, one still completing a job as Alloc, one
+partition, which is expected to span every GPU node, and breaks the nodes down by
+GPU type and state. Nodes with no GPU are skipped. Idle, Mixed, and Alloc nodes
+are up; Resv is reserved; Drain is drained or draining;
+Down is offline. Each column aggregates the related Slurm states: an idle node
+the backfill scheduler has planned counts as Idle and a partly busy one stays
+Mixed, one still completing a job as Alloc, one
 held for maintenance as Resv, and one with invalid registered resources as Down.
 A node not responding (`*`) counts as Down whatever its base state, since `man
 sinfo` says it will not be allocated any new work; one already drained or reserved
@@ -87,7 +89,7 @@ job that fits before that one is due to start can run on it.
 **Inputs**
 - `PARTITION`: Slurm partition name.
 - `--cpus-per-gpu`: Cores per GPU (overrides the per-partition default).
-- `--mem-per-gpu`: Memory per GPU in MB (overrides the per-partition default).
+- `--mem-per-gpu`: Memory per GPU in MiB (overrides the per-partition default).
 
 ## `gpu session GPU_TYPE -A ACCOUNT [-t TIME] [SALLOC_ARG]...`
 
