@@ -73,7 +73,10 @@ a command needs only the tools it actually calls:
 - **Extras**, for a handful of commands: passwordless `ssh` to compute nodes
   running `nvidia-smi` (the live monitors, `diag ib`, `gpu pulse --node`), `tmux`
   and `nvtop` (`gpu nvtop`), `nvcc` and NCCL (`diag nvlink`), `torch`
-  (`diag nccl`), and `ncdu` (`storage home --ncdu`).
+  (`diag nccl`), and `ncdu` (`storage home --ncdu`). `tmux`, `nvtop` and `ncdu`,
+  plus `sdiag` above, are `[tools]` keys as well, so a site can rename them:
+  `gpu nvtop` and `diag scheduler` hide without `tmux` and `sdiag`, while `ncdu`
+  gates only `storage home --ncdu` and `nvtop` is checked on the remote node.
 
 Two tools ship with clustertool and install automatically. `jobs scope` uses
 `jobscope`, whose GPU views also read a Prometheus endpoint discovered from the
@@ -190,7 +193,10 @@ See [`docs/configuration.md`](docs/configuration.md) for the config reference an
 
 ```
 src/clustertool/
+  entry.py            # console-script entry point
   cli.py              # umbrella group, registers command groups
+  site.py             # site config; every cluster-specific value is read here
+  grouping.py         # help layout, group markers, tool-backed command class
   process.py          # subprocess helpers (capture / stream)
   slurm.py            # read-only Slurm query and parse helpers
   storage.py          # storage quota command construction
@@ -199,6 +205,8 @@ src/clustertool/
   ioprobe.py          # filesystem write/read/metadata probe (diag io-probe)
   fabric.py           # InfiniBand topology/affinity/snapshot helpers (diag ib-*)
   qos.py              # read-only Slurm QoS queries and limit-spec builder
+  search.py           # command ranking for 'clustertool search'
+  completion.py       # shell completion and dynamic value completion
   data/               # bundled payloads (monitor sample, nccl test, nvlink .cu)
   commands/           # one package per group; one file per command
     gpu/              # usage, util, status, avail, session, monitor_partition, monitor_job, nvtop, pulse
