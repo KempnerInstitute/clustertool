@@ -26,7 +26,7 @@ Every task is a subcommand under a group (for example `clustertool gpu ...`).
 Each command has `--help` explaining what it does, its use cases, and its
 inputs.
 
-## How it works
+## What it runs
 
 ```mermaid
 flowchart LR
@@ -43,15 +43,9 @@ flowchart LR
 ```
 
 Nothing runs as a service and nothing is cached: each command shells out to the
-tools your cluster already provides and formats what they return. That makes
-adoption mostly a matter of description rather than integration. **The site
-config is the only place a cluster's specifics live**, so another center points
-those keys at its own partitions, limits, paths, and tool names and keeps the
-same commands. A command whose site wrapper is missing hides itself from help
-instead of failing, so a center that has no `showq` simply has no `jobs queue`.
-
-See [`docs/configuration.md`](docs/configuration.md) for every key and
-[`docs/porting.md`](docs/porting.md) for a step-by-step adoption guide.
+tools your cluster already provides and formats what they return. Every
+cluster-specific value comes from a site config, so the same commands work at
+another center (see [Configuration](#configuration)).
 
 ## Requirements
 
@@ -183,9 +177,14 @@ fairshare` or `clustertool search gpu reservation`.
 
 ## Configuration
 
-clustertool defaults to the Kempner AI Cluster. The cluster-specific values
-(partitions, per-GPU limits, GPU types, account conventions, storage paths) live
-in a config file, so another center runs the same commands by supplying its own.
+clustertool defaults to the Kempner AI Cluster. **The site config is the only
+place a cluster's specifics live** (partitions, per-GPU limits, GPU types,
+account conventions, storage paths), so another center points those keys at its
+own values and keeps the same commands. That makes adoption mostly a matter of
+description rather than integration. A command whose site wrapper is missing
+hides itself from help instead of failing, so a center that has no `showq`
+simply has no `jobs queue`.
+
 See [`docs/configuration.md`](docs/configuration.md) for the config reference and
 [`docs/porting.md`](docs/porting.md) for a step-by-step adoption guide.
 
