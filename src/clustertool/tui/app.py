@@ -1,25 +1,78 @@
 """The me dashboard application."""
 
+import datetime
+
 from textual.app import App, ComposeResult
+from textual.containers import Horizontal, Vertical
+from textual.screen import ModalScreen
 from textual.widgets import Static
 
 from clustertool.tui import data
+from clustertool.tui.panels.status import StatusBar
+
+HELP = """\
+Keys
+
+  tab          next panel
+  shift+tab    previous panel
+  ?            this help
+  Q            quit
+"""
+
+
+class HelpScreen(ModalScreen):
+    """The key reference, shown over the dashboard."""
+
+    BINDINGS = [("escape,question_mark,Q", "dismiss", "close")]
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="help"):
+            yield Static(HELP, id="help-body")
 
 
 class MeApp(App):
     """One screen showing where the caller stands on the cluster."""
 
     TITLE = "clustertool me"
-    BINDINGS = [("Q", "quit", "quit"), ("ctrl+c", "quit", "quit")]
+    CSS_PATH = "app.tcss"
+    BINDINGS = [
+        ("Q", "quit", "quit"),
+        ("ctrl+c", "quit", "quit"),
+        ("question_mark", "help", "help"),
+        ("tab", "focus_next", "next panel"),
+        ("shift+tab", "focus_previous", "previous panel"),
+    ]
 
-    def __init__(self, identity: data.Identity | None = None) -> None:
+    def __init__(
+        self,
+        identity: data.Identity | None = None,
+        clock=datetime.datetime.now,
+    ) -> None:
         super().__init__()
         self._identity = identity or data.identity()
+        self._clock = clock
 
     def compose(self) -> ComposeResult:
-        who = self._identity
-        name = f" ({who.full_name})" if who.full_name else ""
-        yield Static(f"{who.user}{name} @ {who.host}   {who.site_name}", id="status")
+        with Horizontal(id="body"):
+            yield Static("", id="jobs", classes="panel")
+            yield Static("", id="storage", classes="panel")
+        yield Static("", id="standing", classes="panel")
+        yield StatusBar(self._identity, clock=self._clock)
+
+    def on_mount(self) -> None:
+        for widget_id, title in (
+            ("#jobs", "Jobs"),
+            ("#storage", "Storage"),
+            ("#standing", "Standing"),
+        ):
+            panel = self.query_one(widget_id, Static)
+            panel.border_title = title
+            panel.can_focus = True
+        self.query_one("#jobs", Static).focus()
+
+    def action_help(self) -> None:
+        """Show the key reference."""
+        self.push_screen(HelpScreen())
 
 
 def run(identity: data.Identity | None = None) -> None:

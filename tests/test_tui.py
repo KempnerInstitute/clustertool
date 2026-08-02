@@ -1,6 +1,7 @@
 """Tests for the me dashboard."""
 
 import builtins
+import datetime
 import os
 import pwd
 import socket
@@ -164,3 +165,81 @@ def test_run_starts_the_app(monkeypatch):
     monkeypatch.setattr(app_module.MeApp, "run", lambda self: started.append(self))
     app_module.run(identity=data.Identity("alice", "", "node01", "Example HPC"))
     assert len(started) == 1
+
+
+FIXED_CLOCK = datetime.datetime(2026, 8, 2, 14, 32)
+
+
+def _app(full_name="A Name"):
+    from clustertool.tui.app import MeApp
+
+    return MeApp(
+        identity=data.Identity("alice", full_name, "node01", "Example HPC"),
+        clock=lambda: FIXED_CLOCK,
+    )
+
+
+async def test_shell_shows_three_panels_and_the_status_bar():
+    app = _app()
+    async with app.run_test(size=(100, 24)) as pilot:
+        await pilot.pause()
+        titles = [
+            str(app.query_one(f"#{name}").border_title) for name in ("jobs", "storage", "standing")
+        ]
+        assert titles == ["Jobs", "Storage", "Standing"]
+        assert "alice (A Name) @ node01" in str(app.query_one("#status").render())
+
+
+async def test_status_bar_shows_the_clock():
+    """The clock is injected so a snapshot does not change every minute."""
+    app = _app()
+    async with app.run_test(size=(100, 24)) as pilot:
+        await pilot.pause()
+        assert "Sun 2026-08-02 14:32" in str(app.query_one("#status").render())
+
+
+async def test_tab_cycles_the_panels():
+    app = _app()
+    async with app.run_test(size=(100, 24)) as pilot:
+        await pilot.pause()
+        assert app.focused.id == "jobs"
+        await pilot.press("tab")
+        assert app.focused.id == "storage"
+        await pilot.press("tab")
+        assert app.focused.id == "standing"
+
+
+async def test_help_opens_and_closes():
+    app = _app()
+    async with app.run_test(size=(100, 24)) as pilot:
+        await pilot.press("question_mark")
+        await pilot.pause()
+        assert "tab" in str(app.screen.query_one("#help-body").render())
+        await pilot.press("escape")
+        await pilot.pause()
+        assert not app.screen.query("#help-body")
+
+
+async def test_the_status_bar_survives_a_short_terminal():
+    """It is the one thing that must never be pushed off screen."""
+    app = _app()
+    async with app.run_test(size=(100, 6)) as pilot:
+        await pilot.pause()
+        bar = app.query_one("#status")
+        assert bar.region.height == 1
+        assert bar.region.y == 5
+
+
+def test_help_lists_only_keys_that_are_bound():
+    """Help that advertises a key doing nothing is worse than no help."""
+    from clustertool.tui.app import HELP, MeApp
+
+    aliases = {"?": "question_mark"}
+    bound = {binding[0] for binding in MeApp.BINDINGS}
+    listed = {
+        line.split()[0]
+        for line in HELP.splitlines()
+        if line.startswith("  ") and line.strip() and not line.strip().endswith(":")
+    }
+    unbound = {aliases.get(key, key) for key in listed} - bound
+    assert unbound == set(), f"help lists unbound keys: {unbound}"

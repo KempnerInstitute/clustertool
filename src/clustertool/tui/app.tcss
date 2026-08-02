@@ -1,0 +1,57 @@
+Screen {
+    layout: vertical;
+}
+
+#body {
+    height: 1fr;
+}
+
+#jobs {
+    width: 2fr;
+    height: 100%;
+    border: round $panel-lighten-2;
+    border-title-align: left;
+    padding: 0 1;
+}
+
+#storage {
+    width: 1fr;
+    min-width: 24;
+    height: 100%;
+    border: round $panel-lighten-2;
+    border-title-align: left;
+    padding: 0 1;
+}
+
+#standing {
+    dock: bottom;
+    height: 7;
+    max-height: 40%;
+    border: round $panel-lighten-2;
+    border-title-align: left;
+    padding: 0 1;
+}
+
+#status {
+    dock: bottom;
+    height: 1;
+    background: $panel;
+    color: $text-muted;
+    padding: 0 1;
+}
+
+.panel:focus-within {
+    border: round $accent;
+}
+
+#help {
+    align: center middle;
+}
+
+#help-body {
+    width: 60;
+    height: auto;
+    border: round $accent;
+    background: $surface;
+    padding: 1 2;
+}
