@@ -18,8 +18,11 @@ from clustertool.tui.panels.status import StatusBar
 SIDE_BY_SIDE = 48
 """Narrowest terminal that still holds the jobs panel and the side column together.
 
-The sum of the two width floors in app.tcss. Below it the side column is hidden
-rather than drawn past the right edge.
+The side column's width floor in app.tcss, plus as much again for the jobs panel.
+Below it the side column is hidden rather than drawn past the right edge. The
+jobs panel carries no floor of its own: a floor cannot make a panel fit a
+terminal narrower than itself, it only pushes the panel off the right edge, which
+is the very thing this constant exists to prevent.
 """
 
 HELP = """\

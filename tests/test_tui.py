@@ -384,6 +384,29 @@ def test_jobs_asks_for_the_allocation_and_a_separator(monkeypatch):
     assert "JobArrayID:|" in joined
 
 
+def test_every_field_is_read_by_name_not_by_position():
+    """The reply is unpacked against the same tuple that ordered the request.
+
+    Positional unpacking let a reordered format put one column's value into
+    another's, and squeue answers a bad field name with an error, not a shift.
+    """
+    assert data.JOB_FIELDS == ",".join(f"{name}:|" for name in data.JOB_FIELD_NAMES)
+    for name in ("JobArrayID", "StateCompact", "State", "NumNodes", "tres-alloc", "NodeList"):
+        assert name in data.JOB_FIELD_NAMES
+
+
+def test_the_node_count_comes_from_nodes_not_tasks(monkeypatch):
+    """NumTasks differs from NumNodes on 413 of the jobs queued when this was written."""
+    import clustertool.process as proc
+
+    monkeypatch.setattr(
+        proc, "probe", lambda cmd, **kw: (0, "1|R|RUNNING|p|1:00|None|cpu=8|n[1-2]|2|\n", "")
+    )
+    assert "NumNodes" in data.JOB_FIELDS
+    assert "NumTasks" not in data.JOB_FIELDS
+    assert data.jobs("alice")[0].where == "n1 +1"
+
+
 def test_jobs_asks_for_the_id_the_rest_of_the_cli_prints():
     """JobID is the internal numeric id, which for an array element is not %i.
 
@@ -549,6 +572,75 @@ async def test_the_cursor_follows_the_job_not_the_row_number():
         assert panel.selected.jobid == "222"
 
 
+@pytest.mark.parametrize("size", [(200, 40), (150, 30), (120, 22), (100, 26), (80, 24)])
+async def test_the_table_never_outgrows_the_panel_at_a_supported_size(size):
+    """A cell cut to a constant is chopped again by a narrower viewport.
+
+    That second cut has no ellipsis, so a fragment such as holy8a2 reads as a
+    whole node name. The widths therefore come from the terminal.
+    """
+    from clustertool.tui.panels.jobs import JobsPanel
+
+    app = _app()
+    async with app.run_test(size=size) as pilot:
+        await pilot.pause()
+        app.query_one(JobsPanel).show(_wide_rows())
+        await pilot.pause()
+        table = app.query_one("#jobs-table")
+        assert table.virtual_size.width <= table.size.width, size
+
+
+@pytest.mark.parametrize("size", [(12, 8), (20, 10), (30, 10), (46, 12), (60, 20), (70, 16)])
+async def test_no_panel_is_drawn_off_the_right_edge(size):
+    """A width floor cannot make a panel fit a terminal narrower than the floor.
+
+    It only pushes the panel past the edge, losing its border and its content.
+    """
+    from clustertool.tui.panels.jobs import JobsPanel
+
+    app = _app()
+    async with app.run_test(size=size) as pilot:
+        await pilot.pause()
+        app.query_one(JobsPanel).show(_wide_rows())
+        await pilot.pause()
+        for panel in ("#jobs", "#storage", "#standing"):
+            widget = app.query_one(panel)
+            if widget.display:
+                assert widget.region.right <= size[0], (panel, size)
+        table = app.query_one("#jobs-table")
+        assert table.virtual_size.width <= table.size.width, size
+
+
+def test_layout_drops_columns_before_it_starves_the_ones_that_stay():
+    from clustertool.tui.panels.jobs import DROP_ORDER, layout
+
+    wide = dict(layout(120))
+    assert list(wide) == ["ID", "PART", "ST", "GPU", "ELAP", "NODE"]
+    narrow = dict(layout(30))
+    assert DROP_ORDER[0] not in narrow
+    assert "ID" in narrow and "ST" in narrow
+    for width in range(6, 200):
+        columns = layout(width)
+        total = sum(w for _, w in columns) + 2 * len(columns)
+        assert total <= width or len(columns) == 2, (width, columns)
+        assert all(w >= 1 for _, w in columns), (width, columns)
+
+
+def _wide_rows():
+    return [
+        _row(
+            "34861429_[0,3-7]",
+            partition="sapphire,seas_compute,shared",
+            code="PD",
+            state="PENDING",
+            reason="ReqNodeNotAvail, UnavailableNodes:holygpu8a[11101-11408],holy8a[26101-26310]",
+            nodelist="",
+            elapsed="13-04:10:59",
+        ),
+        _row("36754908", nodelist="holy7c[04108-04512]", nnodes=202, elapsed="2-04:23:14"),
+    ]
+
+
 async def test_a_long_cell_is_cut_rather_than_widening_the_table():
     """One job in several partitions, or one long pending reason, blows the table out."""
     from clustertool.tui.panels.jobs import COLUMNS, JobsPanel, elide
@@ -576,7 +668,7 @@ async def test_a_long_cell_is_cut_rather_than_widening_the_table():
         assert long_reason in panel._detail_text()
     assert elide("abcdef", 4) == "abc…"
     assert elide("abc", 4) == "abc"
-    assert dict(COLUMNS)["PART"] < len("sapphire,seas_compute,shared")
+    assert {name for name, _, _ in COLUMNS} == {"ID", "PART", "ST", "GPU", "ELAP", "NODE"}
 
 
 async def test_the_stale_mark_reaches_the_border_title():
@@ -596,6 +688,54 @@ async def test_the_stale_mark_reaches_the_border_title():
         panel.show(SAMPLE_JOBS)
         await pilot.pause()
         assert str(panel.border_title) == "Jobs"
+
+
+async def test_a_wide_allocation_does_not_push_the_tres_out_of_the_detail():
+    """A 202-node hostlist runs to several hundred characters and fills the pane."""
+    from clustertool.tui.panels.jobs import JobsPanel
+
+    nodelist = "holy7c[" + ",".join(f"0{n}" for n in range(4100, 4310)) + "]"
+    app = _app()
+    async with app.run_test(size=(100, 26)) as pilot:
+        await pilot.pause()
+        panel = app.query_one(JobsPanel)
+        panel.show([_row("1", nodelist=nodelist, nnodes=202, tres="cpu=8,mem=64G")])
+        await pilot.pause()
+        text = panel._detail_text()
+        assert "holds: cpu=8,mem=64G" in text
+        assert text.index("holds:") < text.index("nodes:")
+        assert "202 on" in text
+        assert "…" in text
+        assert len(text.splitlines()[-1]) < len(nodelist)
+
+
+async def test_the_table_keeps_room_for_at_least_one_job():
+    """Without a floor a long detail pane can squeeze the rows out entirely."""
+    from clustertool.tui.panels.jobs import JobsPanel
+
+    app = _app()
+    async with app.run_test(size=(100, 14)) as pilot:
+        await pilot.pause()
+        app.query_one(JobsPanel).show(SAMPLE_JOBS)
+        await pilot.pause()
+        assert app.query_one("#jobs-table").size.height >= 2
+
+
+async def test_the_detail_pane_is_capped_so_the_table_survives_it():
+    """Uncapped, a pending job with a long reason takes the whole panel."""
+    from clustertool.tui.panels.jobs import JobsPanel
+
+    reason = "ReqNodeNotAvail, UnavailableNodes:" + ",".join(
+        f"holy8a{n}" for n in range(26100, 26140)
+    )
+    app = _app()
+    async with app.run_test(size=(100, 26)) as pilot:
+        await pilot.pause()
+        app.query_one(JobsPanel).show(
+            [_row("1", code="PD", state="PENDING", reason=reason, nodelist="")]
+        )
+        await pilot.pause()
+        assert app.query_one("#jobs-detail").size.height <= 8
 
 
 async def test_the_detail_pane_stays_on_screen_when_the_table_is_full():
@@ -653,19 +793,35 @@ def _live_app():
     return _app(interval=0.05)
 
 
+async def _until(pilot, predicate, timeout=5.0):
+    """Pause until predicate holds, and report whether it did.
+
+    The query runs in a thread, so how long its round trip takes is the machine's
+    business, not the test's. A fixed pause made these fail about one run in nine
+    on a loaded host while asserting nothing extra when they passed.
+    """
+    import time
+
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        await pilot.pause(0.02)
+    return predicate()
+
+
 async def test_the_app_loads_jobs_on_start_and_on_the_timer(monkeypatch):
     """Nothing else asserts the timer, so dropping it left an empty panel forever."""
+    from clustertool.tui.panels.jobs import JobsPanel
+
     probe = _stub_jobs(monkeypatch, rows=SAMPLE_JOBS)
     app = _live_app()
     async with app.run_test(size=(100, 22)) as pilot:
-        await pilot.pause()
-        from clustertool.tui.panels.jobs import JobsPanel
-
-        assert app.query_one(JobsPanel).selected.jobid == "111"
-        assert probe.calls >= 1
+        panel = app.query_one(JobsPanel)
+        assert await _until(pilot, lambda: panel.selected is not None), "no load on mount"
+        assert panel.selected.jobid == "111"
         first = probe.calls
-        await pilot.pause(0.3)
-        assert probe.calls > first
+        assert await _until(pilot, lambda: probe.calls > first), "the timer never fired"
 
 
 async def test_the_first_read_does_not_wait_for_the_timer(monkeypatch):
@@ -677,7 +833,7 @@ async def test_the_first_read_does_not_wait_for_the_timer(monkeypatch):
     probe = _stub_jobs(monkeypatch, rows=SAMPLE_JOBS)
     app = _app(interval=30)
     async with app.run_test(size=(100, 22)) as pilot:
-        await pilot.pause()
+        assert await _until(pilot, lambda: probe.calls >= 1), "nothing was read on mount"
         assert probe.calls == 1
 
 
@@ -688,7 +844,7 @@ async def test_refresh_reads_again_now(monkeypatch):
         await pilot.pause()
         assert probe.calls == 0
         await pilot.press("r")
-        await pilot.pause()
+        assert await _until(pilot, lambda: probe.calls >= 1), "r did not read again"
         assert probe.calls == 1
 
 

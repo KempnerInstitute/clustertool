@@ -8,7 +8,6 @@ Screen {
 
 #jobs {
     width: 2fr;
-    min-width: 24;
     height: 100%;
     border: round $panel-lighten-2;
     border-title-align: left;

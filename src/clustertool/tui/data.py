@@ -45,11 +45,18 @@ def identity() -> Identity:
     )
 
 
-JOB_FIELDS = (
-    "JobArrayID:|,StateCompact:|,State:|,Partition:|,TimeUsed:|,"
-    "Reason:|,tres-alloc:|,NodeList:|,NumNodes:|"
+JOB_FIELD_NAMES = (
+    "JobArrayID",
+    "StateCompact",
+    "State",
+    "Partition",
+    "TimeUsed",
+    "Reason",
+    "tres-alloc",
+    "NodeList",
+    "NumNodes",
 )
-"""The one squeue format the panel reads.
+"""The squeue fields the panel reads, in the order it asks for them.
 
 JobArrayID rather than JobID: JobID prints the internal numeric id, which for an
 array element is neither what the user submitted nor what scancel and the rest of
@@ -57,7 +64,13 @@ the CLI print. JobArrayID matched %i on every one of the 16,759 jobs queued when
 this was checked. StateCompact rather than deriving the two-letter code here,
 which is Slurm's table to own. NumNodes so the node column can name the head and
 a count without expanding the hostlist, which costs a scontrol fork per job.
+
+The reply is read back by name against this tuple rather than by position, so
+reordering it, or asking for a different field, cannot silently put one column's
+value in another column.
 """
+
+JOB_FIELDS = ",".join(f"{name}:|" for name in JOB_FIELD_NAMES)
 
 PENDING_CODES = ("PD", "CF")
 
@@ -128,24 +141,23 @@ def jobs(user: str) -> list[JobRow]:
     rows = []
     for line in out.splitlines():
         parts = line.split("|")
-        if len(parts) < 9:
+        if len(parts) < len(JOB_FIELD_NAMES):
             continue
-        jobid, short, state, partition, elapsed, reason, tres, nodelist, nnodes = (
-            p.strip() for p in parts[:9]
-        )
-        if not jobid:
+        field = dict(zip(JOB_FIELD_NAMES, (p.strip() for p in parts), strict=False))
+        if not field["JobArrayID"]:
             continue
+        tres = field["tres-alloc"]
         rows.append(
             JobRow(
-                jobid=jobid,
-                code=short,
-                state=state,
-                partition=partition,
+                jobid=field["JobArrayID"],
+                code=field["StateCompact"],
+                state=field["State"],
+                partition=field["Partition"],
                 gpus=slurm.parse_gpu_count(tres),
-                elapsed=elapsed,
-                reason=reason,
-                nodelist=nodelist,
-                nnodes=_count(nnodes),
+                elapsed=field["TimeUsed"],
+                reason=field["Reason"],
+                nodelist=field["NodeList"],
+                nnodes=_count(field["NumNodes"]),
                 tres=tres,
             )
         )
