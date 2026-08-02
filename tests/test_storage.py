@@ -159,3 +159,9 @@ def test_data_rows_keeps_a_value_marked_over_quota():
     """lfs marks a value that is over its quota with a trailing star."""
     out = "/n/very/long/path\n        45.31T* 75T 75T none 1 2 3 -\n"
     assert storage._data_rows(out)[0][1] == "45.31T*"
+
+
+def test_inode_count_over_quota_is_still_a_percentage():
+    """lfs stars the used cell of the inode group too, per man lfs-quota."""
+    row = "   /n/holylfs06  4.101T*  4T  4T 6d23h 3508976* 2936012 2936012 6d23h"
+    assert storage.parse_quota_row(row) == ("4.101T*", "4T", "103%", "120%")

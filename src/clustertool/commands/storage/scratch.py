@@ -33,6 +33,8 @@ def scratch(path: str | None) -> None:
     path = path or os.environ.get("SCRATCH") or scratch_dir
     target = path if path.startswith("/") else f"{site.path_prefix()}/{path}"
     code = process.stream([site.tool("quota"), target])
+    if code:
+        raise click.ClickException(f"quota lookup failed for {target}")
     click.echo()
     if target == scratch_dir or target.startswith(scratch_dir.rstrip("/") + "/"):
         click.echo(
@@ -44,5 +46,3 @@ def scratch(path: str | None) -> None:
             f"Note: {target} is not under the site scratch path ({scratch_dir}), so the "
             f"{site.scratch_purge_days()}-day purge does not apply to it."
         )
-    if code:
-        raise click.ClickException(f"quota lookup failed for {target}")

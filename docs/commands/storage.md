@@ -12,6 +12,12 @@ Reports quota and usage for PATH, which selects the filesystem. Use `--group` fo
 a lab's quota or `--user` for a user's; with neither, the quota tool infers from
 the path. A bare name is completed with `[storage].path_prefix` from the site
 config, so `holylfs06` becomes `/n/holylfs06` with the packaged Kempner profile.
+`home` is the one exception: it resolves to `$HOME`, not to the prefix.
+
+In the `--all` and `--fleet` tables, `error` most often means you are not a
+member of that group. Group quotas are membership-gated on Lustre and refuse
+with `Permission denied`, while the VAST filesystems answer for any group, so
+the same command is confidential on one filesystem and public on another.
 
 Whether `--user` is honored depends on the site tool: some report per-user usage
 only on filesystems that track it, and fall back to the caller's own figures
@@ -64,8 +70,10 @@ instead.
 ## `storage vast-usage PATH -g GROUP`
 
 Show per-user usage for a group on a VAST filesystem (via the site `quota`
-tool). Lists how much each member of GROUP is using under PATH. A bare name is
-completed with `[storage].path_prefix`.
+tool). PATH selects the filesystem; the figures cover the whole mountpoint, not
+only what is under PATH, and each user's number is their total there rather than
+their usage under GROUP alone. GROUP selects the roster. A bare name is completed
+with `[storage].path_prefix`.
 
 **Use cases**
 - See who in a lab is filling a shared scratch or VAST allocation.

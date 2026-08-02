@@ -69,6 +69,15 @@ def quota(
             "--all reports your own lab directories, so it takes neither a PATH, "
             "--group, nor --fleet (--user selects whose labs)"
         )
+    if (show_all or fleet_keyword is not None) and verbose:
+        raise click.UsageError(
+            "--verbose shows the command behind a single lookup, and the table forms "
+            "run one per directory, so it applies to neither --all nor --fleet"
+        )
+    if fleet_keyword is not None and (group or user):
+        raise click.UsageError(
+            "--fleet reports every lab directory under PATH, so it takes neither --group nor --user"
+        )
     if show_all or fleet_keyword is not None:
         _report_table(path, fleet_keyword, user)
         return
@@ -124,6 +133,8 @@ def _report_table(path: str | None, fleet_keyword: str | None, user: str | None)
         if parsed:
             read += 1
             rows.append((target_path, *parsed))
+            if err.strip():
+                problems.append(f"{target_path}: {err.strip()}")
             continue
         rows.append((target_path, _failure(code), "-", "-", "-"))
         problems.append(f"{target_path}: {err.strip() or out.strip() or f'exited {code}'}")

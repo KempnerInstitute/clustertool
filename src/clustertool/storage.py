@@ -72,10 +72,12 @@ def _count(text: str) -> float | None:
     """Parse a plain count; None when it cannot be read.
 
     None keeps a suffixed or malformed count out of the percentage, so the cell
-    reads as unknown rather than as zero usage.
+    reads as unknown rather than as zero usage. lfs stars the used cell of the
+    inode group as well as the block group, per man lfs-quota, so the star is
+    stripped: an over-quota inode count is the one case the column exists for.
     """
     try:
-        return float(text)
+        return float(text.rstrip("*"))
     except ValueError:
         return None
 

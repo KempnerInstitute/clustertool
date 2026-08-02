@@ -62,10 +62,13 @@ The packaged default lists every key with Kempner values; it is the reference:
   remote GPU node. Leave it empty and that flag reports it is not configured.
 - `[tools]`: the binary each tool-backed command runs (`queue`, `partitions`,
   `node_load`, `account_usage`, `account_efficiency`, `job_stats`, `quota`,
-  `lfs`). A
+  `lfs`, `ncdu`, `nvtop`, `tmux`). A
   command whose tool is not on PATH is hidden from help and search, so a cluster
   without `showq` simply does not show `jobs queue`. Point a key at your
   cluster's equivalent binary, or leave it and the command stays hidden.
+  `ncdu` backs one flag rather than a whole command, so `storage home` stays
+  available and only `--ncdu` reports the tool missing. `nvtop` names the
+  binary `gpu nvtop` runs on the remote node, which is not checked locally.
 - `[commands]` `disable`: command paths to turn off at this site, e.g.
   `["jobs scope", "diag nvlink"]`. Disabled commands vanish from help, search,
   and resolution. Disable a whole group by its name, e.g. `["diag"]`.

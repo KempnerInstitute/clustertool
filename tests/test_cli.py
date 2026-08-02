@@ -4617,3 +4617,31 @@ def test_diag_ib_affinity_reports_an_unknown_quality_as_a_parse_gap(tmp_path):
     assert result.exit_code == 3
     assert "does not know: C2C" in result.output
     assert "reach no NIC" not in result.output
+
+
+def test_storage_quota_refuses_verbose_with_a_table():
+    """-v shows the command behind one lookup, and a table runs one per directory."""
+    result = CliRunner().invoke(main, ["storage", "quota", "--all", "-v"])
+    assert result.exit_code == 2
+    assert "applies to neither" in result.output
+
+
+def test_storage_quota_refuses_fleet_with_a_group():
+    result = CliRunner().invoke(
+        main, ["storage", "quota", "holylfs06/LABS", "--fleet", "kempner", "-g", "x"]
+    )
+    assert result.exit_code == 2
+    assert "takes neither --group nor --user" in result.output
+
+
+def test_storage_home_refuses_ncdu_with_scan():
+    result = CliRunner().invoke(main, ["storage", "home", "--ncdu", "--scan"])
+    assert result.exit_code == 2
+    assert "replaces --scan" in result.output
+
+
+def test_storage_scratch_does_not_print_the_purge_note_after_a_failure(monkeypatch):
+    monkeypatch.setattr(process, "stream", lambda cmd, **kw: 1)
+    result = CliRunner().invoke(main, ["storage", "scratch"])
+    assert result.exit_code == 1
+    assert "deleted after" not in result.output

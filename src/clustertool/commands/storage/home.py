@@ -4,7 +4,7 @@ import os
 
 import click
 
-from clustertool import process
+from clustertool import process, site
 from clustertool.grouping import keywords
 from clustertool.storage import humanize_bytes, parse_du_top
 
@@ -29,8 +29,10 @@ def home(scan: bool, top_n: int, ncdu: bool) -> None:
 
     Runs 'df -h ~' to show your home quota (Size), usage, and available space.
     With --scan, also lists the --top N largest subdirectories (default 10) so
-    you can find what to clean up. With --ncdu, opens the interactive ncdu
-    explorer instead.
+    you can find what to clean up. --scan reads every directory under home and
+    prints nothing until it finishes, which on a large home takes minutes. With
+    --ncdu, opens the interactive explorer named by [tools].ncdu instead, which
+    replaces --scan rather than combining with it.
 
     \b
     Use cases:
@@ -45,8 +47,16 @@ def home(scan: bool, top_n: int, ncdu: bool) -> None:
     """
     home_dir = os.path.expanduser("~")
     if ncdu:
-        if process.stream(["ncdu", home_dir]):
-            raise click.ClickException(f"ncdu failed for {home_dir}")
+        if scan:
+            raise click.UsageError("--ncdu explores home interactively, so it replaces --scan")
+        explorer = site.tool("ncdu")
+        if not site.tool_available("ncdu"):
+            raise click.ClickException(
+                f"this command needs '{explorer}', which was not found on this host. "
+                "Install it, or set [tools].ncdu in your site config"
+            )
+        if process.stream([explorer, home_dir]):
+            raise click.ClickException(f"{explorer} failed for {home_dir}")
         return
 
     if process.stream(["df", "-h", home_dir]):
