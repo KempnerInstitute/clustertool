@@ -203,12 +203,14 @@ def test_gpu_types_keys_are_lower_cased(tmp_path):
 
 
 def test_every_site_config_key_is_documented():
-    """A key nobody documents is one a porting site cannot find."""
-    import tomllib
+    """A key nobody documents is one a porting site cannot find.
 
+    Parsed with the module site itself resolved, since tomllib is 3.11 and up
+    and the package falls back to tomli below that.
+    """
     default = pathlib.Path("src/clustertool/data/site.default.toml")
     doc = pathlib.Path("docs/configuration.md").read_text()
-    config = tomllib.loads(default.read_text())
+    config = site.tomllib.loads(default.read_text())
     undocumented = [
         f"[{section}].{key}"
         for section, body in config.items()
