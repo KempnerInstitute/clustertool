@@ -15,6 +15,7 @@ from textual.widgets import Button, DataTable, Static
 from clustertool.process import CommandError
 from clustertool.tui import actions, data
 from clustertool.tui.panels.jobs import JobsPanel
+from clustertool.tui.panels.jobs import _printable as jobs_panel_printable
 from clustertool.tui.panels.standing import StandingPanel
 from clustertool.tui.panels.status import StatusBar
 from clustertool.tui.panels.storage import StoragePanel
@@ -105,6 +106,22 @@ async def detached(call: Callable):
 
     threading.Thread(target=run, daemon=True, name="clustertool-query").start()
     return await done
+
+
+BANNER_ROWS = 2
+"""How many rows the banner may wrap to, matching its max-height in the stylesheet."""
+
+
+def _shorten(said: str, room: int) -> str:
+    """Cut a banner line to what it can show, marking the cut.
+
+    A refusal runs to a couple of hundred characters and the banner has two rows,
+    so at eighty columns the end of the reason was simply gone with nothing to say
+    it had been.
+    """
+    if len(said) <= room:
+        return said
+    return said[: max(room - 1, 1)] + "…"
 
 
 def _settle(panel, info=None, reason="") -> None:
@@ -364,9 +381,16 @@ class MeApp(App):
         self.load_jobs()
 
     def announce(self, said: str) -> None:
-        """Put a line on the banner, which is where an action reports itself."""
+        """Put a line on the banner, which is where an action reports itself.
+
+        Control characters are dropped: what a tool wrote to stderr ends up here,
+        and an escape byte in it would be a command to the terminal rather than
+        text on the banner.
+        """
         try:
-            self.query_one("#banner", Static).update(said)
+            banner = self.query_one("#banner", Static)
+            room = max(banner.content_size.width * BANNER_ROWS, 1)
+            banner.update(_shorten(jobs_panel_printable(said), room))
         except NoMatches:
             return
 
@@ -387,7 +411,7 @@ class MeApp(App):
         except Exception as exc:
             self.announce(_reason(exc))
             return
-        self._on(JobsPanel, lambda panel: panel.show_text(said))
+        self._on(JobsPanel, lambda panel: panel.show_text(said, jobid))
 
     def action_follow(self) -> None:
         """Keep rereading the selected job's log until escape stops it.

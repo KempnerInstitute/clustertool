@@ -143,14 +143,16 @@ Read-only, no confirmation:
 | `enter` | expand or collapse the detail pane |
 
 Mutating, each behind a modal naming the job, its partition, and its elapsed
-time, defaulting to No:
+time, defaulting to No. Requeue is on `ctrl+r` rather than `q`: `q` is one shift
+key from `Q`, and the action that throws away a running job's work should not be
+a slip of the shift key from the one that leaves the app.
 
 | Key | Action | Routes through |
 | --- | --- | --- |
 | `c` | cancel | `jobs cancel` |
 | `h` | hold | `jobs hold` |
 | `H` | release | `jobs release` |
-| `q` | requeue | `jobs requeue` |
+| `ctrl+r` | requeue | `jobs requeue` |
 
 Ownership is not re-implemented. `slurm.job_owner` reads the caller's uid, so a
 user can only ever act on their own jobs, and the TUI shows only their jobs in

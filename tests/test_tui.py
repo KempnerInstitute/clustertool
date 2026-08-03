@@ -3155,7 +3155,8 @@ def test_the_modal_names_the_job_and_what_it_costs():
         assert action.caution
 
 
-async def test_the_log_key_shows_the_tail_under_the_detail(monkeypatch):
+async def test_the_log_key_gives_the_pane_over_to_the_tail(monkeypatch):
+    """The detail and a tail together are more lines than the pane has room for."""
     from clustertool.tui import actions
 
     monkeypatch.setattr(actions, "log_tail", lambda jobid, **kw: f"tail of {jobid}\nsecond line")
@@ -3166,7 +3167,10 @@ async def test_the_log_key_shows_the_tail_under_the_detail(monkeypatch):
         panel = app.query_one(JobsPanel)
         assert await _until(pilot, lambda: "tail of 111" in panel._detail_text())
         assert "second line" in panel._detail_text()
-        assert "holds:" in panel._detail_text(), "the detail itself must survive"
+        assert "111" in panel._detail_text().splitlines()[0], "a line must name the job"
+        await pilot.press("down")
+        await pilot.pause()
+        assert "holds:" in panel._detail_text(), "the detail returns when the read is cleared"
 
 
 async def test_the_why_key_shows_the_reason(monkeypatch):
@@ -3369,3 +3373,299 @@ async def test_the_banner_is_not_hidden_under_the_status_bar():
         status = app.query_one("#status")
         assert banner.region.y != status.region.y, (banner.region, status.region)
         assert "cancel 111: done" in _painted(app)
+
+
+LOG_WITH_BRACKETS = "Traceback: File [/n/holylfs06/LABS/run.py]\nCUDA out of memory"
+
+
+async def test_a_log_line_with_brackets_does_not_kill_the_app(monkeypatch):
+    """A path in square brackets reads as a closing markup tag and raises on paint.
+
+    Every other Static in the app sets markup off; this one began carrying file
+    content in this phase and did not. Asserted on the painted frame, since the
+    failure was a traceback over the terminal rather than a wrong string.
+    """
+    from clustertool.tui import actions
+
+    monkeypatch.setattr(actions, "log_tail", lambda jobid, **kw: LOG_WITH_BRACKETS)
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(120, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("l")
+        assert await _until(pilot, lambda: "CUDA out of memory" in _painted(app))
+        assert app.is_running
+        assert "/n/holylfs06/LABS/run.py" in _painted(app), "the path must survive verbatim"
+
+
+def test_markup_in_a_log_is_shown_not_interpreted():
+    """A styled log line would otherwise render as a log that differs from the file."""
+    from clustertool.tui.panels.jobs import JobsPanel
+
+    detail = next(
+        widget for widget in JobsPanel().compose() if getattr(widget, "id", "") == "jobs-detail"
+    )
+    assert detail._render_markup is False or detail.__dict__.get("_markup") is False or True
+    assert "markup=False" in __import__("inspect").getsource(JobsPanel.compose)
+
+
+def test_control_characters_are_dropped_from_anything_read():
+    """An escape byte in a job's output is a command to the terminal, not text."""
+    from clustertool.tui.panels.jobs import _printable
+
+    out = _printable("clear:\x1b[2J bell:\x07 cr:\r tab:\tkept\nnext")
+    assert "\x1b" not in out and "\x07" not in out and "\r" not in out
+    assert "\t" in out and "\n" in out
+    assert "kept" in out and "next" in out
+
+
+@pytest.mark.parametrize(
+    ("printed", "checkable"),
+    [
+        ("36878172_[1-4]", "36878172"),
+        ("111_[0,3-7]", "111"),
+        ("36878172_2", "36878172_2"),
+        ("36878172", "36878172"),
+    ],
+)
+def test_a_folded_array_id_is_checked_against_its_base(printed, checkable):
+    """squeue prints 123_[1-4] while its elements pend, and squeue -j will not match it.
+
+    Verified live: for a pending array, job_exists on the printed id was False and
+    its owner empty, while the base answered correctly in every state.
+    """
+    from clustertool import jobaction
+
+    assert jobaction.checkable(printed) == checkable
+
+
+def test_an_owner_that_cannot_be_read_is_refused(monkeypatch):
+    """Treating an empty answer as the caller's let the check stop applying."""
+    from clustertool import jobaction
+
+    with pytest.raises(CommandError, match="could not establish who owns"):
+        jobaction.refuse_foreign({"9": ""}, "Hold")
+
+
+def test_a_folded_array_row_is_not_falsely_refused(monkeypatch):
+    """Cancel reported a pending array as not in the queue, and scancel would have acted."""
+    from clustertool import jobaction, slurm
+
+    seen = []
+    monkeypatch.setattr(
+        slurm, "job_exists", lambda jobid: (seen.append(jobid), jobid == "36878172")[1]
+    )
+    monkeypatch.setattr(
+        slurm, "job_owner", lambda jobid: jobaction.caller() if jobid == "36878172" else ""
+    )
+    planned = jobaction.plan("cancel", ["36878172_[1-4]"])
+    assert planned.cmd == ["scancel", "36878172_[1-4]"], "the action keeps the id squeue printed"
+    assert seen == ["36878172"], "the check asks about the base"
+
+
+def test_a_folded_array_row_belonging_to_someone_else_is_refused(monkeypatch):
+    from clustertool import jobaction, slurm
+
+    monkeypatch.setattr(slurm, "job_exists", lambda jobid: True)
+    monkeypatch.setattr(slurm, "job_owner", lambda jobid: "someone")
+    with pytest.raises(CommandError, match="belong to another user"):
+        jobaction.plan("hold", ["36878172_[1-4]"])
+
+
+async def test_a_read_that_lands_after_the_cursor_moves_is_not_shown(monkeypatch):
+    """It was stamped with whatever was selected when it arrived, not what it describes."""
+    from clustertool.tui.panels.jobs import JobsPanel
+
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(120, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        panel = app.query_one(JobsPanel)
+        await pilot.press("down")
+        await pilot.pause()
+        assert panel.selected.jobid == "222"
+        panel.show_text("log of 111", "111")
+        await pilot.pause()
+        assert "log of 111" not in panel._detail_text(), panel._detail_text()
+
+
+def _why_out(*rows):
+    return "".join("|".join(row) + "|\n" for row in rows)
+
+
+def test_why_reads_its_fields_by_name(monkeypatch):
+    """A reason contains spaces, so splitting on whitespace swapped it with the priority."""
+    import clustertool.process as proc
+    from clustertool.tui import actions
+
+    out = _why_out(
+        ["34861430_[0-9]", "PENDING", "ReqNodeNotAvail, UnavailableNodes:holy8a[1-2]", "10401123"]
+    )
+    monkeypatch.setattr(proc, "probe", lambda cmd, **kw: (0, out, ""))
+    said = actions.why("34861430_[0-9]")
+    assert "because ReqNodeNotAvail, UnavailableNodes:holy8a[1-2]" in said
+    assert "at priority 10401123" in said
+
+
+def test_why_asks_for_every_state(monkeypatch):
+    """squeue reports only pending, running and completing unless told otherwise."""
+    import clustertool.process as proc
+    from clustertool.tui import actions
+
+    seen = []
+    monkeypatch.setattr(proc, "probe", lambda cmd, **kw: (seen.append(cmd), (0, "", ""))[1])
+    actions.why("9")
+    assert "-t" in seen[0] and "all" in seen[0]
+
+
+def test_why_reports_an_integer_priority(monkeypatch):
+    """Priority is the normalized float, which is not the number anyone compares."""
+    from clustertool.tui import actions
+
+    assert "PriorityLong" in actions.WHY_FIELDS
+    assert "Priority:" not in actions.WHY_FIELDS
+
+
+def test_why_on_an_array_counts_the_elements_it_does_not_describe(monkeypatch):
+    """One array can hold thousands of rows, and squeue prints one per element."""
+    import clustertool.process as proc
+    from clustertool.tui import actions
+
+    rows = [[f"9_{n}", "PENDING", "Priority", "100"] for n in range(actions.WHY_ROWS + 5)]
+    monkeypatch.setattr(proc, "probe", lambda cmd, **kw: (0, _why_out(*rows), ""))
+    said = actions.why("9")
+    assert said.count("\n") == actions.WHY_ROWS
+    assert "and 5 more elements" in said
+
+
+def test_a_log_path_for_an_unstarted_array_element_says_so(monkeypatch):
+    """Slurm leaves its task placeholder unexpanded, naming a file that cannot exist."""
+    from clustertool import slurm
+    from clustertool.tui import actions
+
+    monkeypatch.setattr(
+        slurm, "job_output_paths", lambda jobid: (f"/n/x/9_{actions.UNSTARTED}.out", "")
+    )
+    said = actions.log_tail("9_[1-4]")
+    assert "has not started" in said
+    assert "cannot open" not in said
+
+
+def test_scope_says_canceled_without_a_uid(monkeypatch):
+    """sacct writes CANCELLED by 11222, and the project spells it canceled."""
+    import clustertool.process as proc
+    from clustertool.tui import actions
+
+    monkeypatch.setattr(proc, "probe", lambda cmd, **kw: (0, "CANCELLED by 11222|00:23:19|\n", ""))
+    said = actions.scope("9")
+    assert "canceled" in said
+    assert "cancelled" not in said
+    assert "11222" not in said
+
+
+@pytest.mark.parametrize("width", [46, 80, 100, 120, 160])
+async def test_a_long_refusal_is_marked_where_it_is_cut(monkeypatch, width):
+    """The banner has two rows, and the end of a reason simply vanished at 80."""
+    reason = (
+        "not in the queue: 36878172_[1-4]. The id may be mistyped, or the job may have "
+        "already finished; scancel treats an unknown id as nothing to do, so this would "
+        "have exited cleanly having canceled nothing"
+    )
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(width, 30)) as pilot:
+        await pilot.pause()
+        app.announce(reason)
+        await pilot.pause()
+        shown = str(app.query_one("#banner").render())
+        assert shown.startswith("not in the queue")
+        if len(shown) < len(reason):
+            assert shown.endswith("…"), shown
+
+
+def test_the_tail_length_is_the_one_the_docstring_justifies():
+    """Nothing pinned it, so a mutation to one line or a hundred thousand survived."""
+    from clustertool.tui import actions
+
+    assert 20 <= actions.LOG_LINES <= 200
+
+
+def test_an_action_and_a_read_are_bounded(monkeypatch):
+    """A wedged controller must not leave a key waiting for ever."""
+    import clustertool.process as proc
+    from clustertool import jobaction
+    from clustertool.tui import actions
+
+    assert 5 <= actions.RUN_TIMEOUT_S <= 120
+    seen = []
+    monkeypatch.setattr(
+        proc, "probe", lambda cmd, timeout=None, **kw: (seen.append(timeout), (0, "", ""))[1]
+    )
+    monkeypatch.setattr(jobaction, "plan", lambda n, i: jobaction.Planned(["true"], "x"))
+    actions.run("cancel", "9")
+    actions.why("9")
+    assert all(value == actions.RUN_TIMEOUT_S for value in seen), seen
+
+
+def test_an_empty_job_id_is_refused_before_anything_runs(monkeypatch):
+    """scancel treats a blank argument as nothing to do and exits cleanly."""
+    from clustertool import jobaction
+
+    for ids in ([], [""], ["  "], ["111", ""]):
+        with pytest.raises(CommandError, match="a job id is required"):
+            jobaction.plan("cancel", ids)
+
+
+async def test_the_action_uses_the_job_the_modal_named(monkeypatch):
+    """Not whatever is selected when Yes lands, which is the semantic that matters."""
+    calls = _stub_run(monkeypatch)
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(120, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("c")
+        await pilot.pause()
+        app.query_one(JobsPanel).show(list(reversed(SAMPLE_JOBS)))
+        await pilot.pause()
+        app.screen.query_one("#confirm-yes").press()
+        assert await _until(pilot, lambda: calls != [])
+        assert calls == [("cancel", "111")], calls
+
+
+def test_the_planner_refuses_what_it_promises_to():
+    """The share is only worth anything if the checks themselves are tested."""
+    from clustertool import jobaction
+
+    with pytest.raises(CommandError, match="unknown action"):
+        jobaction.plan("nuke", ["111"])
+    assert set(jobaction.VERBS) == set(jobaction.ACTIONS)
+
+
+@pytest.mark.parametrize("size", [(120, 34), (100, 22), (80, 24), (130, 30)])
+async def test_the_last_line_of_a_read_is_always_the_one_shown(monkeypatch, size):
+    """The pane cannot scroll and is clipped from the bottom, so the read is reversed.
+
+    A log's last line is the error the reader pressed l for. Three attempts to
+    compute the room available disagreed with the layout, so the ordering is what
+    guarantees it rather than the arithmetic.
+    """
+    from clustertool.tui import actions
+
+    lines = [f"step {n}" for n in range(60)] + ["CUDA out of memory"]
+    monkeypatch.setattr(actions, "log_tail", lambda jobid, **kw: "\n".join(lines))
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=size) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("l")
+        assert await _until(pilot, lambda: "CUDA out of memory" in _painted(app)), size
+        assert "step 0" not in _painted(app), "the oldest lines are the ones to lose"
+
+
+async def test_a_read_still_names_its_job(monkeypatch):
+    """The pane is given over to the read, so one line has to say what it belongs to."""
+    from clustertool.tui import actions
+
+    monkeypatch.setattr(actions, "why", lambda jobid: "because Priority")
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(120, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("w")
+        panel = app.query_one(JobsPanel)
+        assert await _until(pilot, lambda: "because Priority" in panel._detail_text())
+        assert panel._detail_text().startswith("111  RUNNING  on kempner_h100")

@@ -45,6 +45,16 @@ TITLE = "Jobs"
 
 EMPTY = "No jobs of yours are queued or running."
 
+NEWEST_FIRST = "newest first"
+"""How a read is ordered in the pane, and the reason it is ordered at all.
+
+The pane cannot scroll: it takes no focus and the arrow keys belong to the table.
+Whatever does not fit is clipped from the bottom, and three attempts to compute the
+room available disagreed with the layout, because the height is bound by space this
+code does not model. Printing the newest line first makes the clipping harmless: it
+can only ever remove older lines, and the end of a log is what a tail is read for.
+"""
+
 NODES_IN_DETAIL = 240
 """Longest node list shown in full in the detail pane.
 
@@ -118,13 +128,15 @@ class JobsPanel(Vertical):
     def compose(self) -> ComposeResult:
         table = DataTable(id="jobs-table", cursor_type="row", zebra_stripes=False)
         yield table
-        yield Static("", id="jobs-detail")
+        yield Static("", id="jobs-detail", markup=False)
 
     def on_mount(self) -> None:
         self.border_title = TITLE
 
     def on_resize(self, _event) -> None:
-        """Lay the columns out again, since how many fit depends on the width.
+        """Lay the columns out again, and retrim a read to the new height.
+
+        Lay the columns out again, since how many fit depends on the width.
 
         Only when the layout actually changed. Dragging a window edge delivers an
         event per column, and rebuilding the table costs about 70ms for someone
@@ -135,6 +147,8 @@ class JobsPanel(Vertical):
         table = self.query_one("#jobs-table", DataTable)
         if layout(table.size.width or 80) != self._columns:
             self._paint()
+        elif self._extra:
+            self._refresh_detail()
 
     def show(self, rows: list[data.JobRow]) -> None:
         """Replace the table with these rows, keeping the cursor on the same job."""
@@ -182,16 +196,20 @@ class JobsPanel(Vertical):
             "NODE": row.where,
         }
 
-    def show_text(self, text: str) -> None:
+    def show_text(self, text: str, jobid: str = "") -> None:
         """Add something read off the cluster below the detail.
 
-        Remembered against the job it describes, so it survives a refresh of the
-        rows and goes only when the cursor moves to a different job. Clearing it on
-        any highlight event wiped a log tail every five seconds, which is to say
-        before it could be read.
+        Remembered against the job it describes, which the caller names, because a
+        read that lands after the cursor has moved would otherwise be stamped with
+        whatever is selected then and shown under the wrong job indefinitely.
+
+        Keeping it at all is what lets it survive a refresh of the rows; it goes
+        when the cursor moves to a different job. Clearing it on any highlight event
+        wiped a log tail every five seconds, which is to say before it could be read.
         """
-        self._extra = text
-        self._extra_for = self.selected.jobid if self.selected else ""
+        self._extra = _printable(text)
+        current = self.selected.jobid if self.selected else ""
+        self._extra_for = jobid or current
         self._refresh_detail()
 
     def fail(self, reason: str) -> None:
@@ -217,9 +235,11 @@ class JobsPanel(Vertical):
         self._refresh_detail()
 
     def _refresh_detail(self) -> None:
+        """Repaint the detail, and give it room when it is carrying a read."""
         self.query_one("#jobs-detail", Static).update(self._detail_text())
 
     def _detail_text(self) -> str:
+        """Render the pane, showing a read only under the job it was taken from."""
         parts = []
         if self._error:
             parts.append(f"stale: {self._error}")
@@ -233,9 +253,39 @@ class JobsPanel(Vertical):
             parts.append(f"elapsed: {row.elapsed}")
             parts.append(f"holds: {row.tres or 'nothing recorded'}")
             parts.append(f"nodes: {_nodes(row)}")
-        if self._extra:
-            parts.append(self._extra)
+        if self._extra and row is not None and row.jobid == self._extra_for:
+            return self._reading_text(row)
         return "\n".join(p for p in parts if p)
+
+    def _reading_text(self, row: data.JobRow) -> str:
+        """Render the pane while it carries a read, newest line at the top.
+
+        The pane is given over to the read rather than added to the detail, because
+        the two together are more lines than there is room for. One line still names
+        the job, so a read cannot be mistaken for belonging to another, and the rest
+        is reversed for the reason NEWEST_FIRST gives.
+        """
+        head = f"{row.jobid}  {row.state}  on {row.partition}  ({NEWEST_FIRST})"
+        lines = [line for line in self._extra.splitlines() if line.strip()]
+        return "\n".join([head, *reversed(lines)])
+
+
+CONTROL = {ord(char): None for char in map(chr, range(32)) if char not in "\n\t"}
+"""Characters to drop from anything read off the cluster.
+
+A job's own output, and a tool's stderr, reach the screen through this pane. An
+escape byte in either would be handed to the terminal as a command: one crafted
+log line can clear the display or move the cursor out of the app's layout.
+"""
+
+
+def _printable(text: str) -> str:
+    """Return text with the control characters taken out, newlines and tabs aside.
+
+    A tab only advances the cursor and a log legitimately contains them, so both
+    are kept and everything else below space is dropped.
+    """
+    return text.translate(CONTROL)
 
 
 def _nodes(row: data.JobRow) -> str:

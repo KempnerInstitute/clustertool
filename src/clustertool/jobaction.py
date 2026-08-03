@@ -12,6 +12,7 @@ dashboard shows it on its banner, so one wording serves both.
 import dataclasses
 import os
 import pwd
+import re
 
 from clustertool import process, slurm
 from clustertool.process import CommandError
@@ -20,6 +21,24 @@ ACTIONS = ("cancel", "hold", "release", "requeue")
 
 VERBS = {"cancel": "Cancel", "hold": "Hold", "release": "Release", "requeue": "Requeue"}
 """How each action names itself when refusing a job that is not the caller's."""
+
+_FOLDED = re.compile(r"^(\d+)_\[.*\]$")
+"""An array id squeue prints for elements that are still pending, like 123_[1-4]."""
+
+
+def checkable(jobid: str) -> str:
+    """Return an id squeue -j will answer for, given one squeue printed.
+
+    The two are not the same. While an array's elements are pending, squeue prints
+    the whole range as 123_[1-4], and squeue -j does not match that form: it
+    reports the job as absent and its owner as unknown. The base id answers in
+    every case, and existence and ownership are properties of the array rather than
+    of one element, so the base is what the checks ask about. The id the caller
+    named is still what the action is run on, since scancel and scontrol do accept
+    the folded form.
+    """
+    folded = _FOLDED.match(jobid.strip())
+    return folded.group(1) if folded else jobid
 
 
 @dataclasses.dataclass(frozen=True)
@@ -49,14 +68,25 @@ def describe(jobid: str) -> tuple[str, str, str]:
 
 
 def refuse_foreign(owners: dict[str, str], verb: str) -> None:
-    """Raise when any job belongs to someone other than the caller.
+    """Raise when any job is not the caller's, or when that cannot be established.
 
     A privileged user acting on a stranger's job is the case worth refusing: man
     scontrol records an admin-hold rather than a user-hold when they hold one, and
     its owner cannot lift that themselves.
+
+    An owner that could not be read is refused too, rather than passed as though it
+    were the caller's. Treating an empty answer as safe let the check stop applying
+    for exactly the ids it could not resolve, while scancel and scontrol went on to
+    act on them.
     """
     me = caller()
-    others = {jobid: owner for jobid, owner in owners.items() if owner and owner != me}
+    unknown = sorted(jobid for jobid, owner in owners.items() if not owner)
+    if unknown:
+        raise CommandError(
+            f"could not establish who owns {', '.join(unknown)}, so this was not run. "
+            f"{verb} only jobs the controller still reports"
+        )
+    others = {jobid: owner for jobid, owner in owners.items() if owner != me}
     if not others:
         return
     listed = ", ".join(f"{jobid} ({owner})" for jobid, owner in sorted(others.items()))
@@ -76,17 +106,21 @@ def plan(action: str, jobids: list[str]) -> Planned:
         raise CommandError("a job id is required")
     listed = ", ".join(jobids)
     if action == "cancel":
-        unknown = [jobid for jobid in jobids if not slurm.job_exists(jobid)]
+        unknown = [jobid for jobid in jobids if not slurm.job_exists(checkable(jobid))]
         if unknown:
             raise CommandError(
                 f"not in the queue: {', '.join(unknown)}. The id may be mistyped, or "
                 "the job may have already finished; scancel treats an unknown id as "
                 "nothing to do, so this would have exited cleanly having canceled nothing"
             )
-        refuse_foreign({jobid: slurm.job_owner(jobid) for jobid in jobids}, VERBS[action])
+        refuse_foreign(
+            {jobid: slurm.job_owner(checkable(jobid)) for jobid in jobids}, VERBS[action]
+        )
         return Planned(["scancel", *jobids], "scancel failed")
     if action == "hold":
-        refuse_foreign({jobid: slurm.job_owner(jobid) for jobid in jobids}, VERBS[action])
+        refuse_foreign(
+            {jobid: slurm.job_owner(checkable(jobid)) for jobid in jobids}, VERBS[action]
+        )
         return Planned(
             ["scontrol", "hold", ",".join(jobids)],
             f"could not hold one or more of {listed}; see the messages above for which",
@@ -105,7 +139,7 @@ def _requeue(jobids: list[str], listed: str) -> Planned:
     One squeue call answers both, and the elapsed time of a running job is what
     the caller has to be warned they are about to throw away.
     """
-    described = {jobid: describe(jobid) for jobid in jobids}
+    described = {jobid: describe(checkable(jobid)) for jobid in jobids}
     missing = [jobid for jobid, (state, _, _) in described.items() if not state]
     if missing:
         raise CommandError(

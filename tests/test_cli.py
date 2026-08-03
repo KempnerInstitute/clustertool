@@ -13,7 +13,18 @@ import pytest
 from click.testing import CliRunner
 from test_gpuhealth import ECC_DISABLED, HEALTHY, _gpu, _nvlink, _smi_xml
 
-from clustertool import completion, fabric, gpuhealth, process, qos, search, site, slurm, storage
+from clustertool import (
+    completion,
+    fabric,
+    gpuhealth,
+    jobaction,
+    process,
+    qos,
+    search,
+    site,
+    slurm,
+    storage,
+)
 from clustertool.cli import main
 from clustertool.commands.account import _write
 
@@ -1002,11 +1013,25 @@ def test_jobs_cancel_none_errors(monkeypatch):
 
 
 def test_jobs_hold(monkeypatch):
-    monkeypatch.setattr(slurm, "job_owner", lambda j: "")
+    monkeypatch.setattr(slurm, "job_owner", lambda j: jobaction.caller())
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "hold", "111", "222"])
     assert result.exit_code == 0
     assert calls[0] == ["scontrol", "hold", "111,222"]
+
+
+def test_jobs_hold_refuses_a_job_whose_owner_cannot_be_read(monkeypatch):
+    """An owner that could not be established is not the caller's by default.
+
+    Treating an empty answer as safe let the ownership check stop applying for
+    exactly the ids it could not resolve, while scontrol went on to act on them.
+    """
+    monkeypatch.setattr(slurm, "job_owner", lambda j: "")
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "hold", "111"])
+    assert result.exit_code == 1
+    assert "could not establish who owns" in result.output
+    assert calls == []
 
 
 def test_jobs_release(monkeypatch):
