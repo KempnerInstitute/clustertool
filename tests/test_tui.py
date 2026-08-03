@@ -39,17 +39,53 @@ def test_me_dispatches_to_the_dashboard(monkeypatch):
     import clustertool.tui.app as app_module
 
     calls = []
-    monkeypatch.setattr(app_module, "run", lambda: calls.append(1))
+    monkeypatch.setattr(app_module, "run", lambda **kwargs: calls.append(kwargs))
     monkeypatch.setattr(me_cmd, "_wants_dashboard", lambda user, plain, access: True)
-    me_cmd.me.callback(user=None, plain=False, access=False)
-    assert calls == [1]
+    me_cmd.me.callback(user=None, plain=False, access=False, interval=5.0, days=7)
+    assert calls == [{"interval": 5.0, "days": 7}]
+
+
+def test_the_dashboard_flags_reach_the_app(monkeypatch):
+    """A flag the app never reads is worse than no flag: it reads as having worked."""
+    import clustertool.tui.app as app_module
+
+    seen = {}
+    monkeypatch.setattr(app_module, "run", lambda **kwargs: seen.update(kwargs))
+    monkeypatch.setattr(me_cmd, "_wants_dashboard", lambda user, plain, access: True)
+    result = CliRunner().invoke(main, ["me", "-i", "30", "-d", "14"])
+    assert result.exit_code == 0, result.output
+    assert seen == {"interval": 30.0, "days": 14}
+
+
+def test_an_interval_under_the_floor_is_refused(monkeypatch):
+    """Every tick is a query on the controller, and r already refreshes on demand."""
+    monkeypatch.setattr(me_cmd, "_wants_dashboard", lambda user, plain, access: True)
+    result = CliRunner().invoke(main, ["me", "-i", "0.2"])
+    assert result.exit_code == 2, result.output
+    assert "2" in result.output
+
+
+async def test_the_window_flag_reaches_the_standing_query(monkeypatch):
+    """The panel says how wide its window is, so a flag it ignores makes it lie."""
+    seen = []
+    monkeypatch.setattr(data, "jobs", lambda user: [])
+    monkeypatch.setattr(data, "storage_info", lambda user: data.StorageInfo(None, [], []))
+    monkeypatch.setattr(
+        data,
+        "standing",
+        lambda user, days=data.STANDING_DAYS: (seen.append(days), _standing(days=days))[1],
+    )
+    app = _app(interval=30, days=21)
+    async with app.run_test(size=(120, 30)) as pilot:
+        assert await _until(pilot, lambda: seen == [21]), seen
+        assert await _until(pilot, lambda: "last 21d" in _painted(app)), _painted(app)
 
 
 def test_me_prints_the_summary_when_the_dashboard_is_not_wanted(monkeypatch):
     import clustertool.tui.app as app_module
 
     calls = []
-    monkeypatch.setattr(app_module, "run", lambda: calls.append(1))
+    monkeypatch.setattr(app_module, "run", lambda **kwargs: calls.append(kwargs))
     monkeypatch.setattr(me_cmd, "_wants_dashboard", lambda user, plain, access: False)
     monkeypatch.setattr(slurm, "my_jobs", lambda user: [])
     monkeypatch.setattr(slurm, "user_gpu_count", lambda user: 0)
@@ -182,7 +218,7 @@ its count.
 FIXED_CLOCK = datetime.datetime(2026, 8, 2, 14, 32)
 
 
-def _app(full_name="A Name", interval=0):
+def _app(full_name="A Name", interval=0, days=data.STANDING_DAYS):
     """Build the app with the timer off, so a shell test never asks a scheduler.
 
     With the timer on, these ran squeue for real: they passed on a login node and
@@ -194,6 +230,7 @@ def _app(full_name="A Name", interval=0):
         identity=data.Identity("alice", full_name, "node01", "Example HPC"),
         clock=lambda: FIXED_CLOCK,
         interval=interval,
+        days=days,
     )
 
 
@@ -2050,9 +2087,69 @@ def test_recent_work_counts_states_and_decodes_metrics(monkeypatch):
         "4|short|row\n"
     )
     monkeypatch.setattr(proc, "probe", lambda cmd, **kw: (0, out, ""))
-    states, metrics = data.recent_work("alice", 7)
+    states, metrics, _ = data.recent_work("alice", 7)
     assert states == {"COMPLETED": 1, "CANCELLED": 1, "OTHER": 1}
     assert len(metrics) == 2, "a job with no blob has no metrics"
+
+
+@pytest.mark.parametrize(
+    ("elapsed", "hours"),
+    [
+        ("00:00:00", 0.0),
+        ("00:30:00", 0.5),
+        ("2:14:00", 2 + 14 / 60),
+        ("13-04:00:00", 13 * 24 + 4),
+        ("1-00:00:00", 24.0),
+        ("bad", 0.0),
+        ("", 0.0),
+        ("1-2:3", 0.0),
+        ("x-01:00:00", 0.0),
+    ],
+)
+def test_the_elapsed_parser_follows_the_sacct_format(elapsed, hours):
+    """man sacct gives it as [days-]hours:minutes:seconds, microseconds on CPU only."""
+    assert abs(data._hours(elapsed) - hours) < 1e-9
+
+
+def test_gpu_hours_are_weighted_by_how_long_each_job_held_them(monkeypatch):
+    """The figure the median cannot give: a one-minute job and a two-day one differ.
+
+    Two jobs, one hour at full use and nine hours at none, have a median utilization
+    of 50% and leave 90% of the GPU-hours unused. The second number is the one that
+    says what the cluster lost.
+    """
+    from jobscope import blob
+
+    import clustertool.process as proc
+
+    monkeypatch.setattr(blob, "decode_admin_comment", lambda text: text or None)
+    monkeypatch.setattr(blob, "blob_metrics", lambda stats: (0, 0, int(stats), None))
+    out = (
+        "1|COMPLETED|1:00:00|cpu=8,gres/gpu=1|100\n"
+        "2|COMPLETED|9:00:00|cpu=8,gres/gpu=1|0\n"
+        "3|COMPLETED|5:00:00|cpu=8,gres/gpu=4|\n"
+        "4|COMPLETED|4:00:00|cpu=8|50\n"
+    )
+    monkeypatch.setattr(proc, "probe", lambda cmd, **kw: (0, out, ""))
+    _, metrics, hours = data.recent_work("alice", 7)
+    assert (hours.held, hours.used) == (10.0, 1.0)
+    assert hours.unused == 90
+    assert (hours.covered, hours.gpu_jobs) == (2, 3), "a gpu job with no blob still ran"
+    assert data._median([entry[2] for entry in metrics if entry[2] is not None]) == 50
+
+
+def test_gpu_hours_are_nothing_when_no_job_held_a_gpu(monkeypatch):
+    """A CPU-only caller gets no line rather than a nought that reads as perfect use."""
+    from jobscope import blob
+
+    import clustertool.process as proc
+
+    monkeypatch.setattr(blob, "decode_admin_comment", lambda text: text or None)
+    monkeypatch.setattr(blob, "blob_metrics", lambda stats: (10, 20, None, None))
+    monkeypatch.setattr(proc, "probe", lambda cmd, **kw: (0, "1|COMPLETED|1:00:00|cpu=8|x\n", ""))
+    _, _, hours = data.recent_work("alice", 7)
+    assert (hours.held, hours.covered, hours.gpu_jobs) == (0.0, 0, 0)
+    assert hours.unused is None
 
 
 def test_recent_work_asks_for_a_window_not_a_list_of_ids(monkeypatch):
@@ -2149,6 +2246,63 @@ def test_a_cpu_only_window_shows_no_gpu_figure():
     assert "cpu 40%" in plain
 
 
+async def test_a_reading_standing_panel_keeps_every_line_it_had():
+    """Its five facts fill the panel exactly, so a sixth line pushes one out of sight.
+
+    The border title says it is reading, which is where that belongs: the panel is
+    seven rows including its border and there is no row to spend on saying so twice.
+    """
+    from clustertool.tui.panels.standing import StandingPanel
+
+    hours = data.GpuHours(held=412.5, used=49.5, covered=20, gpu_jobs=34)
+    app = _app()
+    async with app.run_test(size=(130, 30)) as pilot:
+        await pilot.pause()
+        panel = app.query_one(StandingPanel)
+        panel.show(_standing(hours=hours))
+        await pilot.pause()
+        panel.begin_read()
+        await pilot.pause()
+        assert "reading" in str(panel.border_title)
+        frame = _painted(app)
+        for line in ("share ", "gpus ", "last 7d", "median ", "unused "):
+            assert line in frame, line
+
+
+def test_the_unused_line_says_the_share_the_hours_and_its_coverage():
+    """The share alone would read as covering every gpu job, and it covers 20 of 34."""
+    from clustertool.tui.panels.standing import unused_text
+
+    hours = data.GpuHours(held=412.5, used=49.5, covered=20, gpu_jobs=34)
+    plain = unused_text(_standing(hours=hours), 120).plain
+    assert "88% of 412 gpu-hours" in plain, plain
+    assert "over 20 of 34 gpu jobs" in plain, plain
+
+
+def test_the_unused_line_goes_when_no_gpu_job_of_the_callers_was_measured():
+    """A label with nothing after it says less than no line, and cpu-only is common."""
+    from clustertool.tui.panels.standing import lines
+
+    rendered = [line.plain for line in lines(_standing(), 120)]
+    assert len(rendered) == 4, rendered
+    assert not any("unused" in line for line in rendered)
+    held = data.GpuHours(held=8.0, used=2.0, covered=1, gpu_jobs=1)
+    with_hours = [line.plain for line in lines(_standing(hours=held), 120)]
+    assert len(with_hours) == 5, with_hours
+    assert "75% of 8 gpu-hours" in with_hours[-1]
+
+
+@pytest.mark.parametrize(
+    ("unused", "expected"),
+    [(0, ""), (49, ""), (50, "yellow"), (74, "yellow"), (75, "bold red"), (100, "bold red")],
+)
+def test_the_unused_share_turns_as_it_grows(unused, expected):
+    """Half of a held GPU going unused is worth a color; three quarters is worth red."""
+    from clustertool.tui.panels.standing import idle_style
+
+    assert idle_style(unused) == expected
+
+
 @pytest.mark.parametrize(
     ("used", "cap", "expected"),
     [(0, 96, ""), (71, 96, ""), (72, 96, "yellow"), (96, 96, "bold red"), (4, None, "dim")],
@@ -2210,7 +2364,7 @@ async def test_the_app_loads_the_standing_panel_on_start(monkeypatch):
     monkeypatch.setattr(data, "jobs", lambda user: [])
     monkeypatch.setattr(data, "storage_info", lambda user: data.StorageInfo(None, [], []))
     calls = []
-    monkeypatch.setattr(data, "standing", lambda user: (calls.append(user), _standing())[1])
+    monkeypatch.setattr(data, "standing", lambda user, **kw: (calls.append(user), _standing())[1])
     app = _app(interval=30)
     async with app.run_test(size=(130, 30)) as pilot:
         panel = app.query_one(StandingPanel)
@@ -2223,7 +2377,7 @@ async def test_the_standing_panel_is_not_on_the_jobs_timer(monkeypatch):
     monkeypatch.setattr(data, "jobs", lambda user: [])
     monkeypatch.setattr(data, "storage_info", lambda user: data.StorageInfo(None, [], []))
     calls = []
-    monkeypatch.setattr(data, "standing", lambda user: (calls.append(user), _standing())[1])
+    monkeypatch.setattr(data, "standing", lambda user, **kw: (calls.append(user), _standing())[1])
     app = _app(interval=0.05)
     async with app.run_test(size=(130, 30)) as pilot:
         await pilot.pause(0.5)
@@ -2236,7 +2390,7 @@ async def test_r_refreshes_the_standing_panel_when_it_has_focus(monkeypatch):
     monkeypatch.setattr(data, "jobs", lambda user: [])
     monkeypatch.setattr(data, "storage_info", lambda user: data.StorageInfo(None, [], []))
     calls = []
-    monkeypatch.setattr(data, "standing", lambda user: (calls.append(user), _standing())[1])
+    monkeypatch.setattr(data, "standing", lambda user, **kw: (calls.append(user), _standing())[1])
     app = _app(interval=0)
     async with app.run_test(size=(130, 30)) as pilot:
         await pilot.pause()
@@ -2250,7 +2404,7 @@ async def test_refresh_all_reads_the_standing_panel_too(monkeypatch):
     monkeypatch.setattr(data, "jobs", lambda user: [])
     monkeypatch.setattr(data, "storage_info", lambda user: data.StorageInfo(None, [], []))
     calls = []
-    monkeypatch.setattr(data, "standing", lambda user: (calls.append(user), _standing())[1])
+    monkeypatch.setattr(data, "standing", lambda user, **kw: (calls.append(user), _standing())[1])
     app = _app(interval=0)
     async with app.run_test(size=(130, 30)) as pilot:
         await pilot.pause()
@@ -2264,7 +2418,7 @@ async def test_a_failing_standing_read_marks_the_panel_and_leaves_the_app_up(mon
     monkeypatch.setattr(data, "jobs", lambda user: [])
     monkeypatch.setattr(data, "storage_info", lambda user: data.StorageInfo(None, [], []))
 
-    def boom(user):
+    def boom(user, **kw):
         raise CommandError("sshare is not answering")
 
     monkeypatch.setattr(data, "standing", boom)
@@ -2378,7 +2532,7 @@ async def test_a_cancelled_read_does_not_leave_the_panel_saying_reading(monkeypa
     started = threading.Event()
     release = threading.Event()
     monkeypatch.setattr(data, "jobs", lambda user: [])
-    monkeypatch.setattr(data, "standing", lambda user: _standing())
+    monkeypatch.setattr(data, "standing", lambda user, **kw: _standing())
 
     def blocking(user):
         started.set()
@@ -2489,7 +2643,7 @@ def test_a_job_that_has_not_ended_is_not_counted_in_the_window(monkeypatch):
         "5|NODE_FAIL|00:01:00|cpu=8|\n"
     )
     monkeypatch.setattr(proc, "probe", lambda cmd, **kw: (0, out, ""))
-    states, _ = data.recent_work("alice", 7)
+    states, _, _ = data.recent_work("alice", 7)
     assert states == {"COMPLETED": 1, "OTHER": 1}, states
 
 
@@ -2570,14 +2724,16 @@ def test_the_gpu_median_ignores_jobs_with_no_gpu_figure(monkeypatch):
 def test_an_sshare_failure_does_not_take_the_whole_panel_down(monkeypatch):
     """Only the efficiency half was ever meant to degrade."""
 
-    def boom(user):
+    def boom(user, **kw):
         raise CommandError("sshare is not answering")
 
     monkeypatch.setattr(data, "fairshare_rows", boom)
     monkeypatch.setattr(
         data, "gpu_standing", lambda user: data.GpuStanding(4, 16, "lab", 8, 96, True)
     )
-    monkeypatch.setattr(data, "recent_work", lambda user, days=7: ({"COMPLETED": 2}, []))
+    monkeypatch.setattr(
+        data, "recent_work", lambda user, days=7: ({"COMPLETED": 2}, [], data.GpuHours())
+    )
     result = data.standing("alice")
     assert result.fairshare == []
     assert result.gpu_cap == 16
@@ -2590,7 +2746,9 @@ def test_a_squeue_failure_does_not_take_the_whole_panel_down(monkeypatch):
 
     monkeypatch.setattr(data, "fairshare_rows", lambda user: [("lab", "0.9")])
     monkeypatch.setattr(data, "gpu_standing", boom)
-    monkeypatch.setattr(data, "recent_work", lambda user, days=7: ({"COMPLETED": 2}, []))
+    monkeypatch.setattr(
+        data, "recent_work", lambda user, days=7: ({"COMPLETED": 2}, [], data.GpuHours())
+    )
     result = data.standing("alice")
     assert result.fairshare == [("lab", "0.9")]
     assert not result.caps_known
@@ -2606,7 +2764,9 @@ def test_the_standing_gather_is_bounded(monkeypatch):
 
     monkeypatch.setattr(data, "fairshare_rows", hang)
     monkeypatch.setattr(data, "gpu_standing", hang)
-    monkeypatch.setattr(data, "recent_work", lambda user, days=7: ({"COMPLETED": 1}, []))
+    monkeypatch.setattr(
+        data, "recent_work", lambda user, days=7: ({"COMPLETED": 1}, [], data.GpuHours())
+    )
     start = time.monotonic()
     result = data.standing("alice")
     assert time.monotonic() - start < 5, "the deadline did not fire"
@@ -2622,7 +2782,7 @@ async def test_repeated_standing_refreshes_do_not_stack(monkeypatch):
     probe = _Probe()
     lock = __import__("threading").Lock()
 
-    def slow(user):
+    def slow(user, **kw):
         with lock:
             probe.calls += 1
             probe.live += 1
@@ -2656,7 +2816,7 @@ async def test_a_cancelled_standing_read_clears_the_reading_mark(monkeypatch):
     monkeypatch.setattr(data, "jobs", lambda user: [])
     monkeypatch.setattr(data, "storage_info", lambda user: data.StorageInfo(None, [], []))
 
-    def blocking(user):
+    def blocking(user, **kw):
         started.set()
         release.wait(5)
         return _standing()
@@ -2688,7 +2848,7 @@ async def test_the_app_says_it_is_reading_the_standing_panel(monkeypatch):
     monkeypatch.setattr(data, "jobs", lambda user: [])
     monkeypatch.setattr(data, "storage_info", lambda user: data.StorageInfo(None, [], []))
 
-    def blocking(user):
+    def blocking(user, **kw):
         started.set()
         release.wait(5)
         return _standing()
@@ -2789,7 +2949,9 @@ def test_the_standing_gather_reports_a_part_it_abandoned(monkeypatch):
 
     monkeypatch.setattr(data, "fairshare_rows", hang)
     monkeypatch.setattr(data, "gpu_standing", hang)
-    monkeypatch.setattr(data, "recent_work", lambda user, days=7: ({"COMPLETED": 1}, []))
+    monkeypatch.setattr(
+        data, "recent_work", lambda user, days=7: ({"COMPLETED": 1}, [], data.GpuHours())
+    )
     result = data.standing("alice")
     assert result.share_note == data.STILL_READING
     assert result.caps_note == data.STILL_READING
@@ -3007,7 +3169,7 @@ def _act_app(monkeypatch, rows=None):
     """An app with the jobs panel populated and every query stubbed."""
     monkeypatch.setattr(data, "jobs", lambda user: list(rows if rows is not None else SAMPLE_JOBS))
     monkeypatch.setattr(data, "storage_info", lambda user: data.StorageInfo(None, [], []))
-    monkeypatch.setattr(data, "standing", lambda user: _standing())
+    monkeypatch.setattr(data, "standing", lambda user, **kw: _standing())
     return _app(interval=30)
 
 
@@ -3160,7 +3322,7 @@ async def test_a_completed_action_rereads_the_jobs(monkeypatch):
     reads = []
     monkeypatch.setattr(data, "jobs", lambda user: (reads.append(user), list(SAMPLE_JOBS))[1])
     monkeypatch.setattr(data, "storage_info", lambda user: data.StorageInfo(None, [], []))
-    monkeypatch.setattr(data, "standing", lambda user: _standing())
+    monkeypatch.setattr(data, "standing", lambda user, **kw: _standing())
     app = _app(interval=30)
     async with app.run_test(size=(120, 30)) as pilot:
         assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
@@ -4110,7 +4272,7 @@ async def test_a_long_head_line_is_cut_so_it_stays_one_row(monkeypatch):
     monkeypatch.setattr(actions, "log_tail", lambda jobid, **kw: "line one\nline two\nlast line")
     monkeypatch.setattr(data, "jobs", lambda user: [wide])
     monkeypatch.setattr(data, "storage_info", lambda user: data.StorageInfo(None, [], []))
-    monkeypatch.setattr(data, "standing", lambda user: _standing())
+    monkeypatch.setattr(data, "standing", lambda user, **kw: _standing())
     app = _app(interval=30)
     async with app.run_test(size=(40, 24)) as pilot:
         assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)

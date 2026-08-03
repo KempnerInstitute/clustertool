@@ -631,6 +631,9 @@ class Standing:
     mem: int | None
     gpu: int | None
     gpu_jobs: int
+    hours: "GpuHours" = dataclasses.field(default_factory=lambda: GpuHours())
+    """The GPU time held in the window against the part of it that was used."""
+
     note: str = ""
     """Why the window is missing, when it is."""
 
@@ -759,8 +762,55 @@ def _charged_account(user: str, mine: dict[str, int], totals: dict[str, int], pr
     return ""
 
 
-def recent_work(user: str, days: int = STANDING_DAYS) -> tuple[dict[str, int], list[tuple]]:
-    """Return (state counts, per-job metrics) for the caller's jobs in the window.
+def _hours(elapsed: str) -> float:
+    """Return an sacct elapsed time in hours.
+
+    man sacct gives the format as [days-]hours:minutes:seconds, with microseconds
+    only on CPU fields, so the clock is always three parts and the days optional.
+    Anything else is counted as nothing rather than guessed at, since a figure in
+    GPU-hours is worth more wrong than absent.
+    """
+    days, _, clock = elapsed.strip().partition("-")
+    if not clock:
+        days, clock = "0", days
+    parts = clock.split(":")
+    if len(parts) != 3 or not days.isdigit():
+        return 0.0
+    try:
+        hour, minute, second = (float(part) for part in parts)
+    except ValueError:
+        return 0.0
+    return int(days) * 24 + hour + minute / 60 + second / 3600
+
+
+@dataclasses.dataclass(frozen=True)
+class GpuHours:
+    """How much GPU time the caller held in the window, and how much of it was used.
+
+    Held rather than requested: the figure is the allocation multiplied by how long
+    it was held, which is what the cluster could not give anyone else.
+    """
+
+    held: float = 0.0
+    used: float = 0.0
+    covered: int = 0
+    """GPU jobs whose utilization was recorded, and so the only ones counted."""
+
+    gpu_jobs: int = 0
+    """GPU jobs in the window, measured or not, so the line can say its coverage."""
+
+    @property
+    def unused(self) -> int | None:
+        """The share of the held GPU-hours that went unused, as a percentage."""
+        if not self.held:
+            return None
+        return round(100 - 100 * self.used / self.held)
+
+
+def recent_work(
+    user: str, days: int = STANDING_DAYS
+) -> tuple[dict[str, int], list[tuple], GpuHours]:
+    """Return (state counts, per-job metrics, GPU-hours) for the caller's jobs.
 
     One sacct call over a window rather than jobscope's select-then-fetch, which
     resolves a window to explicit job ids and asks sacct for them by id: that took
@@ -789,8 +839,12 @@ def recent_work(user: str, days: int = STANDING_DAYS) -> tuple[dict[str, int], l
     )
     if code != 0:
         raise CommandError(_probe_error(code, err, "sacct"))
+    from clustertool import slurm
+
     states: dict[str, int] = {}
     metrics = []
+    held = used = 0.0
+    covered = gpu_jobs = 0
     for line in out.splitlines():
         parts = line.split("|")
         if len(parts) < len(RECENT_FIELDS):
@@ -806,7 +860,17 @@ def recent_work(user: str, days: int = STANDING_DAYS) -> tuple[dict[str, int], l
         measured = blob.blob_metrics(stats) if stats else None
         if measured is not None:
             metrics.append(measured)
-    return states, metrics
+        gpus = slurm.parse_gpu_count(field["AllocTRES"])
+        if not gpus:
+            continue
+        gpu_jobs += 1
+        if measured is None or measured[2] is None:
+            continue
+        covered += 1
+        hours = gpus * _hours(field["Elapsed"])
+        held += hours
+        used += hours * measured[2] / 100
+    return states, metrics, GpuHours(held=held, used=used, covered=covered, gpu_jobs=gpu_jobs)
 
 
 def standing(user: str, days: int = STANDING_DAYS) -> Standing:
@@ -839,7 +903,7 @@ def standing(user: str, days: int = STANDING_DAYS) -> Standing:
         thread.join(max(deadline - time.monotonic(), 0.0))
     rows = _taken(share, [])
     caps = _taken(gpus, GpuStanding(0, None, "", 0, None, False))
-    states, metrics = _taken(recent, ({}, []))
+    states, metrics, hours = _taken(recent, ({}, [], GpuHours()))
     gpu_values = [entry[2] for entry in metrics if entry[2] is not None]
     return Standing(
         fairshare=rows,
@@ -859,6 +923,7 @@ def standing(user: str, days: int = STANDING_DAYS) -> Standing:
         mem=_median([entry[1] for entry in metrics]),
         gpu=_median(gpu_values),
         gpu_jobs=len(gpu_values),
+        hours=hours,
         note=_why(recent),
     )
 

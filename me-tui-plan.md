@@ -272,13 +272,23 @@ on a throwaway job of my own, submitted and canceled deliberately.
    spare width round by round against a per-column ceiling, so at 100 columns ID
    takes 18 for a 9-character id while NODE is cut to 9 from 47. Capping growth at
    the widest value in the current rows spends that width where it is read,
-   at the cost of columns that shift when the data does.
+   at the cost of columns that shift when the data does. Done: at 100 columns ID
+   now takes 12, its minimum, and PART and NODE 13 each. Width left over once every
+   column holds its widest value is unspent rather than padding the columns out.
 5. A `--days` flag for the standing window, which Phase 4 made a keyword argument
-   but nothing passes, and a `--interval` for the jobs timer.
+   but nothing passes, and a `--interval` for the jobs timer. Done: both, as
+   `-d/--days` and `-i/--interval`, the flag names the other commands already use.
+   The interval has a floor of two seconds, since every tick is a controller query
+   and `r` refreshes on demand.
 6. Show the share of GPU-hours that went unused. Phase 4 reports a median
    utilization, which is honest but not the figure that changes behavior: over the
    caller's last week, 88% of the GPU-hours they held were idle. Elapsed and
-   AllocTRES are already read and discarded, so this needs no new query.
+   AllocTRES are already read and discarded, so this needs no new query. Done: a
+   fifth line on the standing panel, weighted by how long each job held its GPUs and
+   carrying its own coverage, since 21 of this caller's 49 GPU jobs are all that
+   record utilization. Checked against the same figure computed independently off
+   sacct: 88% of 34 GPU-hours. The panel's five facts now fill its five rows, so the
+   reading mark went to the border title alone.
 
 7. The panel heights over-commit a short terminal. Done: the banner now takes no
    room until it has something to say, which moved the floor from 20 rows to 18,

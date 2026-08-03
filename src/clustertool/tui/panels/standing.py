@@ -154,15 +154,51 @@ def efficiency_text(standing: data.Standing, width: int) -> Text:
     return _fit(text, width)
 
 
+IDLE_WARN = 50
+IDLE_BAD = 75
+
+
+def idle_style(unused: int) -> str:
+    """Return the style for the unused share, which is the point of showing it."""
+    if unused >= IDLE_BAD:
+        return "bold red"
+    return "yellow" if unused >= IDLE_WARN else ""
+
+
+def unused_text(standing: data.Standing, width: int) -> Text:
+    """Render how much of the GPU time the caller held went unused.
+
+    The median utilization is honest but is not the figure that changes what anyone
+    does: a median over jobs counts a one-minute job and a two-day one the same. This
+    weights by the time held, so it says what the cluster lost. For this caller's
+    last week the median GPU utilization was 8% while 88% of the 34 GPU-hours they
+    held went unused.
+
+    The coverage is part of the figure, as it is on the median line: fewer than half
+    of this caller's GPU jobs carry utilization data at all, and the total would
+    read as covering all of them.
+    """
+    text = Text(no_wrap=True, overflow="crop")
+    text.append("unused   ", style="dim")
+    hours = standing.hours
+    text.append(f"{hours.unused}% of {hours.held:.0f} gpu-hours", style=idle_style(hours.unused))
+    text.append(f"  over {hours.covered} of {hours.gpu_jobs} gpu jobs", style="dim")
+    return _fit(text, width)
+
+
 def lines(standing: data.Standing, width: int) -> list[Text]:
     """Render the whole panel, one line per fact.
 
     The median line is dropped rather than left as a bare label when the window
-    could not be read, since the line above has already said why.
+    could not be read, since the line above has already said why. The unused line
+    goes when no GPU job of the caller's was measured, which is every job for
+    someone who runs none: a label with nothing after it says less than no line.
     """
     out = [share_text(standing, width), gpu_text(standing, width), states_text(standing, width)]
     if not standing.note:
         out.append(efficiency_text(standing, width))
+        if standing.hours.unused is not None and standing.hours.covered:
+            out.append(unused_text(standing, width))
     return out
 
 
@@ -230,6 +266,13 @@ class StandingPanel(VerticalScroll):
         self._paint()
 
     def _paint(self) -> None:
+        """Draw the panel, saying it is reading only when it has nothing else to say.
+
+        With figures already up, the border title carries the reading mark on its
+        own. Saying it on a line as well cost a row the panel does not have: its
+        five facts fill it exactly, and the fifth was pushed into the scroll area
+        for as long as the read took.
+        """
         body = self.query_one("#standing-body", Static)
         width = max(self.content_size.width - 1, 12)
         blocks: list[Text] = []
@@ -239,7 +282,5 @@ class StandingPanel(VerticalScroll):
             if not self._error:
                 blocks.append(_fit(Text("reading your standing", style="dim"), width))
         else:
-            if self._reading:
-                blocks.append(_fit(Text("reading your standing", style="dim"), width))
             blocks.extend(lines(self._standing, width))
         body.update(Text("\n", no_wrap=True, overflow="crop").join(blocks))

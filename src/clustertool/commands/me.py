@@ -77,7 +77,23 @@ def _show_access(user: str) -> None:
 @click.option(
     "-a", "--access", is_flag=True, help="Also show what you can access: accounts, partitions, QoS."
 )
-def me(user: str | None, plain: bool, access: bool) -> None:
+@click.option(
+    "-i",
+    "--interval",
+    type=click.FloatRange(min=2),
+    default=5.0,
+    show_default=True,
+    help="Seconds between dashboard job refreshes.",
+)
+@click.option(
+    "-d",
+    "--days",
+    type=click.IntRange(min=1),
+    default=7,
+    show_default=True,
+    help="Days of finished jobs the dashboard standing panel covers.",
+)
+def me(user: str | None, plain: bool, access: bool, interval: float, days: int) -> None:
     """Show a personal overview: your jobs, GPUs in use, and fairshare standing.
 
     A one-screen summary of your cluster life, so you do not have to run squeue
@@ -91,13 +107,18 @@ def me(user: str | None, plain: bool, access: bool) -> None:
 
     \b
     Inputs:
-      -u, --user    Show this user instead of the current one.
-      --plain       Print the one-shot summary instead of the dashboard.
-      -a, --access  Also show your accounts, submission map, and priority tiers.
+      -u, --user      Show this user instead of the current one.
+      --plain         Print the one-shot summary instead of the dashboard.
+      -a, --access    Also show your accounts, submission map, and priority tiers.
+      -i, --interval  Seconds between dashboard job refreshes.
+      -d, --days      Days of finished jobs the standing panel covers.
 
     Run in a terminal with no other flags, this opens an interactive dashboard
     where the optional tui extra is installed. Naming a user, asking for the
     access map, or redirecting the output prints the one-shot summary instead.
+    The interval has a floor of two seconds, since every tick is a query on the
+    controller and r refreshes on demand; a wide window slows the standing panel,
+    which reads that many days of accounting.
     """
     if _wants_dashboard(user, plain, access):
         try:
@@ -105,7 +126,7 @@ def me(user: str | None, plain: bool, access: bool) -> None:
         except ImportError:
             pass
         else:
-            run()
+            run(interval=interval, days=days)
             return
     user = user or _caller()
     click.echo(f"clustertool overview for {user}")

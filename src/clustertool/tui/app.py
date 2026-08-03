@@ -221,11 +221,13 @@ class MeApp(App):
         identity: data.Identity | None = None,
         clock: Callable[[], datetime.datetime] = datetime.datetime.now,
         interval: float = 5.0,
+        days: int = data.STANDING_DAYS,
     ) -> None:
         super().__init__()
         self._identity = identity or data.identity()
         self._clock = clock
         self._interval = interval
+        self._days = days
         self._loading = False
         self._loading_storage = False
         self._loading_standing = False
@@ -331,7 +333,7 @@ class MeApp(App):
         self._loading_standing = True
         self._on(StandingPanel, lambda panel: panel.begin_read())
         try:
-            info = await detached(lambda: data.standing(self._identity.user))
+            info = await detached(lambda: data.standing(self._identity.user, days=self._days))
             self._on(StandingPanel, lambda panel: _settle(panel, info=info))
         except Exception as exc:
             reason = _reason(exc)
@@ -485,6 +487,10 @@ class MeApp(App):
         self.push_screen(HelpScreen())
 
 
-def run(identity: data.Identity | None = None) -> None:
+def run(
+    identity: data.Identity | None = None,
+    interval: float = 5.0,
+    days: int = data.STANDING_DAYS,
+) -> None:
     """Start the dashboard, returning when the user quits."""
-    MeApp(identity=identity).run()
+    MeApp(identity=identity, interval=interval, days=days).run()

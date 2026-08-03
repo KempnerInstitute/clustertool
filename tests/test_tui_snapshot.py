@@ -9,7 +9,7 @@ import dataclasses
 import datetime
 
 from clustertool.tui.app import MeApp
-from clustertool.tui.data import Identity, JobRow, QuotaRow, Standing, StorageInfo
+from clustertool.tui.data import GpuHours, Identity, JobRow, QuotaRow, Standing, StorageInfo
 from clustertool.tui.panels.jobs import JobsPanel
 from clustertool.tui.panels.standing import StandingPanel
 from clustertool.tui.panels.storage import StoragePanel
@@ -239,6 +239,7 @@ STANDING = Standing(
     mem=22,
     gpu=71,
     gpu_jobs=20,
+    hours=GpuHours(held=412.5, used=49.5, covered=20, gpu_jobs=34),
 )
 
 
