@@ -17,26 +17,14 @@ COLUMNS = (
 )
 """Each column as (heading, narrowest useful width, widest worth growing to).
 
-The ceilings are the widest value each field takes across every queued job, so a
-wide terminal spends its room on the table rather than leaving it blank. ELAP is
-the one that has to be right: every other field is repeated in full in the detail
-pane, so eliding it there costs nothing but a keystroke, and 11 covers
-DD-HH:MM:SS to 99 days.
-
-A partition list, and a pending reason such as ReqNodeNotAvail with its node
-list, both run long enough on their own to push the table past any terminal, and
-the table cannot scroll usefully because a refresh resets the offset. So cells
-are cut to fit. Cut to a width computed from the terminal, not to a constant: a
-constant sized for a wide terminal is chopped by the viewport on a narrower one,
-which loses the ellipsis and leaves a fragment reading as a whole value. The full
-value is in the detail pane, which wraps.
+A cell wider than its column is cut with an ellipsis, and the full value is shown
+in the detail pane, which wraps.
 """
 
 DROP_ORDER = ("NODE", "PART", "ELAP", "GPU")
 """Which column to give up first when even the narrow widths do not fit.
 
-ID and ST are never dropped: which job, and whether it is running, are the two
-things the panel exists to say.
+ID and ST are never dropped.
 """
 
 CELL_PADDING = 2
@@ -49,15 +37,11 @@ EMPTY = "No jobs of yours are queued or running."
 DETAIL_ORDER = ("stale", "job", "waiting", "elapsed", "holds", "nodes", "read")
 """The lines of the plain detail, in the order the pane shows them."""
 
-DETAIL_PRIORITY = ("read", "job", "nodes", "waiting", "holds", "elapsed", "stale")
+DETAIL_PRIORITY = ("read", "job", "waiting", "nodes", "holds", "elapsed", "stale")
 """The same lines in the order they are given up when the pane is short of rows.
 
-The read first: a caller pressed a key for it, and it is the only thing here that
-is not on the screen already. The job line next, since a pane that does not say
-which job it describes describes none. Then the two facts the table does not
-carry, the nodes and the allocation. The elapsed time is late because the table has
-an ELAP column, and the stale mark last of all because the border title carries it
-too, and the title is the one part of the panel a short terminal cannot clip.
+Highest first. The read leads because a caller asked for it; the elapsed time and
+the stale mark come last because the table and the border title carry them.
 """
 
 DETAIL_CEILING = 8
@@ -67,34 +51,20 @@ TABLE_FLOOR = 2
 """The min-height of the table in app.tcss, which the pane cannot take from."""
 
 DETAIL_TRIM = 1
-"""Rows of the pane's region that are not a line of text: its dashed border-top.
+"""Rows of the pane's region that hold no text: its dashed border-top.
 
-Its top padding is the other, and that is what the tight class takes away: with it
-the pane paints one line fewer than it measures, and that line was the last of a
-read.
+Its top padding is the other, which the tight class removes when the pane needs
+that row for a line.
 """
 
 
 def pane_rows(content_height: int) -> int:
     """Return how many lines of text the detail pane paints in a panel this tall.
 
-    The pane cannot scroll: it takes no focus and the arrow keys belong to the
-    table, so a line past its edge is one nobody can read. Everything the pane
-    shows is budgeted against this count.
-
-    A constant here was wrong, and wrong in the direction that loses lines. The
-    panel is a third of a stacked layout on a narrow terminal and the whole of a
-    side-by-side one, so its height varies by a factor of three; a budget of five
-    overran a pane that had room for two and left two rows of a pane that had room
-    for seven blank. The arithmetic is the layout's own: the table keeps its
-    minimum, the pane takes what is left up to its ceiling, and one row of that
-    goes on the border rather than on text. It is checked against the painted
-    frame rather than trusted, since the three numbers it uses live in the
-    stylesheet.
-
-    Zero is a real answer, and rounding it up to one is how this went wrong the
-    first time. Below fifteen rows of terminal the whole of the pane's region is its
-    border, and a budget of one put a line where no line is painted.
+    The table keeps its minimum height, the pane takes what is left up to its
+    ceiling, and one row of that is its border. The pane cannot scroll, so
+    everything it shows is budgeted against this count. Zero is a valid answer: on a
+    terminal under about fifteen rows the pane is all border and paints nothing.
     """
     return max(min(DETAIL_CEILING, content_height - TABLE_FLOOR) - DETAIL_TRIM, 0)
 
@@ -114,11 +84,8 @@ TAB_WIDTH = 8
 def elide(text: str, width: int) -> str:
     """Return text no wider than width display cells, marking a cut with an ellipsis.
 
-    Cells rather than code points, and tabs expanded first, because the renderer
-    measures in cells and this is what makes one line of a read one row. Counted by
-    code point, a line of Japanese that fitted took two rows and a tab took up to
-    eight, so the row budget was wrong by however many such lines there were and the
-    last line of a log went missing at every terminal size, not only short ones.
+    Cells rather than code points, and tabs expanded first, since that is how the
+    renderer measures: it is what makes one line one row.
     """
     flat = text.expandtabs(TAB_WIDTH)
     if width < 1 or cell_len(flat) <= width:
@@ -134,18 +101,18 @@ def elide(text: str, width: int) -> str:
 def wrapped(text: str, width: int) -> list[str]:
     """Return text as the rows it takes at this width, measured in display cells.
 
-    Wrapped rather than cut, because the pane is where a value too long for its
-    column is read in full, which is what the ellipsis in the table points at. Done
-    here rather than left to the renderer because the pane's budget is in rows: a
-    line the renderer folded onto three of them has spent three, and counting it as
-    one is how the pane came to hold more lines than it paints.
-
-    A word longer than the width is folded, since a node list or a TRES string is
-    one word and would otherwise take a row and hang off the end of it.
+    Wrapped rather than cut, since the pane is where a value too long for its column
+    is read in full. Wrapped here rather than by the renderer because the pane
+    budgets in rows and has to know how many a line will take. A word wider than the
+    width is folded, and the fold always advances by at least one character, so a
+    width of zero or one cannot loop.
     """
+    flat = text.expandtabs(TAB_WIDTH)
+    if width < 1:
+        return [flat]
     rows: list[str] = []
     row = ""
-    for word in text.expandtabs(TAB_WIDTH).split(" "):
+    for word in flat.split(" "):
         joined = f"{row} {word}" if row else word
         if cell_len(joined) <= width:
             row = joined
@@ -153,10 +120,10 @@ def wrapped(text: str, width: int) -> list[str]:
         if row:
             rows.append(row)
             row = ""
-        while cell_len(word) > width:
+        while word and cell_len(word) > width:
             head = ""
             for char in word:
-                if cell_len(head) + cell_len(char) > width:
+                if head and cell_len(head) + cell_len(char) > width:
                     break
                 head += char
             rows.append(head)
@@ -168,23 +135,12 @@ def wrapped(text: str, width: int) -> list[str]:
 
 
 def ceilings(rows: list[data.JobRow]) -> dict[str, int]:
-    """Return how wide each column may grow for these rows, its own rule permitting.
+    """Return how wide each column may grow for these rows, capped by COLUMNS.
 
-    A column grown past the widest value it holds takes that width from one that had
-    to be cut. At 100 columns ID took 18 cells for a 9-character id while NODE was
-    cut to 9 of the 47 its value needed, because the static ceiling is the widest
-    value the field takes across every job on the cluster rather than across the
-    ones on screen. No heading term is needed: every minimum in COLUMNS is at least
-    as wide as its own heading, and a column starts at its minimum.
-
-    The cost is that the columns move when the data does: one pending array
-    element with a folded id widens ID for as long as it is queued. That is the
-    trade, and it is the right way round, because a width that shifts is still
-    readable and a value cut to a fragment is not.
-
-    No rows means no constraint rather than the headings alone. An empty table has
-    no value to fit, and a caller asking what the table may do without naming any
-    rows is asking about the widest it goes.
+    A column grown past the widest value it holds takes width from one that had to
+    be cut, so the ceiling is what the rows on screen need. The columns therefore
+    move when the data does. With no rows the static ceilings apply, since there is
+    no value to fit.
     """
     if not rows:
         return {name: high for name, _, high in COLUMNS}
@@ -197,16 +153,13 @@ def ceilings(rows: list[data.JobRow]) -> dict[str, int]:
 def layout(width: int, grown: dict[str, int] | None = None) -> list[tuple[str, int]]:
     """Return the columns that fit in width, and how wide each cell may be.
 
-    Drops whole columns before it lets the remaining ones fall below the width at
-    which they say anything, then shares what is left over round by round, so no
-    single column takes all the slack. Width left over once every column holds its
-    own widest value is left unspent rather than padding the columns out to the
-    panel's edge.
+    Drops whole columns before letting the rest fall below their minimums, then
+    shares what is left round by round so no single column takes all the slack.
+    Width left over once every column holds its widest value is unspent.
 
-    Takes the ceilings rather than the rows, because a resize asks this question
-    once per column dragged and walking four thousand rows to answer it took 9ms
-    where the whole point of the question is to avoid a 70ms repaint. The panel
-    works them out when it paints and keeps them until the rows change.
+    Takes the ceilings rather than the rows: a resize asks this once per column
+    dragged, and walking every row to answer would cost more than the repaint it
+    exists to avoid.
     """
     if grown is None:
         grown = ceilings([])
@@ -256,10 +209,8 @@ def cells(row: data.JobRow) -> dict[str, str]:
 class JobsPanel(Vertical):
     """The caller's jobs, with the selected one described below the table.
 
-    Holds its last good rows when a refresh fails, so a scheduler hiccup leaves
-    the panel stale rather than empty, which would read as having no jobs. The
-    stale mark goes on the border title as well as into the detail, because the
-    detail is the first thing a short terminal clips.
+    Keeps its last good rows when a refresh fails and marks itself stale, since an
+    empty table would read as having no jobs.
     """
 
     def __init__(self) -> None:
@@ -282,16 +233,10 @@ class JobsPanel(Vertical):
     def on_resize(self, _event) -> None:
         """Lay the columns out again, since how many fit depends on the width.
 
-        The table is rebuilt only when the layout actually changed. Dragging a
-        window edge delivers an event per column, and rebuilding costs about 70ms
-        for someone holding four thousand jobs, most of it in add_row. Redrawing on
-        a stale layout instead of skipping is not an option: the old widths no
-        longer fit, and the overflow would be clipped without an ellipsis.
-
-        The detail is repainted either way, because how many rows it has depends on
-        the height, which this event also carries. Skipping it left the pane holding
-        the line count of the height before the drag: made shorter, it kept a line
-        the screen no longer painted.
+        The table is rebuilt only when the layout changed, because a drag delivers an
+        event per column and a rebuild is expensive for a caller with thousands of
+        jobs. The detail is repainted either way, since its row budget depends on the
+        height that this event also carries.
         """
         table = self.query_one("#jobs-table", DataTable)
         if layout(table.size.width or 80, self._grown) != self._columns:
@@ -309,10 +254,8 @@ class JobsPanel(Vertical):
     def _paint(self, rows: list[data.JobRow] | None = None, previous: str | None = None) -> None:
         """Draw the table at the current width, restoring the cursor onto previous.
 
-        Each column is given its width outright rather than left to size itself
-        from its content. An automatic width is recomputed on a later refresh, so
-        after a resize the table painted every column at its heading width, with
-        cells chopped to it and no ellipsis, until something else forced a redraw.
+        Each column is given its width outright: an automatic width is recomputed on
+        a later refresh, which leaves cells chopped to the heading width.
         """
         table = self.query_one("#jobs-table", DataTable)
         if rows is None:
@@ -337,13 +280,9 @@ class JobsPanel(Vertical):
     def show_text(self, text: str, jobid: str) -> None:
         """Add something read off the cluster below the detail.
 
-        Remembered against the job it describes, which the caller names, because a
-        read that lands after the cursor has moved would otherwise be stamped with
-        whatever is selected then and shown under the wrong job indefinitely.
-
-        Keeping it at all is what lets it survive a refresh of the rows; it goes
-        when the cursor moves to a different job. Clearing it on any highlight event
-        wiped a log tail every five seconds, which is to say before it could be read.
+        Remembered against the job the caller named, so a read that lands after the
+        cursor has moved is not shown under another job. It survives a refresh of the
+        rows and goes when the cursor moves to a different job.
         """
         self._extra = actions.printable(text)
         self._extra_for = jobid
@@ -374,12 +313,8 @@ class JobsPanel(Vertical):
     def _refresh_detail(self) -> None:
         """Repaint the detail pane, giving up its top padding when the lines need the row.
 
-        That padding separates the detail from the dashed rule above it, and it is a
-        row of the pane's region: with it a pane five rows tall paints four lines. It
-        goes exactly when what the pane holds would not otherwise fit, which is a
-        read at any size and the plain detail on a short terminal. At seventy
-        columns by sixteen rows the pane has one row for text, the padding was it,
-        and the pane showed nothing at all.
+        The padding separates the detail from the rule above it and costs a row of
+        the pane, so it goes exactly when the content would not otherwise fit.
         """
         detail = self.query_one("#jobs-detail", Static)
         text = self._detail_text()
@@ -389,11 +324,8 @@ class JobsPanel(Vertical):
     def _detail_text(self) -> str:
         """Render the pane, showing a read only under the job it was taken from.
 
-        Budgeted against the rows the pane paints, exactly as a longer read is. It
-        was not, and the pane simply overflowed: at eighty columns by sixteen rows
-        it has four rows for five lines, so a one-line answer from the why or scope
-        key, which is appended here rather than taking the pane, was clipped. The
-        key looked like one that did nothing, and nothing said a line had been lost.
+        Budgeted against the rows the pane paints, so a one-line answer from the why
+        or scope key is not clipped on a short terminal.
         """
         row = self.selected
         said = {}
@@ -418,32 +350,24 @@ class JobsPanel(Vertical):
     def _fit_detail(self, said: dict[str, str]) -> str:
         """Keep as many of the pane's facts as it has rows for, wrapping each to width.
 
-        Rows, not lines: a wrapped pending reason takes three of them, and the pane
-        paints between one and seven. Which facts go is DETAIL_PRIORITY, and a
-        cheaper one is still taken after a dear one has been passed over, so the rows
-        go as far as they can. The highest priority fact is kept whatever it costs,
-        cut to the pane, because a pane showing nothing is worse than one showing
-        part of the answer that was asked for.
-
-        That anything went at all is marked with an ellipsis at the front of the
-        first row. At the front because a mark on the end is what elide takes off
-        first, at exactly the narrow widths that made the mark necessary.
+        Rows rather than lines, since a wrapped pending reason takes three of them.
+        Facts are taken in DETAIL_PRIORITY order, and the one the rows run out on
+        keeps what is left rather than being dropped whole. A cut is marked with an
+        ellipsis at the front of the first row, where eliding cannot remove it.
         """
         width = max(self.query_one("#jobs-detail", Static).content_size.width, 8)
         budget = max(pane_rows(self.content_size.height), 1)
         kept: dict[str, list[str]] = {}
         cut = False
-        spent = 0
         for name in sorted(said, key=DETAIL_PRIORITY.index):
-            rows = wrapped(said[name], width)
-            if not kept:
-                cut = len(rows) > budget
-                rows = rows[:budget]
-            elif spent + len(rows) > budget:
+            room = budget - sum(len(rows) for rows in kept.values())
+            if room < 1:
                 cut = True
-                continue
+                break
+            rows = wrapped(said[name], width)
+            if len(rows) > room:
+                rows, cut = rows[:room], True
             kept[name] = rows
-            spent += len(rows)
         shown = [row for name in DETAIL_ORDER if name in kept for row in kept[name]]
         if cut and shown:
             shown[0] = elide(f"…{shown[0]}", width)
@@ -452,27 +376,13 @@ class JobsPanel(Vertical):
     def _reading_text(self, row: data.JobRow) -> str:
         """Render the pane while it carries a read, keeping the read's last lines.
 
-        A read of one line, which is what the why and scope keys give, is added to
-        the detail: taking the whole pane over for it would cost the elapsed time,
-        the TRES and the nodes to show a single sentence. A longer one does take the
-        pane, because the two together are more lines than there is room for, and
-        then one line names the job so the read cannot be mistaken for another's.
+        A one-line read, which is what the why and scope keys give, is added to the
+        detail instead; a longer one takes the pane and names its job.
 
-        Every row the pane will spend is counted, and every line it shows is cut to
-        the pane's width so that one line is one row, the stale mark included.
-        Counting logical lines instead lost the last one three times over: to the
-        stale mark being a row at all, to a traceback line naming an absolute path
-        wrapping onto two, and to the stale message itself wrapping at 46 and 80
-        columns once everything else had been cut.
-
-        What the rows are spent on, in the order the last one is given up: the read's
-        final line, which is what a caller pressed the key for; the line naming the
-        job; how many lines were dropped; the stale mark, which is on the border
-        title as well; and then the earlier lines of the read. With no room for the
-        count, the cut is marked with an ellipsis at the front of the oldest line
-        shown. At the front because elide takes the end of a line: the count, put on
-        the end of the job line, was itself cut away below about sixty columns, which
-        is where the panels stack and the pane is shortest.
+        Every line is cut to the pane's width so one line is one row, and the rows go
+        to the read's final line first, then the job line, the count of lines dropped,
+        the stale mark, and the earlier lines of the read. With no room for the count,
+        the cut is marked with a leading ellipsis on the oldest line shown.
         """
         lines = [line for line in self._extra.splitlines() if line.strip()]
         if len(lines) <= 1:
@@ -501,9 +411,8 @@ class JobsPanel(Vertical):
 def _nodes(row: data.JobRow) -> str:
     """Describe where a job runs, cut short before it can fill the pane.
 
-    The TRES line comes first and the node list last, because a wide allocation
-    writes a hostlist long enough to push everything after it off the pane, and of
-    the two the TRES is the one that does not grow with the job.
+    A wide allocation writes a hostlist several hundred characters long, so the node
+    list is shown after the TRES and truncated.
     """
     if not row.assigned:
         return "not assigned"

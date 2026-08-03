@@ -15,20 +15,13 @@ PERCENT_WIDTH = 5
 FIGURE_WIDTH = 7
 """Widest figure a row can lead with.
 
-A percentage needs four and an inode-bound one five, but a row with no quota set
-leads with what it holds instead, and a size on this cluster runs to seven. The
-field was five, so 50.47T was cut to 50.47 at eighty and a hundred columns: a
-wrong number, where the dashes it replaced were at least honest.
+A percentage needs four cells and an inode-bound one five, but a row with no quota
+leads with the size it holds, which runs to seven.
 """
 
 WARN_AT = 0.75
 FULL_AT = 0.90
-"""Where a bar turns.
-
-A quota is not a problem until it is nearly reached, and a lab that has reached
-one has already stopped being able to write, so the two thresholds are the only
-distinctions worth a color.
-"""
+"""Where a bar turns: nearly full, and full enough that writes have stopped."""
 
 FILLED, EMPTY_CELL = "█", "░"
 
@@ -38,11 +31,8 @@ NO_LABS = "No lab directories found for you."
 def bar(fraction: float | None, width: int = BAR_WIDTH) -> str:
     """Return a usage bar, or spaces when there is no quota to be a fraction of.
 
-    To the nearest cell rather than rounded up. Six cells is coarse, and rounding
-    up filled every one of them from 84%, which made a directory with room left
-    look exactly like one that had stopped being able to write. Any usage at all
-    still shows a cell, since an empty bar for a directory holding data is worse
-    than no bar.
+    Rounded to the nearest cell rather than up, so a directory with room left does not
+    look full. Any usage at all still shows one cell.
     """
     if fraction is None or width < 1:
         return " " * max(width, 0)
@@ -66,21 +56,17 @@ def style_for(fraction: float | None, color: bool = True) -> str:
 BAR_NEEDS = 30 + FIGURE_WIDTH - PERCENT_WIDTH
 """Narrowest row that still has room for a bar after a readable label.
 
-Below it the bar is dropped rather than the percentage or the label. The bar only
-illustrates the percentage, which is printed beside it and colored, whereas the
-label is the only thing naming which directory a row is about, and at eighty
-columns the seven cells the bar costs took forty labs down to fourteen
-distinguishable names.
+Below it the bar goes rather than the label or the percentage, since the bar only
+illustrates a number that is printed beside it.
 """
 
 
 def row_text(row: data.QuotaRow, width: int, color: bool = True) -> Text:
     """Render one quota row as label, percent and bar, cut to width.
 
-    Built as styled spans rather than as markup, because a label carries a group
-    name from the filesystem and a bracket in one would otherwise be read as a
-    markup tag. Truncated at the end as a backstop, so the row can never be wider
-    than the column it is drawn in whatever the arithmetic above did.
+    Built as styled spans rather than markup, since a label carries a group name from
+    the filesystem where a bracket would be read as a style tag. The final truncation
+    is a backstop against the arithmetic above.
     """
     text = Text(no_wrap=True, overflow="crop")
     if width < 1:
@@ -111,10 +97,9 @@ def row_text(row: data.QuotaRow, width: int, color: bool = True) -> Text:
 def _figure(row: data.QuotaRow) -> str:
     """Return the number a row leads with.
 
-    The usage rather than a dash when no quota is set: the per-user rows on Lustre
-    carry no quota on this cluster, so a panel that only ever prints a percentage
-    turned fifty terabytes of the caller's own data into two dashes. An i marks a
-    directory whose inode quota, not its block quota, is the one nearly reached.
+    The usage rather than a dash when no quota is set, since the per-user rows on
+    Lustre carry none here. An i marks a row whose inode quota, not its block quota,
+    is the one nearly reached.
     """
     if row.fraction is None:
         return row.used if row.used not in ("", "-") else "-"
@@ -166,9 +151,8 @@ def _cut(text: str, width: int) -> str:
 class StoragePanel(VerticalScroll):
     """Quotas for home, every lab directory, and the caller on Lustre.
 
-    Scrolls, because a user can belong to twenty labs across four filesystems and
-    the panel is a side column. Rows are ordered fullest first so the ones worth
-    acting on are the ones on screen without scrolling.
+    Scrolls, since a user can belong to many labs across several filesystems. Rows are
+    ordered fullest first, so the ones worth acting on need no scrolling.
     """
 
     def __init__(self) -> None:
@@ -188,8 +172,7 @@ class StoragePanel(VerticalScroll):
         """Say that a read is under way, keeping the border and the last figures.
 
         Textual's own loading flag replaces the whole widget, border and title
-        included, which left an unbordered hole in the layout for the two to six
-        seconds the fan-out takes, and forty-five if one target hung.
+        included, which leaves a hole in the layout while the fan-out runs.
         """
         self._reading = True
         self.border_title = f"{TITLE} (reading)"
@@ -198,9 +181,8 @@ class StoragePanel(VerticalScroll):
     def end_read(self) -> None:
         """Clear the reading mark if it is still set, whatever ended the read.
 
-        A worker canceled at teardown raises CancelledError, which is not an
-        Exception, so neither the result nor the failure path ran and the title
-        stayed on "reading" for good.
+        A worker canceled at teardown raises CancelledError, which is not an Exception,
+        so neither the result nor the failure path runs.
         """
         if self._reading:
             self._reading = False
@@ -225,14 +207,10 @@ class StoragePanel(VerticalScroll):
     def _paint(self) -> None:
         """Render the panel one line per row.
 
-        A column is held back for the scrollbar whether or not one is showing, so
-        a row does not wrap the moment the list grows past the panel.
-
-        The no-wrap flag goes on the joined text rather than on the rows, since
-        Text.join builds a fresh object from the separator and drops a flag set on
-        the parts. It is a backstop: lines() already cuts every line to width, so
-        nothing here should reach it. It stays because cropping is the safe way to
-        be wrong about a width, and wrapping is not.
+        A column is held back for the scrollbar whether or not one is showing, so a
+        row does not wrap the moment the list grows past the panel. The no-wrap flag
+        goes on the joined text rather than the rows, since Text.join drops a flag set
+        on the parts.
         """
         body = self.query_one("#storage-body", Static)
         width = max(self.content_size.width - 1, 12)

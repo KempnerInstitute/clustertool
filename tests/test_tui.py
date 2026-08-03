@@ -2342,6 +2342,62 @@ def test_a_cpu_only_window_shows_no_gpu_figure():
     assert "cpu 40%" in plain
 
 
+async def test_a_stale_standing_panel_keeps_every_line_it_had():
+    """A failed read must not cost the panel a fact, which is what a stale line did.
+
+    The reason goes on the border title instead, where it costs no row and cannot be
+    clipped, and the fifth fact stays on screen. Naming only the word stale would
+    leave a reader nothing to act on, so the title carries the reason itself.
+    """
+    from clustertool.tui.panels.standing import TITLE_REASON_WORDS, StandingPanel
+
+    hours = data.GpuHours(held=412.5, used=49.5, covered=20, gpu_jobs=34)
+    app = _app()
+    async with app.run_test(size=(130, 30)) as pilot:
+        await pilot.pause()
+        panel = app.query_one(StandingPanel)
+        panel.show(_standing(hours=hours))
+        await pilot.pause()
+        panel.fail("sshare is not answering after twenty seconds of waiting for it")
+        await pilot.pause()
+        title = str(panel.border_title)
+        assert "stale: sshare is not answering" in title, title
+        assert len(title.split()) <= TITLE_REASON_WORDS + 3, title
+        frame = _painted(app)
+        for line in ("share ", "gpus ", "last 7d", "median ", "unused "):
+            assert line in frame, line
+
+
+async def test_a_failure_naming_a_markup_tag_does_not_take_the_panel_down():
+    """The reason is a tool's stderr, and Textual parses a string title as markup.
+
+    sacct answering with error: [/prod] is not a partition raised MarkupError inside
+    the handler whose whole purpose is to keep a failed read from taking the app
+    down, and a reason beginning [bold] styled the border rather than being shown.
+    """
+    from clustertool.tui.panels.standing import StandingPanel
+
+    app = _app()
+    async with app.run_test(size=(130, 30)) as pilot:
+        await pilot.pause()
+        panel = app.query_one(StandingPanel)
+        panel.show(_standing())
+        await pilot.pause()
+        panel.fail("sacct: error: [/prod] is not a partition")
+        await pilot.pause()
+        assert app.is_running
+        assert "[/prod]" in _painted(app), "shown, not parsed"
+        panel.fail("[bold]sshare is not answering")
+        await pilot.pause()
+        assert "[bold]" in _painted(app)
+        assert not any(
+            segment.style and segment.style.bold
+            for strip in app.screen._compositor.render_strips()
+            for segment in strip
+            if "sshare" in segment.text
+        )
+
+
 async def test_a_reading_standing_panel_keeps_every_line_it_had():
     """Its five facts fill the panel exactly, so a sixth line pushes one out of sight.
 
@@ -4283,6 +4339,87 @@ async def test_every_line_the_pane_holds_is_one_the_screen_paints(monkeypatch, s
         ]
         for line in panel._detail_text().splitlines():
             assert any(line in row for row in frame), (line, size)
+
+
+LONG_REASON = (
+    "ReqNodeNotAvail, UnavailableNodes:holygpu8a[11101-11408],holy8a[26101-26310],"
+    "holy7c[04101-04512]"
+)
+"""A pending reason long enough to wrap in the detail pane at any terminal width.
+
+The pane's budget is in rows, and a fact that wraps onto three of them spends
+three. Every fixture before this one had facts of a single row, so counting them as
+one line each passed while a wrapping reason pushed the nodes line off the screen at
+a comfortable size.
+"""
+
+
+@pytest.mark.parametrize("size", [(46, 18), (60, 20), (80, 24), (120, 30), (160, 40)])
+async def test_a_fact_that_wraps_spends_the_rows_it_wraps_onto(monkeypatch, size):
+    """A pending reason takes three rows of the pane, not one, and the budget is rows.
+
+    Counted as one line, the pane held more rows than it paints and the nodes line
+    went missing at 120 by 30, which is not a short terminal at all.
+    """
+    from clustertool.tui.panels.jobs import wrapped
+
+    pending = [
+        _row("333", code="PD", state="PENDING", reason=LONG_REASON, nodelist=""),
+    ]
+    app = _act_app(monkeypatch, rows=pending)
+    async with app.run_test(size=size) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.pause()
+        panel = app.query_one(JobsPanel)
+        assert "waiting:" in panel._detail_text(), panel._detail_text()
+        frame = [
+            "".join(segment.text for segment in strip)
+            for strip in app.screen._compositor.render_strips()
+        ]
+        width = max(app.query_one("#jobs-detail").content_size.width, 8)
+        for line in panel._detail_text().splitlines():
+            for piece in wrapped(line, width):
+                assert any(piece in row for row in frame), (piece, size)
+
+
+@pytest.mark.parametrize("size", [(46, 18), (120, 30)])
+async def test_the_pane_paints_no_more_rows_than_it_has(monkeypatch, size):
+    """The count the whole budget rests on, asserted against the region it is drawn in."""
+    from clustertool.tui.panels.jobs import pane_rows, wrapped
+
+    pending = [_row("333", code="PD", state="PENDING", reason=LONG_REASON, nodelist="")]
+    app = _act_app(monkeypatch, rows=pending)
+    async with app.run_test(size=size) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.pause()
+        panel = app.query_one(JobsPanel)
+        width = max(app.query_one("#jobs-detail").content_size.width, 8)
+        spent = sum(len(wrapped(line, width)) for line in panel._detail_text().splitlines())
+        assert spent <= pane_rows(panel.content_size.height), (spent, size)
+
+
+@pytest.mark.parametrize(
+    ("text", "width", "rows"),
+    [
+        ("abc", 0, ["abc"]),
+        ("abc", -3, ["abc"]),
+        ("", 0, [""]),
+        ("日本", 1, ["日", "本"]),
+        ("xyz", 1, ["x", "y", "z"]),
+    ],
+)
+def test_wrapping_makes_progress_at_any_width(text, width, rows):
+    """A fold that fits nothing still has to take a character, or it never terminates.
+
+    A width of zero, and a width of one against a character two cells wide, both
+    looped forever: the fold produced an empty row and the word never shrank. Below
+    one the text is not wrapped at all, since a row of no cells is not a row; at one
+    a two-cell character overflows, which is the only place a row is allowed to.
+    """
+    from clustertool.tui.panels.jobs import wrapped
+
+    assert wrapped(text, width) == rows
+    assert "".join(wrapped(text, width)) == text.expandtabs(8)
 
 
 def test_the_pane_budget_is_taken_from_the_stylesheets_own_numbers():

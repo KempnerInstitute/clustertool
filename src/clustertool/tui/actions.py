@@ -1,9 +1,9 @@
 """What the dashboard's keys do, and how each one is described before it is done.
 
-The mutating four go through clustertool.jobaction, the same planner the jobs
-cancel, hold, release and requeue commands use, so the dashboard refuses the same
-jobs for the same reasons. It runs the planned command captured rather than
-through process.passthrough, whose inherited stdio would write over the screen.
+The mutating four go through clustertool.jobaction, the planner the jobs cancel,
+hold, release and requeue commands use, so both refuse the same jobs for the same
+reasons. The planned command is captured rather than run through
+process.passthrough, whose inherited stdio would write over the screen.
 """
 
 import dataclasses
@@ -19,12 +19,10 @@ CONTROL = {
 }
 """Characters dropped from anything read off the cluster or out of a tool.
 
-A job's own output, and a tool's stderr, reach the screen through this module. An
-escape byte in either is handed to the terminal as a command rather than shown: one
-crafted log line can clear the display or move the cursor out of the app's layout.
-The C1 range is included as well as C0, since a terminal reading Latin-1 treats
-0x9b as a control sequence introducer. A tab only advances the cursor and a log
-legitimately holds them, so tabs and newlines stay.
+A job's output and a tool's stderr both reach the screen through this module, and an
+escape byte in either would be a command to the terminal rather than text. C1 is
+included as well as C0, since a terminal reading Latin-1 treats 0x9b as a control
+sequence introducer. Tabs and newlines stay.
 """
 
 
@@ -56,10 +54,8 @@ MUTATING = (
 )
 """The keys that change a job, each behind a confirmation that defaults to No.
 
-Requeue is on ctrl+r rather than the plan's q: q sits one shift away from Q, which
-quits, and a key that throws away a running job's work should not be a slip of the
-shift key from the one that leaves. r is already refresh, so plain letters are
-taken; ctrl+r keeps the mnemonic without the adjacency.
+Requeue is on ctrl+r rather than q, which is one shift key away from quit, and r is
+already refresh.
 """
 
 BY_KEY = {action.key: action for action in MUTATING}
@@ -78,9 +74,9 @@ def describe(action: Action, row: data.JobRow) -> str:
 def run(name: str, jobid: str) -> str:
     """Do the action and return the line the banner shows.
 
-    Raises CommandError when the action is refused or fails, so a caller can put
-    the reason on the banner unchanged. The command is captured rather than
-    inherited: passthrough writes to the terminal the app is drawing on.
+    Raises CommandError when the action is refused or fails, so the caller can put the
+    reason on the banner unchanged. The command is captured rather than inherited,
+    since passthrough writes to the terminal the app is drawing on.
     """
     planned = jobaction.plan(name, [jobid])
     code, out, err = process.probe(planned.cmd, timeout=RUN_TIMEOUT_S)
@@ -173,9 +169,8 @@ def why(jobid: str) -> str:
 def _one_why(row: list[str]) -> str:
     """Describe one queue row: what state it is in, and what is holding it.
 
-    Read by position against WHY_FIELDS with an explicit separator, because a
-    reason such as ReqNodeNotAvail, UnavailableNodes:... contains spaces and
-    splitting on whitespace put the priority where the reason belonged.
+    Read against WHY_FIELDS with an explicit separator, since a reason such as
+    ReqNodeNotAvail, UnavailableNodes:... contains spaces.
     """
     field = dict(zip(WHY_FIELD_NAMES, (part.strip() for part in row), strict=False))
     jobid = field.get("JobArrayID") or "?"

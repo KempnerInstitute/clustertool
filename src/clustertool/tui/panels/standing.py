@@ -9,10 +9,7 @@ from clustertool.tui import data, styles
 TITLE = "Standing"
 
 ACCOUNTS_SHOWN = 3
-"""How many accounts the share line names before it counts the rest.
-
-A user can belong to twenty, and the panel has one line for this.
-"""
+"""How many accounts the share line names before it counts the rest."""
 
 LOW_SHARE = 0.5
 CAP_WARN = 0.75
@@ -35,8 +32,8 @@ STATE_WORDS = {
 def share_style(score: str, color: bool = True) -> str:
     """Return the style for a fairshare score, empty when it is unremarkable.
 
-    A score below a half means the account has used more than its share and its
-    jobs will start behind others, which is the one thing worth a color here.
+    A score below a half means the account has used more than its share, so its jobs
+    start behind others.
     """
     try:
         value = float(score)
@@ -82,12 +79,8 @@ def share_text(standing: data.Standing, width: int, color: bool = True) -> Text:
 def gpu_text(standing: data.Standing, width: int, color: bool = True) -> Text:
     """Render the GPU line: the caller against their cap, their account against its.
 
-    Both, because either can be what stops the next job starting, and they are
-    different limits. Reading a user's own usage against the account cap, which is
-    six times larger here, said they had room they did not have.
-
-    A count that could not be read says so rather than showing zero against the
-    cap, which reads as all the room being free when a query simply did not return.
+    Both, since either can be what stops the next job starting. A count that could
+    not be read says so rather than showing zero, which would read as room to spare.
     """
     text = Text(no_wrap=True, overflow="crop")
     text.append("gpus     ", style="dim")
@@ -136,10 +129,8 @@ def states_text(standing: data.Standing, width: int) -> Text:
 def efficiency_text(standing: data.Standing, width: int) -> Text:
     """Render the median utilization, naming how many jobs it was taken over.
 
-    The count is part of the figure: fewer than half of this caller's jobs carry
-    metrics at all, and a bare percentage would read as covering all of them. When
-    the window could not be read the line says nothing, since the line above has
-    already said why and two of four lines on one sentence is a waste of the panel.
+    The count is part of the figure, since not every job carries metrics and a bare
+    percentage would read as covering all of them.
     """
     text = Text(no_wrap=True, overflow="crop")
     text.append("median   ", style="dim")
@@ -168,15 +159,9 @@ def idle_style(unused: int, color: bool = True) -> str:
 def unused_text(standing: data.Standing, width: int, color: bool = True) -> Text:
     """Render how much of the GPU time the caller held went unused.
 
-    The median utilization is honest but is not the figure that changes what anyone
-    does: a median over jobs counts a one-minute job and a two-day one the same. This
-    weights by the time held, so it says what the cluster lost. For this caller's
-    last week the median GPU utilization was 8% while 88% of the 34 GPU-hours they
-    held went unused.
-
-    The coverage is part of the figure, as it is on the median line: fewer than half
-    of this caller's GPU jobs carry utilization data at all, and the total would
-    read as covering all of them.
+    Weighted by how long each job held its GPUs, where the median above counts a
+    one-minute job and a two-day one alike. The coverage is part of the figure, since
+    not every GPU job records utilization.
     """
     text = Text(no_wrap=True, overflow="crop")
     text.append("unused   ", style="dim")
@@ -191,10 +176,8 @@ def unused_text(standing: data.Standing, width: int, color: bool = True) -> Text
 def lines(standing: data.Standing, width: int, color: bool = True) -> list[Text]:
     """Render the whole panel, one line per fact.
 
-    The median line is dropped rather than left as a bare label when the window
-    could not be read, since the line above has already said why. The unused line
-    goes when no GPU job of the caller's was measured, which is every job for
-    someone who runs none: a label with nothing after it says less than no line.
+    The median line is dropped when the window could not be read, and the unused line
+    when no GPU job was measured, rather than showing a label with nothing after it.
     """
     out = [
         share_text(standing, width, color),
@@ -209,30 +192,28 @@ def lines(standing: data.Standing, width: int, color: bool = True) -> list[Text]
 
 
 TITLE_REASON_WORDS = 6
-"""How much of a failure the border title names before the panel stops quoting it.
+"""How many words of a failure the border title quotes.
 
-The title is a border, so Textual cuts what will not fit. Six words is what a
-narrow panel shows of a reason, and the reason's first words are the ones that say
-what happened.
+The title is drawn in the border, so a longer reason is cut by the panel's width.
 """
 
 
-def _stale_title(reason: str) -> str:
+def _stale_title(reason: str) -> Text:
     """Return the border title for a panel whose figures are old, naming the cause.
 
-    On the title rather than in the body because the body has no row to spare, and
-    a mark that says only stale leaves a reader with nothing to act on.
+    A Text rather than a string: Textual parses a string title as content markup, and
+    the reason here comes from a tool's stderr, where a bracket would either raise or
+    style the border.
     """
     said = " ".join(reason.split()[:TITLE_REASON_WORDS])
-    return f"{TITLE} (stale: {said})" if said else f"{TITLE} (stale)"
+    return Text(f"{TITLE} (stale: {said})" if said else f"{TITLE} (stale)")
 
 
 def _fit(text: Text, width: int) -> Text:
     """Cut a line to the width it is drawn in, marking the cut.
 
-    The other two panels mark theirs, and the tail here is usually a number: a
-    fairshare score cropped to 0. reads as complete and is the exact value the
-    warning color exists for.
+    Marked because the tail here is usually a number, and a fairshare score cropped
+    to 0. reads as a complete value.
     """
     room = max(width, 1)
     if len(text.plain) > room:
@@ -244,9 +225,8 @@ def _fit(text: Text, width: int) -> Text:
 class StandingPanel(VerticalScroll):
     """Fairshare, the GPU cap, and how the caller's recent jobs went.
 
-    Holds its last figures when a read fails, and keeps the share and the cap when
-    only the efficiency half is unavailable, since those are cheap and are what a
-    user checks most.
+    Keeps its last figures when a read fails, and keeps the share and the cap when
+    only the accounting half is unavailable.
     """
 
     def __init__(self) -> None:
@@ -284,10 +264,8 @@ class StandingPanel(VerticalScroll):
     def fail(self, reason: str) -> None:
         """Mark the panel stale, naming the cause and keeping whatever it held.
 
-        The cause goes on the border title, not on a line of the body: the panel has
-        five rows for its five facts, so a line here pushed the fifth out of sight,
-        which is the same row the reading mark used to cost. The title is also the
-        one part of a panel a short terminal does not clip.
+        The cause goes on the border title rather than a line of the body, which has
+        exactly as many rows as the panel has facts.
         """
         self._error, self._reading = reason, False
         self.border_title = _stale_title(reason)
@@ -300,10 +278,8 @@ class StandingPanel(VerticalScroll):
         """Draw the panel, using every row it has for figures.
 
         Neither the reading mark nor the stale reason takes a line while there are
-        figures to show: the border title carries both, and the panel has exactly as
-        many rows as it has facts, so either one pushed the last fact out of sight.
-        With no figures yet there is nothing to push, and the body says what is
-        happening instead.
+        figures to show, since the border title carries both. With no figures yet the
+        body says what is happening instead.
         """
         body = self.query_one("#standing-body", Static)
         width = max(self.content_size.width - 1, 12)

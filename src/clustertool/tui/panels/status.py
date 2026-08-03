@@ -14,27 +14,20 @@ GAP = "   "
 KEYS = "? keys   Q quit"
 """The two keys a first-time reader needs, kept at the right of the bar.
 
-Every binding is in the help overlay, but the overlay is itself behind a key, so
-nothing on screen said how to leave. A user had to guess ctrl+c. Quitting and the
-way to the rest of the keys are the two that have to be visible without asking.
+Every binding is in the help overlay, but the overlay is itself behind a key, so how
+to leave and how to reach the rest have to be visible without asking.
 """
 
 
 def fit(identity: data.Identity, stamp: str, width: int) -> str:
     """Return the widest status line that fits, shedding the least useful part first.
 
-    The bar is one row, so anything too long would wrap and be clipped, taking the
-    clock with it. The order below is fixed, and each rung adds one thing to the one
-    beneath it. That is what keeps widening the terminal from ever removing
-    something: any priority that reorders across the width range produces a rung
-    that has a field its neighbor lacks, and the field then appears and disappears
-    as the window is dragged. The key hint sits above the site name and below the
-    host, so a reader on any ordinary terminal can see how to quit, and a reader on
-    a very narrow one keeps the username and the clock instead.
+    The bar is one row, so a line too long for it wraps and is clipped. Each rung of
+    the ladder adds one field to the rung beneath it, so widening the terminal can
+    never remove something that was already shown.
 
-    Widths are display cells rather than code points. A GECOS full name in a script
-    whose characters are two cells wide fitted by count and then wrapped, which took
-    the clock with it, and accented Latin hid this because it is one cell.
+    Widths are counted in display cells rather than code points, since a full name in
+    a script two cells wide fits by count and then wraps.
     """
     who = identity
     name = f" ({who.full_name})" if who.full_name else ""
@@ -58,8 +51,7 @@ def fit(identity: data.Identity, stamp: str, width: int) -> str:
 def _cells(text: str, width: int) -> str:
     """Cut text to a number of display cells rather than of code points.
 
-    Reached only when the clock alone is wider than the bar, which a locale whose
-    weekday abbreviation is two cells per character can manage on a narrow terminal.
+    Reached only when the clock alone is wider than the bar.
     """
     out = ""
     for char in text:
@@ -72,10 +64,8 @@ def _cells(text: str, width: int) -> str:
 class StatusBar(Static):
     """Who you are, where you are, and the time, kept visible at all times.
 
-    Markup is off because every field is outside our control: a full name comes
-    from the GECOS field and the site name from a config file, so a square
-    bracket in either would be parsed as a style tag and an unmatched closing
-    tag would raise.
+    Markup is off: the full name comes from the GECOS field and the site name from a
+    config file, so a bracket in either would be parsed as a style tag.
     """
 
     def __init__(

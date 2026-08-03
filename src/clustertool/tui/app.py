@@ -23,28 +23,21 @@ from clustertool.tui.panels.storage import StoragePanel
 SIDE_BY_SIDE = 80
 """Narrowest terminal that still holds the jobs panel and the side column together.
 
-Below it the side column goes underneath the jobs panel rather than past the right
-edge, where nothing it holds would be on screen. The jobs panel carries no floor
-of its own: a floor cannot make a panel fit a terminal narrower than itself, it
-only pushes the panel off the right edge, which is the very thing this constant
-exists to prevent.
+Below it the side column goes underneath rather than past the right edge. The jobs
+panel has no width floor of its own, since a floor cannot make a panel fit a
+narrower terminal and would only push it off the edge.
 
-80 rather than the sum of the floors, which was 48: bringing the side column back
-costs the jobs table the side column's whole width at once, and at 48 that took
-the table from five columns to two, so widening the terminal by one lost three
-headings. 80 is the first width where the table keeps every column it had at 79,
-measured across 30 to 130 columns.
+80 rather than the sum of the two floors, which is 48: bringing the side column back
+costs the table that whole width at once, and 80 is the first width where the table
+keeps every column it had without it.
 """
 
 THEMES = {"dark": "textual-dark", "light": "textual-light", "ansi": "ansi-dark"}
 """Short names for the themes worth naming, mapped to Textual's own.
 
-Any other Textual theme name is passed through, since the app validates against
-the list it actually has. The two that matter are dark and light: the app paints
-its own background, so the theme rather than the terminal decides whether the
-screen is light, and the emphasis colors are ANSI names that Textual maps through
-a palette chosen for the theme's lightness. The ansi themes go further and use the
-terminal's own sixteen colors, for a terminal whose palette is the point.
+Any other Textual theme name is passed through. The app paints its own background,
+so the theme rather than the terminal decides whether the screen is light; the ansi
+themes instead use the terminal's own sixteen colors.
 """
 
 HELP = """\
@@ -89,11 +82,9 @@ def _reason(exc: BaseException) -> str:
 async def detached(call: Callable):
     """Run a blocking call on a daemon thread and await its result.
 
-    Not asyncio.to_thread, whose executor threads are joined before the
-    interpreter exits: a query still running there held quitting for as long as it
-    took, which for a hanging filesystem tool was the whole of its deadline. A
-    daemon thread is abandoned instead, so Q returns at once whatever is in
-    flight.
+    Not asyncio.to_thread, whose executor threads are joined before the interpreter
+    exits, so a hanging query would hold up quitting. A daemon thread is abandoned
+    instead, and Q returns at once.
     """
     loop = asyncio.get_running_loop()
     done = loop.create_future()
@@ -126,21 +117,18 @@ BANNER_ROWS = 2
 BANNER_PADDING = 2
 """Columns the banner's own padding takes, matching its rule in the stylesheet.
 
-The width comes from the screen rather than from the widget, because the widget
-reports nothing while it is hidden and it is hidden until the moment it is given
-something to say: measuring it there cut every message to a single character.
+The width is measured from the screen rather than the widget, which reports nothing
+while it is hidden.
 """
 
 
 def _shorten(said: str, width: int) -> str:
     """Cut a banner line to the rows it has, marking the cut where it lands.
 
-    A refusal runs to a couple of hundred characters and the banner has two rows,
-    so the end of the reason was simply gone with nothing to say it had been. The
-    cut is found by wrapping rather than by counting characters: two rows of N
-    columns do not hold 2N characters of prose, so a character budget put the
-    ellipsis on a third row that the height then clipped, which is to say it marked
-    the cut somewhere nobody could see.
+    A refusal can run to a couple of hundred characters against the banner's two
+    rows. The cut is found by wrapping rather than by counting characters, since two
+    rows of N columns do not hold 2N characters of prose and the mark would land on a
+    row the height then clips.
     """
     if width < 4:
         return said[:width]
@@ -163,9 +151,8 @@ def _settle(panel, info=None, reason="") -> None:
 class ConfirmScreen(ModalScreen[bool]):
     """Ask before changing a job, defaulting to No.
 
-    No is focused on open and escape dismisses, so the safe answer is both the
-    default and the one a stray keypress gives. The job is named in full, since a
-    confirmation that does not identify its target only trains people to accept it.
+    No is focused on open and escape dismisses, so the safe answer is both the default
+    and what a stray keypress gives. The job is named in full.
     """
 
     BINDINGS = [("escape", "refuse", "no")]
@@ -269,10 +256,8 @@ class MeApp(App):
     def apply_theme(self) -> None:
         """Switch to the theme that was asked for, saying so if there is no such thing.
 
-        Nothing is set when none was named, so TEXTUAL_THEME keeps working. A name
-        the version of Textual in use does not have is reported on the banner rather
-        than raised: a dashboard that will not open because of a color is worse than
-        one that opens in the wrong one.
+        Nothing is set when none was named, so TEXTUAL_THEME keeps working. An unknown
+        name is reported on the banner rather than raised.
         """
         if not self._theme:
             return
@@ -286,12 +271,10 @@ class MeApp(App):
     async def load_jobs(self) -> None:
         """Read the jobs off the scheduler without blocking the interface.
 
-        A flag rather than an exclusive worker, which cancels only the coroutine
-        that awaits the thread: the squeue subprocess runs to completion whatever
-        happens to its awaiter, so a held-down refresh key would still put one
-        query per keypress on the controller. Every failure lands on the panel,
-        including the ones that are this code's fault, because a dashboard that
-        tears down its own screen is worse than one showing a stale table.
+        Guarded by a flag rather than an exclusive worker, which would cancel only the
+        awaiting coroutine and leave the squeue subprocess running, so a held-down
+        refresh key would still reach the controller once per keypress. Every failure
+        lands on the panel rather than tearing down the screen.
         """
         if self._loading:
             return
@@ -308,10 +291,8 @@ class MeApp(App):
     def _on(self, kind: type, action: Callable) -> None:
         """Run action on a panel if it is still mounted, and drop it if not.
 
-        A worker outlives the screen when the app is shutting down with a query in
-        flight. The lookup then raises, and doing that inside the handler that
-        reports a failure replaces the failure with a WorkerFailed and a traceback
-        over the terminal, which is the thing the handler exists to prevent.
+        A worker outlives the screen when the app is quitting with a query in flight,
+        and the lookup then raises inside the handler meant to report the failure.
         """
         try:
             panel = self.query_one(kind)
@@ -322,10 +303,9 @@ class MeApp(App):
     def on_resize(self, event: events.Resize) -> None:
         """Stack the panels when they no longer fit across the terminal.
 
-        Side by side below their combined width floor, the second panel is drawn off
-        the right edge and whatever it holds is simply not on screen. Stacking keeps
-        it, which is better than the earlier answer of hiding it: a narrow terminal
-        loses the arrangement rather than the quotas.
+        Side by side below their combined width floor, the second panel is drawn past
+        the right edge. Stacking keeps it on screen, so a narrow terminal loses the
+        arrangement rather than the quotas.
         """
         self.query_one("#body").set_class(event.size.width < SIDE_BY_SIDE, "stacked")
 
@@ -333,9 +313,8 @@ class MeApp(App):
     async def load_storage(self) -> None:
         """Read the quotas off the filesystems without blocking the interface.
 
-        Not on the timer: quotas move slowly, the fan-out is a second warm and six
-        cold, and every viewer of this dashboard would be putting that on a shared
-        quota service every few seconds for a figure that had not changed.
+        Not on the timer: quotas move slowly and the fan-out is expensive on a shared
+        service. Refreshed on r or R instead.
         """
         if self._loading_storage:
             return
@@ -396,9 +375,8 @@ class MeApp(App):
     def action_refresh_all(self) -> None:
         """Read every panel again, whichever one has focus.
 
-        Every panel, since a narrow terminal now stacks the side column rather than
-        hiding it. While it was hidden this skipped it, its fan-out being forty
-        lookups nobody would see the result of; a stacked panel is on screen.
+        Every panel, since a narrow terminal stacks the side column rather than hiding
+        it, so there is none whose result nobody would see.
         """
         self.load_jobs()
         self.load_standing()
@@ -435,13 +413,10 @@ class MeApp(App):
     def announce(self, said: str) -> None:
         """Put a line on the banner, which is where an action reports itself.
 
-        The banner takes no room until it has something to say. It is one row, and
-        on a short terminal that row is the difference between the detail pane
-        showing its last line and losing it.
-
-        Control characters are dropped: what a tool wrote to stderr ends up here,
-        and an escape byte in it would be a command to the terminal rather than
-        text on the banner.
+        The banner takes no room until it has something to say, since on a short
+        terminal its row is one the panels need. Control characters are dropped,
+        because a tool's stderr ends up here and an escape byte in it would be a
+        command to the terminal.
         """
         try:
             banner = self.query_one("#banner", Static)

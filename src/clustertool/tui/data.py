@@ -62,16 +62,12 @@ JOB_FIELD_NAMES = (
 )
 """The squeue fields the panel reads, in the order it asks for them.
 
-JobArrayID rather than JobID: JobID prints the internal numeric id, which for an
-array element is neither what the user submitted nor what scancel and the rest of
-the CLI print. JobArrayID matched %i on every one of the 16,759 jobs queued when
-this was checked. StateCompact rather than deriving the two-letter code here,
-which is Slurm's table to own. NumNodes so the node column can name the head and
-a count without expanding the hostlist, which costs a scontrol fork per job.
+JobArrayID rather than JobID, which prints the internal numeric id an array element
+was not submitted under. NumNodes so the node column can name the head node and a
+count without expanding the hostlist.
 
 The reply is read back by name against this tuple rather than by position, so
-reordering it, or asking for a different field, cannot silently put one column's
-value in another column.
+reordering it cannot put one column's value in another column.
 """
 
 JOB_FIELDS = ",".join(f"{name}:|" for name in JOB_FIELD_NAMES)
@@ -129,20 +125,16 @@ class JobRow:
 QUOTA_WORKERS = 6
 """How many quota lookups run at once.
 
-Measured on a login node over 40 lab directories: one thread 6.9s, two 3.4s, four
-1.7s, six 1.2s, eight 0.90s, sixteen 0.59s. Near-linear to eight and flat after,
-so six buys almost all of it. This is a shared login node and every viewer pays
-the concurrency, so the number stays modest rather than maximal.
+Six covers most of the speedup available, and the login node is shared, so every
+viewer of the dashboard pays this concurrency.
 """
 
 _QUOTA_SLOTS = threading.Semaphore(QUOTA_WORKERS)
 """Concurrent lookups allowed across the whole process, not per fan-out.
 
-A per-fan-out count is not a cap: the deadline releases the caller while the
-abandoned workers are still in their lookups, so a second refresh reached twelve
-against a documented six. Every lookup takes a slot, so overlapping batches share
-the same six. An abandoned lookup gives its slot back when it times out, which is
-why that timeout has to be shorter than the gather deadline.
+A per-fan-out count is not a cap, since the deadline releases the caller while
+abandoned lookups are still running and a second refresh then doubles the load.
+An abandoned lookup frees its slot when it times out.
 """
 
 QUOTA_TIMEOUT_S = 8
@@ -164,19 +156,15 @@ to hold every other figure hostage.
 STORAGE_DEADLINE_S = 14.0
 """How long the whole gather may take, across all three of its parts.
 
-The parts run side by side under one deadline rather than one after another. In
-series, and with only the lab fan-out bounded, a stale Lustre mount still held
-quitting for the df timeout plus the fan-out deadline plus two lfs timeouts, which
-came to longer than the unbounded version it replaced.
+One deadline for the three together, rather than each carrying its own, so a stale
+mount cannot hold the dashboard for their sum.
 """
 
 STILL_READING = "unfinished"
 """What a lookup that has not answered by the deadline is marked with.
 
-Distinct from a lookup that failed: a failure is a fact about the filesystem and
-belongs at the top of the panel, whereas an unfinished one is a fact about this
-refresh and belongs at the bottom. Sorting the two together let a slow filesystem
-put forty unfinished rows above every real figure.
+Distinct from a failure, which is a fact about the filesystem and sorts to the top,
+where an unfinished lookup is a fact about this refresh and sorts to the bottom.
 """
 
 LUSTRE = "lustre"
@@ -296,10 +284,9 @@ def lab_quotas(user: str) -> list[QuotaRow]:
 def _fan_out(targets: list[tuple[str, str]]) -> list[QuotaRow]:
     """Look up every target on at most QUOTA_WORKERS threads, and stop waiting.
 
-    Daemon threads rather than a thread pool: a pool joins its workers before the
-    interpreter exits, so one unresponsive target made quitting the dashboard wait
-    the lookup out. A target that has not answered by the deadline is reported as
-    still reading rather than holding the other thirty-nine figures back.
+    Daemon threads rather than a pool, which joins its workers before the interpreter
+    exits and so makes an unresponsive target hold up quitting. A target that has not
+    answered by the deadline is reported as still reading.
     """
     queue = collections.deque(targets)
     done: dict[tuple[str, str], QuotaRow] = {}
@@ -340,13 +327,8 @@ def _fan_out(targets: list[tuple[str, str]]) -> list[QuotaRow]:
 def _worst_first(row: QuotaRow) -> tuple:
     """Order rows by how much they need looking at.
 
-    A row that could not be read comes first: it is the one fact the panel cannot
-    show any other way, and a side column shows only its first dozen rows. Then
-    the fullest, then those with no quota to be full of, and last the ones that
-    simply did not finish, which say nothing about the filesystem and would
-    otherwise bury every real figure when one mount is slow. Ties on percentage
-    break on bytes held, since a directory holding data ranks above an empty one
-    at the same zero percent.
+    A row that could not be read first, then the fullest, then those with no quota,
+    and last the ones that did not finish. Ties on percentage break on bytes held.
     """
     fraction = row.fraction
     if row.pending:
@@ -405,10 +387,8 @@ def my_lustre_quotas(user: str) -> list[QuotaRow]:
 def storage_info(user: str) -> StorageInfo:
     """Gather every storage figure the panel shows, under one deadline.
 
-    The three parts run side by side on daemon threads. In series each carried its
-    own timeout on a thread the interpreter joins at exit, so a stale mount held
-    quitting for their sum. Whatever has not arrived by the deadline is reported as
-    unfinished rather than waited for.
+    The three parts run side by side on daemon threads, and whatever has not arrived
+    by the deadline is reported as unfinished rather than waited for.
     """
     home: list = []
     labs: list = []
@@ -461,11 +441,9 @@ def _why(box: list) -> str:
 def _label(path: str, group: str) -> str:
     """Name a lab directory by its group and then its filesystem.
 
-    Both are needed: a user can belong to twenty labs across four filesystems, so
-    either half alone names several rows. The group comes first because the label
-    is cut from the tail in a side column, and with the filesystem first forty
-    directories rendered as three distinct labels at eighty columns. Which lab is
-    full is the actionable half.
+    Both, since a user can belong to many labs across several filesystems and either
+    half alone names more than one row. The group leads because the label is cut from
+    the tail in a narrow column.
     """
     from clustertool import storage
 
@@ -477,10 +455,8 @@ def _label(path: str, group: str) -> str:
 def _filesystem_of(path: str) -> str:
     """Name the filesystem from the path when the mount table cannot be read.
 
-    Without this the label falls back to the group alone, and every one of a lab's
-    directories then carries the same name with a different percentage. The site
-    path prefix is dropped first, since every root here begins with it and the
-    component after it is the one that names the filesystem.
+    Otherwise every directory of one lab carries the same label. The site path prefix
+    is dropped first, since the component after it is what names the filesystem.
     """
     prefix = site.path_prefix().strip("/")
     parts = [part for part in path.strip("/").split("/") if part]
@@ -527,10 +503,9 @@ def _count(text: str) -> int:
 def jobs(user: str) -> list[JobRow]:
     """Return the caller's jobs in one squeue call.
 
-    The allocated TRES rather than the requested, since Slurm rounds a request up
-    to a whole node or socket and the panel should show what the job holds. The
-    field separator is asked for explicitly, because the default format pads to
-    fixed widths and truncates a long TRES string.
+    The allocated TRES rather than the requested, since Slurm rounds a request up to a
+    whole node. The separator is asked for explicitly because the default format pads
+    to fixed widths and truncates a long TRES string.
     """
     from clustertool import process, slurm
 
@@ -577,11 +552,8 @@ STANDING_TIMEOUT_S = 20
 RECENT_FIELDS = ("JobID", "State", "ElapsedRaw", "AllocTRES", "AdminComment")
 """The sacct fields the standing panel reads, in the order it asks for them.
 
-ElapsedRaw rather than Elapsed: the raw field is a count of seconds, while the
-printed one is [DD-[HH:]]MM:SS, whose clock has two parts for a short job and three
-for a long one. A parser that reads the wrong shape returns nothing while the job
-still counts as measured, which quietly overstates how much of the window the
-figures cover.
+ElapsedRaw rather than Elapsed, which prints [DD-[HH:]]MM:SS: the raw field is a
+count of seconds and needs no parsing.
 """
 
 TERMINAL_STATES = ("COMPLETED", "CANCELLED", "FAILED", "TIMEOUT", "OUT_OF_MEMORY", "PREEMPTED")
@@ -607,15 +579,9 @@ jobs panel already shows what is running.
 STANDING_DEADLINE_S = 30.0
 """How long the whole standing gather may take, across all of its parts.
 
-Every query but the sacct one goes through a helper that passes no timeout, and
-without a deadline one hung call left the panel saying it was reading for good,
-with the in-flight guard set so no later refresh could recover it.
-
-Generous, and it can afford to be: the gather is awaited on a daemon thread, so a
-deadline this long costs nothing at quit. It has to sit above the sacct timeout, or
-a slow window could never reach its own timeout and would always be reported as
-unfinished instead of as timed out. Measured gathers on this login node under a
-load average of 45 run 0.73 to 3.14s, median 1.29s.
+Most of these queries carry no timeout of their own, so without a deadline one hung
+call leaves the panel reading for good. It has to sit above STANDING_TIMEOUT_S, or a
+slow window could never reach its own timeout.
 """
 
 
@@ -700,18 +666,12 @@ class GpuStanding:
 def gpu_standing(user: str) -> GpuStanding:
     """Return the caller's GPUs and cap, and their account's GPUs and cap.
 
-    Both levels, because either can be what stops a job starting and they are
-    different numbers: this site allows a user 16 and their account 96.
+    Both levels, since either can be what stops a job starting and the two limits
+    differ. Both counts cover only the partitions the capped QoS is set on, because
+    usage anywhere else does not count against the cap.
 
-    Both counts are restricted to the partitions the capped QoS is set on. Anywhere
-    else does not count toward the cap, and counting it does not merely overstate:
-    one user holding 239 GPUs on the requeue partition, and none on a base
-    partition, was shown as 239 of 16 in the color that means no room left.
-
-    The account is the one the caller's own jobs run under, not their default
-    account. At this site every base-partition job runs under a prefixed account
-    while the default is the unprefixed one, so the default named an account with
-    no usage for all 43 users then running.
+    The account is the one the caller's own jobs run under rather than their default,
+    which at this site is often an account they never submit under.
     """
     from clustertool import site, slurm
 
@@ -737,16 +697,13 @@ def gpu_standing(user: str) -> GpuStanding:
 def _charged_account(user: str, mine: dict[str, int], totals: dict[str, int], prefix: str) -> str:
     """Name the account the caller's capped usage is charged to.
 
-    Whichever of their own running jobs holds the most, since that is the account
-    whose ceiling they are actually working against, and the name breaks a tie so an
-    evenly split caller does not see it flip between refreshes.
+    Whichever of their running jobs holds the most, with the name breaking a tie so
+    the answer does not flip between refreshes.
 
-    With nothing running there is no such account, so their default is used, tried
-    both prefixed and bare because either can be the governed one, and only when it
-    appears in the capped partition's own AllowAccounts. Asking merely whether Slurm
-    knows the name is not enough: 2704 of this cluster's 2742 users default to an
-    account that cannot run on the capped partitions at all, and naming one against
-    a 96-GPU cap is the same false statement this was fixed to remove.
+    With nothing running their default account is used, tried both prefixed and bare,
+    and only when the capped partition allows it: most users on this cluster default
+    to an account that cannot run there at all, and naming it against the cap would
+    say something untrue.
     """
     from clustertool import slurm
 
@@ -772,8 +729,7 @@ def _charged_account(user: str, mine: dict[str, int], totals: dict[str, int], pr
 def _hours(raw: str) -> float:
     """Return sacct's ElapsedRaw, which counts seconds, in hours.
 
-    Anything that is not a count is taken as nothing rather than guessed at, since a
-    figure in GPU-hours is worse wrong than absent.
+    Anything that is not a count is taken as zero rather than guessed at.
     """
     return int(raw) / 3600 if raw.strip().isdigit() else 0.0
 
@@ -782,8 +738,7 @@ def _hours(raw: str) -> float:
 class GpuHours:
     """How much GPU time the caller held in the window, and how much of it was used.
 
-    Held rather than requested: the figure is the allocation multiplied by how long
-    it was held, which is what the cluster could not give anyone else.
+    Held rather than requested: the allocation multiplied by how long it was held.
     """
 
     held: float = 0.0
@@ -807,10 +762,9 @@ def recent_work(
 ) -> tuple[dict[str, int], list[tuple], GpuHours]:
     """Return (state counts, per-job metrics, GPU-hours) for the caller's jobs.
 
-    One sacct call over a window rather than jobscope's select-then-fetch, which
-    resolves a window to explicit job ids and asks sacct for them by id: that took
-    over sixty seconds for this caller's 558 ids where the window query takes
-    0.05s. The metric blobs are still decoded by jobscope, which owns that format.
+    One sacct call over the window rather than jobscope's select-then-fetch, which
+    resolves the window to explicit job ids and is orders of magnitude slower. The
+    metric blobs are still decoded by jobscope, which owns that format.
     """
     from jobscope import blob
 
@@ -869,11 +823,8 @@ def recent_work(
 def standing(user: str, days: int = STANDING_DAYS) -> Standing:
     """Gather everything the standing panel shows.
 
-    The three parts run side by side under one deadline and fail independently.
-    Sharing a failure was wrong twice over: an sshare or squeue error took the whole
-    panel down where only the efficiency half was ever meant to degrade, and with no
-    deadline a single hung call left the panel reading for good, its in-flight guard
-    set so no later refresh could recover.
+    The three parts run side by side under one deadline and fail independently, so an
+    sshare or squeue error costs only its own line.
     """
     share: list = []
     gpus: list = []
@@ -924,10 +875,8 @@ def standing(user: str, days: int = STANDING_DAYS) -> Standing:
 def _median(values: list[int]) -> int | None:
     """Return the rounded median, or None when there is nothing to take one of.
 
-    The median rather than the mean. These distributions are bimodal: of this
-    caller's 72 measured jobs, 35 used no CPU at all while a handful of GPU jobs
-    ran near 100%, which put the GPU mean at 28% against a median of 10%. The
-    median describes the typical job, and the panel says which it is showing.
+    The median rather than the mean, since these distributions are bimodal: many jobs
+    use almost nothing while a few run near capacity.
     """
     return round(statistics.median(values)) if values else None
 
