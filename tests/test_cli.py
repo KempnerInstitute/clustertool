@@ -3966,9 +3966,9 @@ def test_gpu_usage_suggests_the_lab_account_when_nothing_found(monkeypatch):
     monkeypatch.setattr(slurm, "priority_partitions", lambda: [])
     monkeypatch.setattr(slurm, "gpu_rows", lambda a, parts: [])
     monkeypatch.setattr(site, "lab_account_prefix", lambda: "kempner_")
-    result = CliRunner().invoke(main, ["gpu", "usage", "ydu_lab"])
+    result = CliRunner().invoke(main, ["gpu", "usage", "nayar_lab"])
     assert result.exit_code == 0
-    assert "kempner_ydu_lab also exists" in result.output
+    assert "kempner_nayar_lab also exists" in result.output
 
 
 def test_gpu_usage_does_not_suggest_when_usage_exists(monkeypatch):
@@ -3978,7 +3978,7 @@ def test_gpu_usage_does_not_suggest_when_usage_exists(monkeypatch):
     monkeypatch.setattr(slurm, "pending_at_cap", lambda a, p: 0)
     monkeypatch.setattr(slurm, "gpu_rows", lambda a, parts: [("alice", "kempner", 2)])
     monkeypatch.setattr(site, "lab_account_prefix", lambda: "kempner_")
-    result = CliRunner().invoke(main, ["gpu", "usage", "ydu_lab"])
+    result = CliRunner().invoke(main, ["gpu", "usage", "nayar_lab"])
     assert result.exit_code == 0
     assert "also exists" not in result.output
 
@@ -3989,7 +3989,7 @@ def test_gpu_usage_does_not_suggest_for_an_already_prefixed_account(monkeypatch)
     monkeypatch.setattr(slurm, "priority_partitions", lambda: [])
     monkeypatch.setattr(slurm, "gpu_rows", lambda a, parts: [])
     monkeypatch.setattr(site, "lab_account_prefix", lambda: "kempner_")
-    result = CliRunner().invoke(main, ["gpu", "usage", "kempner_ydu_lab"])
+    result = CliRunner().invoke(main, ["gpu", "usage", "kempner_nayar_lab"])
     assert result.exit_code == 0
     assert "also exists" not in result.output
 

@@ -153,11 +153,11 @@ def test_partition_accounts(monkeypatch):
         "probe",
         lambda cmd, timeout=None: (
             0,
-            "PartitionName=kempner AllowAccounts=kempner_dev,kempner_sham_lab State=UP\n",
+            "PartitionName=kempner AllowAccounts=kempner_dev,kempner_nayar_lab State=UP\n",
             "",
         ),
     )
-    assert slurm.partition_accounts("kempner") == ["kempner_dev", "kempner_sham_lab"]
+    assert slurm.partition_accounts("kempner") == ["kempner_dev", "kempner_nayar_lab"]
 
 
 def test_partition_accounts_raises_when_the_read_fails(monkeypatch):
