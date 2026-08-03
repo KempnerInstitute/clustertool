@@ -572,6 +572,9 @@ class Standing:
     fairshare: list[tuple[str, str]]
     gpus_used: int
     gpu_cap: int | None
+    account: str
+    account_gpus: int
+    account_cap: int | None
     days: int
     states: dict[str, int]
     measured: int
@@ -604,16 +607,29 @@ def _share(text: str) -> float:
         return -1.0
 
 
-def gpu_standing(user: str) -> tuple[int, int | None]:
-    """Return (GPUs the caller holds, the per-account cap or None)."""
+def gpu_standing(user: str) -> tuple[int, int | None, str, int, int | None]:
+    """Return the caller's GPUs and cap, and their account's GPUs and cap.
+
+    Both levels, because either can be what stops a job starting and they are
+    different numbers: this site allows a user 16 and their account 96. Reading a
+    user's own usage against the account cap, as this first did, says a user may
+    reach 96 when their own limit is a sixth of that.
+    """
     from clustertool import slurm
 
     used = slurm.user_gpu_count(user)
     try:
-        cap = slurm.account_cap()
+        cap = slurm.user_cap()
     except CommandError:
         cap = None
-    return used, cap
+    account, account_gpus, account_cap = "", 0, None
+    try:
+        account = slurm.default_account(user)
+        account_cap = slurm.account_cap()
+        account_gpus = slurm.gpu_by_account(slurm.BASE_PARTITIONS).get(account, 0)
+    except CommandError:
+        pass
+    return used, cap, account, account_gpus, account_cap
 
 
 def recent_work(user: str, days: int = STANDING_DAYS) -> tuple[dict[str, int], list[tuple]]:
@@ -674,7 +690,7 @@ def standing(user: str, days: int = STANDING_DAYS) -> Standing:
     on the panel with a note, since those are the figures a user checks most.
     """
     rows = fairshare_rows(user)
-    used, cap = gpu_standing(user)
+    used, cap, account, account_gpus, account_cap = gpu_standing(user)
     try:
         states, metrics = recent_work(user, days)
         note = ""
@@ -685,6 +701,9 @@ def standing(user: str, days: int = STANDING_DAYS) -> Standing:
         fairshare=rows,
         gpus_used=used,
         gpu_cap=cap,
+        account=account,
+        account_gpus=account_gpus,
+        account_cap=account_cap,
         days=days,
         states=states,
         measured=len(metrics),

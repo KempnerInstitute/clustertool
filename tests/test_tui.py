@@ -1820,7 +1820,10 @@ def _standing(**kwargs):
     fields = dict(
         fairshare=[("lab_one", "0.9")],
         gpus_used=4,
-        gpu_cap=96,
+        gpu_cap=16,
+        account="lab_one",
+        account_gpus=52,
+        account_cap=96,
         days=7,
         states={"COMPLETED": 9, "FAILED": 1},
         measured=8,
@@ -1843,11 +1846,38 @@ def test_a_missing_gpu_cap_is_not_a_failure(monkeypatch):
     """A site with no cap on its base QoS still has a GPU count worth showing."""
     monkeypatch.setattr(slurm, "user_gpu_count", lambda user: 3)
 
-    def boom():
+    def boom(*args):
         raise CommandError("sacctmgr not found")
 
-    monkeypatch.setattr(slurm, "account_cap", boom)
-    assert data.gpu_standing("alice") == (3, None)
+    monkeypatch.setattr(slurm, "user_cap", boom)
+    monkeypatch.setattr(slurm, "default_account", boom)
+    assert data.gpu_standing("alice") == (3, None, "", 0, None)
+
+
+def test_the_user_cap_is_not_the_account_cap(monkeypatch):
+    """This site allows a user 16 and their account 96, so one cannot stand for both."""
+    monkeypatch.setattr(slurm, "user_gpu_count", lambda user: 4)
+    monkeypatch.setattr(slurm, "user_cap", lambda: 16)
+    monkeypatch.setattr(slurm, "account_cap", lambda: 96)
+    monkeypatch.setattr(slurm, "default_account", lambda user: "lab_one")
+    monkeypatch.setattr(slurm, "gpu_by_account", lambda parts: {"lab_one": 52})
+    assert data.gpu_standing("alice") == (4, 16, "lab_one", 52, 96)
+
+
+def test_the_gpu_line_names_both_limits():
+    from clustertool.tui.panels.standing import gpu_text
+
+    plain = gpu_text(_standing(), 120).plain
+    assert "4 of 16 yours" in plain
+    assert "lab_one 52 of 96" in plain
+
+
+def test_the_gpu_line_without_a_per_user_cap():
+    from clustertool.tui.panels.standing import gpu_text
+
+    plain = gpu_text(_standing(gpu_cap=None), 120).plain
+    assert "no per-user cap" in plain
+    assert "52 of 96" in plain
 
 
 def test_recent_work_counts_states_and_decodes_metrics(monkeypatch):
@@ -1894,7 +1924,7 @@ def test_recent_work_raises_when_sacct_fails(monkeypatch):
 def test_standing_keeps_the_share_when_the_window_cannot_be_read(monkeypatch):
     """Fairshare and the cap are cheap, and are what a user checks most."""
     monkeypatch.setattr(data, "fairshare_rows", lambda user: [("lab_one", "0.9")])
-    monkeypatch.setattr(data, "gpu_standing", lambda user: (4, 96))
+    monkeypatch.setattr(data, "gpu_standing", lambda user: (4, 16, "lab_one", 52, 96))
 
     def boom(user, days=7):
         raise CommandError("accounting is not answering just now")
@@ -1902,7 +1932,8 @@ def test_standing_keeps_the_share_when_the_window_cannot_be_read(monkeypatch):
     monkeypatch.setattr(data, "recent_work", boom)
     result = data.standing("alice")
     assert result.fairshare == [("lab_one", "0.9")]
-    assert result.gpu_cap == 96
+    assert result.gpu_cap == 16
+    assert result.account_cap == 96
     assert result.states == {}
     assert result.note.startswith("accounting is not answering")
     assert result.cpu is None

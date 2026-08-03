@@ -377,6 +377,18 @@ def node_info(node: str) -> dict:
     }
 
 
+def user_cap() -> int | None:
+    """Return the per-user GPU cap from the base QoS, or None if there is none.
+
+    Distinct from account_cap, which reads MaxTRESPerAccount: per man sacctmgr a
+    QoS limits each account and each of its users separately, and this site sets
+    both. A user's own usage has to be read against this one, since the account
+    cap is the ceiling for every member together.
+    """
+    out = _run(["sacctmgr", "-nP", "show", "qos", site.base_qos(), "format=MaxTRESPU"])
+    return parse_gpu_count(out) or None
+
+
 def gpu_by_account(partitions: tuple[str, ...] | list[str]) -> dict[str, int]:
     """Return running GPU counts per account on the given partitions."""
     out = _run(

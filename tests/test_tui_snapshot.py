@@ -225,8 +225,11 @@ def test_storage_while_reading(snap_compare):
 
 STANDING = Standing(
     fairshare=[("nayar_lab", "0.999367"), ("rivera_grads", "0.412"), ("okonkwo_lab", "0.0006")],
-    gpus_used=88,
-    gpu_cap=96,
+    gpus_used=14,
+    gpu_cap=16,
+    account="nayar_lab",
+    account_gpus=88,
+    account_cap=96,
     days=7,
     states={"COMPLETED": 90, "CANCELLED": 51, "FAILED": 7, "TIMEOUT": 4},
     measured=72,
@@ -271,7 +274,7 @@ def test_standing_degraded_to_the_share_alone(snap_compare):
 
 def test_standing_at_the_gpu_cap(snap_compare):
     """The line turns red at the cap, which is when new jobs stop starting."""
-    at_cap = dataclasses.replace(STANDING, gpus_used=96)
+    at_cap = dataclasses.replace(STANDING, gpus_used=16, account_gpus=96)
     assert snap_compare(
         _app(),
         terminal_size=(130, 30),

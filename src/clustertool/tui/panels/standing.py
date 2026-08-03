@@ -72,16 +72,28 @@ def share_text(standing: data.Standing, width: int) -> Text:
 
 
 def gpu_text(standing: data.Standing, width: int) -> Text:
-    """Render the GPU line: what the caller holds against the per-account cap."""
+    """Render the GPU line: the caller against their cap, their account against its.
+
+    Both, because either can be what stops the next job starting, and they are
+    different limits. Reading a user's own usage against the account cap, which is
+    six times larger here, said they had room they did not have.
+    """
     text = Text(no_wrap=True, overflow="crop")
     text.append("gpus     ", style="dim")
     if standing.gpu_cap:
         text.append(
-            f"{standing.gpus_used} of {standing.gpu_cap} on the cap",
+            f"{standing.gpus_used} of {standing.gpu_cap} yours",
             style=cap_style(standing.gpus_used, standing.gpu_cap),
         )
     else:
-        text.append(f"{standing.gpus_used} running, no cap reported", style="dim")
+        text.append(f"{standing.gpus_used} running, no per-user cap", style="dim")
+    if standing.account and standing.account_cap:
+        text.append("   ")
+        text.append(f"{standing.account} ", style="dim")
+        text.append(
+            f"{standing.account_gpus} of {standing.account_cap}",
+            style=cap_style(standing.account_gpus, standing.account_cap),
+        )
     return _fit(text, width)
 
 
