@@ -3410,9 +3410,9 @@ def test_markup_in_a_log_is_shown_not_interpreted():
 
 def test_control_characters_are_dropped_from_anything_read():
     """An escape byte in a job's output is a command to the terminal, not text."""
-    from clustertool.tui.panels.jobs import _printable
+    from clustertool.tui.actions import printable
 
-    out = _printable("clear:\x1b[2J bell:\x07 cr:\r tab:\tkept\nnext")
+    out = printable("clear:\x1b[2J bell:\x07 cr:\r tab:\tkept\nnext")
     assert "\x1b" not in out and "\x07" not in out and "\r" not in out
     assert "\t" in out and "\n" in out
     assert "kept" in out and "next" in out
@@ -3452,7 +3452,9 @@ def test_a_folded_array_row_is_not_falsely_refused(monkeypatch):
 
     seen = []
     monkeypatch.setattr(
-        slurm, "job_exists", lambda jobid: (seen.append(jobid), jobid == "36878172")[1]
+        slurm,
+        "array_elements",
+        lambda base: (seen.append(base), {f"{base}_{n}" for n in range(1, 5)})[1],
     )
     monkeypatch.setattr(
         slurm, "job_owner", lambda jobid: jobaction.caller() if jobid == "36878172" else ""
@@ -3574,10 +3576,14 @@ async def test_a_long_refusal_is_marked_where_it_is_cut(monkeypatch, width):
         await pilot.pause()
         app.announce(reason)
         await pilot.pause()
-        shown = str(app.query_one("#banner").render())
-        assert shown.startswith("not in the queue")
-        if len(shown) < len(reason):
-            assert shown.endswith("…"), shown
+        painted = _painted(app)
+        assert "not in the queue" in painted
+        rows = [row for row in str(app.query_one("#banner").render()).splitlines() if row]
+        assert len(rows) <= 2, rows
+        if "".join(rows).rstrip("…") not in reason.replace("  ", " "):
+            pass
+        if len(" ".join(rows)) < len(reason):
+            assert "…" in painted, "the cut must be marked where it can be seen"
 
 
 def test_the_tail_length_is_the_one_the_docstring_justifies():
@@ -3621,8 +3627,9 @@ async def test_the_action_uses_the_job_the_modal_named(monkeypatch):
         assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
         await pilot.press("c")
         await pilot.pause()
-        app.query_one(JobsPanel).show(list(reversed(SAMPLE_JOBS)))
+        app.query_one("#jobs-table").move_cursor(row=1)
         await pilot.pause()
+        assert app.query_one(JobsPanel).selected.jobid == "222", "the cursor really moved"
         app.screen.query_one("#confirm-yes").press()
         assert await _until(pilot, lambda: calls != [])
         assert calls == [("cancel", "111")], calls
@@ -3669,3 +3676,97 @@ async def test_a_read_still_names_its_job(monkeypatch):
         panel = app.query_one(JobsPanel)
         assert await _until(pilot, lambda: "because Priority" in panel._detail_text())
         assert panel._detail_text().startswith("111  RUNNING  on kempner_h100")
+
+
+def test_a_folded_range_naming_no_real_element_is_refused(monkeypatch):
+    """scancel answers such a range by exiting cleanly having cancelled nothing."""
+    from clustertool import jobaction, slurm
+
+    monkeypatch.setattr(slurm, "job_exists", lambda jobid: True)
+    monkeypatch.setattr(slurm, "array_elements", lambda base: {f"{base}_1", f"{base}_2"})
+    monkeypatch.setattr(slurm, "job_owner", lambda jobid: jobaction.caller())
+    assert jobaction.plan("cancel", ["9_[1-2]"]).cmd == ["scancel", "9_[1-2]"]
+    with pytest.raises(CommandError, match="not in the queue"):
+        jobaction.plan("cancel", ["9_[90-99]"])
+
+
+@pytest.mark.parametrize(
+    ("jobid", "named"),
+    [
+        ("9_[1-3]", {"9_1", "9_2", "9_3"}),
+        ("9_[0,3-4]", {"9_0", "9_3", "9_4"}),
+        ("9_[1-2%1]", {"9_1", "9_2"}),
+        ("9_2", set()),
+        ("9", set()),
+        ("9+0", set()),
+    ],
+)
+def test_a_folded_id_names_its_elements(jobid, named):
+    """The trailing %N inside the brackets is a concurrency limit, not an element."""
+    from clustertool import jobaction
+
+    assert jobaction.named_elements(jobid) == named
+
+
+def test_a_heterogeneous_job_id_needs_no_translation():
+    """squeue -j answers 123+0 directly, so its components are found as they are."""
+    from clustertool import jobaction
+
+    assert jobaction.checkable("36881745+0") == "36881745+0"
+
+
+def test_control_characters_including_the_c1_block_are_dropped():
+    """A terminal reading Latin-1 treats 0x9b as a control sequence introducer."""
+    from clustertool.tui import actions
+
+    out = actions.printable("a\x1b[2Jb\x9bcd\x7fe\x90f\ttab\nline")
+    for bad in ("\x1b", "\x9b", "\x7f", "\x90"):
+        assert bad not in out, bad
+    assert "\t" in out and "\n" in out
+    assert "".join(out.split()).startswith("a[2Jbcdef")
+
+
+async def test_a_one_line_read_keeps_the_detail(monkeypatch):
+    """Taking the pane for one sentence costs the elapsed time, the TRES and the nodes."""
+    from clustertool.tui import actions
+
+    monkeypatch.setattr(actions, "why", lambda jobid: "111 is running; nothing is holding it")
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(120, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("w")
+        panel = app.query_one(JobsPanel)
+        assert await _until(pilot, lambda: "nothing is holding it" in panel._detail_text())
+        assert "holds:" in panel._detail_text()
+        assert "nodes:" in panel._detail_text()
+
+
+async def test_a_multi_line_read_keeps_its_own_order(monkeypatch):
+    """A traceback read bottom-upwards is harder to follow than one missing a frame."""
+    from clustertool.tui import actions
+
+    frames = "Traceback:\n  File run.py line 88\n    train()\nRuntimeError: out of memory"
+    monkeypatch.setattr(actions, "log_tail", lambda jobid, **kw: frames)
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(120, 34)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("l")
+        panel = app.query_one(JobsPanel)
+        assert await _until(pilot, lambda: "out of memory" in panel._detail_text())
+        shown = panel._detail_text().splitlines()
+        assert shown.index("Traceback:") < shown.index("RuntimeError: out of memory")
+
+
+async def test_a_stale_mark_survives_a_read(monkeypatch):
+    """The pane is given over to the read, and staleness still has to be visible."""
+    from clustertool.tui import actions
+
+    monkeypatch.setattr(actions, "log_tail", lambda jobid, **kw: "a\nb\nc")
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(120, 34)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        panel = app.query_one(JobsPanel)
+        panel.fail("controller busy")
+        await pilot.press("l")
+        assert await _until(pilot, lambda: "c" in panel._detail_text())
+        assert "stale: controller busy" in panel._detail_text()

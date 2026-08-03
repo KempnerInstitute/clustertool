@@ -380,6 +380,20 @@ def node_info(node: str) -> dict:
     }
 
 
+def array_elements(base: str) -> set[str]:
+    """Return the array element ids the controller currently holds for a base job.
+
+    -r asks squeue to print one row per element rather than folding a pending range,
+    which is what makes an element-level membership check possible.
+    """
+    code, out, _ = process.probe(
+        ["squeue", "-r", "-h", "-t", "all", "-j", base, "-O", "JobArrayID:64"]
+    )
+    if code != 0:
+        return set()
+    return {line.strip() for line in out.splitlines() if line.strip()}
+
+
 def qos_gpu_caps() -> tuple[int | None, int | None]:
     """Return the (per-user, per-account) GPU caps on the base QoS.
 

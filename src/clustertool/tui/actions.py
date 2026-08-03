@@ -14,6 +14,24 @@ from clustertool.tui import data
 
 RUN_TIMEOUT_S = 30
 
+CONTROL = {
+    code: None for code in [*range(32), *range(0x7F, 0xA0)] if code not in (ord("\n"), ord("\t"))
+}
+"""Characters dropped from anything read off the cluster or out of a tool.
+
+A job's own output, and a tool's stderr, reach the screen through this module. An
+escape byte in either is handed to the terminal as a command rather than shown: one
+crafted log line can clear the display or move the cursor out of the app's layout.
+The C1 range is included as well as C0, since a terminal reading Latin-1 treats
+0x9b as a control sequence introducer. A tab only advances the cursor and a log
+legitimately holds them, so tabs and newlines stay.
+"""
+
+
+def printable(text: str) -> str:
+    """Return text with the control characters taken out, newlines and tabs aside."""
+    return text.translate(CONTROL)
+
 
 @dataclasses.dataclass(frozen=True)
 class Action:

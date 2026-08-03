@@ -4,7 +4,7 @@ from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.widgets import DataTable, Static
 
-from clustertool.tui import data
+from clustertool.tui import actions, data
 
 COLUMNS = (
     ("ID", 12, 31),
@@ -45,14 +45,20 @@ TITLE = "Jobs"
 
 EMPTY = "No jobs of yours are queued or running."
 
-NEWEST_FIRST = "newest first"
-"""How a read is ordered in the pane, and the reason it is ordered at all.
+READ_LINES = 4
+"""How many lines of a read the pane shows, keeping the last of them.
 
-The pane cannot scroll: it takes no focus and the arrow keys belong to the table.
-Whatever does not fit is clipped from the bottom, and three attempts to compute the
-room available disagreed with the layout, because the height is bound by space this
-code does not model. Printing the newest line first makes the clipping harmless: it
-can only ever remove older lines, and the end of a log is what a tail is read for.
+Four because the pane measures six rows on the terminals this was checked at, and
+a head line and a dropped-lines note take two of them. Its own rule allows eight,
+but the panel does not have eight to give once the table keeps its minimum; that
+over-commitment is a layout matter recorded against phase 6.
+
+The pane cannot scroll: it takes no focus and the arrow keys belong to the table,
+so whatever does not fit is clipped from the bottom and unreachable. Three attempts
+to compute the room available disagreed with how the layout resolves the height, so
+the count is a small fixed one that fits any pane worth calling a pane, and the
+lines keep their own order: a traceback read bottom-upwards is harder to follow than
+one missing its oldest frame.
 """
 
 NODES_IN_DETAIL = 240
@@ -134,9 +140,7 @@ class JobsPanel(Vertical):
         self.border_title = TITLE
 
     def on_resize(self, _event) -> None:
-        """Lay the columns out again, and retrim a read to the new height.
-
-        Lay the columns out again, since how many fit depends on the width.
+        """Lay the columns out again, since how many fit depends on the width.
 
         Only when the layout actually changed. Dragging a window edge delivers an
         event per column, and rebuilding the table costs about 70ms for someone
@@ -196,7 +200,7 @@ class JobsPanel(Vertical):
             "NODE": row.where,
         }
 
-    def show_text(self, text: str, jobid: str = "") -> None:
+    def show_text(self, text: str, jobid: str) -> None:
         """Add something read off the cluster below the detail.
 
         Remembered against the job it describes, which the caller names, because a
@@ -207,9 +211,8 @@ class JobsPanel(Vertical):
         when the cursor moves to a different job. Clearing it on any highlight event
         wiped a log tail every five seconds, which is to say before it could be read.
         """
-        self._extra = _printable(text)
-        current = self.selected.jobid if self.selected else ""
-        self._extra_for = jobid or current
+        self._extra = actions.printable(text)
+        self._extra_for = jobid
         self._refresh_detail()
 
     def fail(self, reason: str) -> None:
@@ -235,7 +238,7 @@ class JobsPanel(Vertical):
         self._refresh_detail()
 
     def _refresh_detail(self) -> None:
-        """Repaint the detail, and give it room when it is carrying a read."""
+        """Repaint the detail pane."""
         self.query_one("#jobs-detail", Static).update(self._detail_text())
 
     def _detail_text(self) -> str:
@@ -254,38 +257,30 @@ class JobsPanel(Vertical):
             parts.append(f"holds: {row.tres or 'nothing recorded'}")
             parts.append(f"nodes: {_nodes(row)}")
         if self._extra and row is not None and row.jobid == self._extra_for:
-            return self._reading_text(row)
+            taken = self._reading_text(row)
+            if taken:
+                return taken
+            parts.append(self._extra)
         return "\n".join(p for p in parts if p)
 
     def _reading_text(self, row: data.JobRow) -> str:
-        """Render the pane while it carries a read, newest line at the top.
+        """Render the pane while it carries a read, keeping the read's last lines.
 
-        The pane is given over to the read rather than added to the detail, because
-        the two together are more lines than there is room for. One line still names
-        the job, so a read cannot be mistaken for belonging to another, and the rest
-        is reversed for the reason NEWEST_FIRST gives.
+        A read of one line, which is what the why and scope keys give, is added to
+        the detail: taking the whole pane over for it would cost the elapsed time,
+        the TRES and the nodes to show a single sentence. A longer one does take the
+        pane, because the two together are more lines than there is room for, and
+        then one line names the job so the read cannot be mistaken for another's.
         """
-        head = f"{row.jobid}  {row.state}  on {row.partition}  ({NEWEST_FIRST})"
         lines = [line for line in self._extra.splitlines() if line.strip()]
-        return "\n".join([head, *reversed(lines)])
-
-
-CONTROL = {ord(char): None for char in map(chr, range(32)) if char not in "\n\t"}
-"""Characters to drop from anything read off the cluster.
-
-A job's own output, and a tool's stderr, reach the screen through this pane. An
-escape byte in either would be handed to the terminal as a command: one crafted
-log line can clear the display or move the cursor out of the app's layout.
-"""
-
-
-def _printable(text: str) -> str:
-    """Return text with the control characters taken out, newlines and tabs aside.
-
-    A tab only advances the cursor and a log legitimately contains them, so both
-    are kept and everything else below space is dropped.
-    """
-    return text.translate(CONTROL)
+        if len(lines) <= 1:
+            return ""
+        kept = lines[-READ_LINES:]
+        dropped = len(lines) - len(kept)
+        head = f"{row.jobid}  {row.state}  on {row.partition}"
+        stale = [f"stale: {self._error}"] if self._error else []
+        note = [f"...{dropped} earlier lines not shown"] if dropped else []
+        return "\n".join([*stale, head, *note, *kept])
 
 
 def _nodes(row: data.JobRow) -> str:

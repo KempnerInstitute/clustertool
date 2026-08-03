@@ -22,8 +22,28 @@ ACTIONS = ("cancel", "hold", "release", "requeue")
 VERBS = {"cancel": "Cancel", "hold": "Hold", "release": "Release", "requeue": "Requeue"}
 """How each action names itself when refusing a job that is not the caller's."""
 
-_FOLDED = re.compile(r"^(\d+)_\[.*\]$")
-"""An array id squeue prints for elements that are still pending, like 123_[1-4]."""
+_FOLDED = re.compile(r"^(\d+)_\[(.*?)(?:%\d+)?\]$")
+"""An array id squeue prints for elements that are still pending, like 123_[1-4].
+
+The optional trailing %N is the concurrency limit Slurm prints inside the brackets,
+which names no element.
+"""
+
+
+def named_elements(jobid: str) -> set[str]:
+    """Return the element ids a folded array id names, or nothing for other forms."""
+    folded = _FOLDED.match(jobid.strip())
+    if not folded:
+        return set()
+    base, spec = folded.groups()
+    named: set[str] = set()
+    for part in spec.split(","):
+        low, dash, high = part.partition("-")
+        if dash and low.isdigit() and high.isdigit():
+            named.update(f"{base}_{index}" for index in range(int(low), int(high) + 1))
+        elif part.isdigit():
+            named.add(f"{base}_{part}")
+    return named
 
 
 def checkable(jobid: str) -> str:
@@ -93,6 +113,20 @@ def refuse_foreign(owners: dict[str, str], verb: str) -> None:
     raise CommandError(f"these jobs belong to another user: {listed}. {verb} only your own")
 
 
+def _in_queue(jobid: str) -> bool:
+    """Return whether the controller holds anything the id names.
+
+    A folded id is checked element by element rather than by its base. Checking the
+    base alone accepted a range naming elements that do not exist, and scancel
+    answers such a range by exiting cleanly having cancelled nothing, which is the
+    outcome the refusal for an unknown id exists to prevent.
+    """
+    named = named_elements(jobid)
+    if not named:
+        return slurm.job_exists(checkable(jobid))
+    return bool(named & slurm.array_elements(checkable(jobid)))
+
+
 def plan(action: str, jobids: list[str]) -> Planned:
     """Check an action against Slurm and return what to run, or raise.
 
@@ -106,7 +140,7 @@ def plan(action: str, jobids: list[str]) -> Planned:
         raise CommandError("a job id is required")
     listed = ", ".join(jobids)
     if action == "cancel":
-        unknown = [jobid for jobid in jobids if not slurm.job_exists(checkable(jobid))]
+        unknown = [jobid for jobid in jobids if not _in_queue(jobid)]
         if unknown:
             raise CommandError(
                 f"not in the queue: {', '.join(unknown)}. The id may be mistyped, or "

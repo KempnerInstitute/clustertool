@@ -332,12 +332,41 @@ def test_banner_shows_a_refusal(snap_compare):
     assert snap_compare(_app(), terminal_size=(120, 30), run_before=refused)
 
 
+LOG_TAIL = (
+    "Epoch 3/10  loss 0.214\n"
+    "  File [/n/example/LABS/a_lab/train.py], line 41\n"
+    "loss [bold red]nan[/] at step 3\n"
+    "\x1b[2Jtorch.cuda.OutOfMemoryError: CUDA out of memory"
+)
+"""A tail holding the two things that used to break the pane.
+
+A path in square brackets read as a closing markup tag and took the app down, and
+an escape byte was handed to the terminal as a command.
+"""
+
+
 def test_detail_with_a_log_tail(snap_compare):
     async def looked(pilot):
         panel = pilot.app.query_one(JobsPanel)
         panel.show(SAMPLE)
         await pilot.pause()
-        panel.show_text("Epoch 3/10  loss 0.214\nEpoch 4/10  loss 0.198\nsaving checkpoint")
+        panel.show_text(LOG_TAIL, SAMPLE[0].jobid)
         await pilot.pause()
 
     assert snap_compare(_app(), terminal_size=(120, 30), run_before=looked)
+
+
+def test_banner_cut_at_eighty_columns(snap_compare):
+    """Where the cut used to happen with nothing on screen to say it had."""
+
+    async def refused(pilot):
+        pilot.app.query_one(JobsPanel).show(SAMPLE)
+        await pilot.pause()
+        pilot.app.announce(
+            "not in the queue: 333_[0-7]. The id may be mistyped, or the job may have "
+            "already finished; scancel treats an unknown id as nothing to do, so this "
+            "would have exited cleanly having canceled nothing"
+        )
+        await pilot.pause()
+
+    assert snap_compare(_app(), terminal_size=(80, 26), run_before=refused)

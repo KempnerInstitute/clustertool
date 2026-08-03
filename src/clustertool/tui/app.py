@@ -2,6 +2,7 @@
 
 import asyncio
 import datetime
+import textwrap
 import threading
 from collections.abc import Callable
 
@@ -15,7 +16,6 @@ from textual.widgets import Button, DataTable, Static
 from clustertool.process import CommandError
 from clustertool.tui import actions, data
 from clustertool.tui.panels.jobs import JobsPanel
-from clustertool.tui.panels.jobs import _printable as jobs_panel_printable
 from clustertool.tui.panels.standing import StandingPanel
 from clustertool.tui.panels.status import StatusBar
 from clustertool.tui.panels.storage import StoragePanel
@@ -112,16 +112,24 @@ BANNER_ROWS = 2
 """How many rows the banner may wrap to, matching its max-height in the stylesheet."""
 
 
-def _shorten(said: str, room: int) -> str:
-    """Cut a banner line to what it can show, marking the cut.
+def _shorten(said: str, width: int) -> str:
+    """Cut a banner line to the rows it has, marking the cut where it lands.
 
     A refusal runs to a couple of hundred characters and the banner has two rows,
-    so at eighty columns the end of the reason was simply gone with nothing to say
-    it had been.
+    so the end of the reason was simply gone with nothing to say it had been. The
+    cut is found by wrapping rather than by counting characters: two rows of N
+    columns do not hold 2N characters of prose, so a character budget put the
+    ellipsis on a third row that the height then clipped, which is to say it marked
+    the cut somewhere nobody could see.
     """
-    if len(said) <= room:
+    if width < 4:
+        return said[:width]
+    rows = textwrap.wrap(said, width) or [""]
+    if len(rows) <= BANNER_ROWS:
         return said
-    return said[: max(room - 1, 1)] + "…"
+    kept = rows[:BANNER_ROWS]
+    kept[-1] = kept[-1][: max(width - 1, 1)].rstrip() + "…"
+    return "\n".join(kept)
 
 
 def _settle(panel, info=None, reason="") -> None:
@@ -389,8 +397,8 @@ class MeApp(App):
         """
         try:
             banner = self.query_one("#banner", Static)
-            room = max(banner.content_size.width * BANNER_ROWS, 1)
-            banner.update(_shorten(jobs_panel_printable(said), room))
+            width = max(banner.content_size.width, 1)
+            banner.update(_shorten(actions.printable(said), width))
         except NoMatches:
             return
 
