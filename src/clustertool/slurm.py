@@ -1128,7 +1128,7 @@ def sacct_window_rows(
 
     -D is passed because man sacct otherwise shows only the most recent record
     for a job id, and a requeued job has one record per incarnation. Without it
-    a job preempted nine times and then cancelled reports as one cancellation,
+    a job preempted nine times and then canceled reports as one cancellation,
     and the preemptions and node failures that caused the requeues are invisible.
 
     Raises if sacct fails, so a bad time string, an unknown user, or an

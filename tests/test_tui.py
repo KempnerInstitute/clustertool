@@ -2906,3 +2906,15 @@ async def test_the_quit_hint_is_painted_on_screen():
     async with app.run_test(size=(120, 24)) as pilot:
         await pilot.pause()
         assert "Q quit" in _painted(app)
+
+
+def test_the_bar_cuts_its_last_resort_by_cells_too():
+    """Reached when the clock alone is wider than the bar, which a locale can manage."""
+    from rich.cells import cell_len
+
+    from clustertool.tui.panels.status import fit
+
+    who = data.Identity("alice", "", "n", "S")
+    for width in range(1, 22):
+        line = fit(who, "週一 2026-08-03 00:52", width)
+        assert cell_len(line) <= width, (width, line)

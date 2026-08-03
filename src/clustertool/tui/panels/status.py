@@ -52,7 +52,21 @@ def fit(identity: data.Identity, stamp: str, width: int) -> str:
                 return line
             head = line[: -len(KEYS)].rstrip()
             return head + " " * max(width - cell_len(KEYS) - cell_len(head), 0) + KEYS
-    return stamp[:width]
+    return _cells(stamp, width)
+
+
+def _cells(text: str, width: int) -> str:
+    """Cut text to a number of display cells rather than of code points.
+
+    Reached only when the clock alone is wider than the bar, which a locale whose
+    weekday abbreviation is two cells per character can manage on a narrow terminal.
+    """
+    out = ""
+    for char in text:
+        if cell_len(out + char) > width:
+            break
+        out += char
+    return out
 
 
 class StatusBar(Static):

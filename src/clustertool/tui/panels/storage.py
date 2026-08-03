@@ -198,7 +198,7 @@ class StoragePanel(VerticalScroll):
     def end_read(self) -> None:
         """Clear the reading mark if it is still set, whatever ended the read.
 
-        A worker cancelled at teardown raises CancelledError, which is not an
+        A worker canceled at teardown raises CancelledError, which is not an
         Exception, so neither the result nor the failure path ran and the title
         stayed on "reading" for good.
         """

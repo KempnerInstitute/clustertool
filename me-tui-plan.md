@@ -251,7 +251,7 @@ state; live comparison against `account fairshare` and `jobs scope -D 7`.
 Verification: Pilot tests asserting the modal appears, that `esc` and No leave
 the command function uncalled, and that Yes calls it exactly once with the right
 job id. Every mutating test uses a stubbed command function. One live end to end
-on a throwaway job of my own, submitted and cancelled deliberately.
+on a throwaway job of my own, submitted and canceled deliberately.
 
 ### Phase 6: polish and docs
 
