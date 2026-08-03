@@ -173,8 +173,9 @@ def _fit(text: Text, width: int) -> Text:
     fairshare score cropped to 0. reads as complete and is the exact value the
     warning color exists for.
     """
-    if len(text.plain) > max(width, 1):
-        text.truncate(max(width - 1, 1), overflow="crop")
+    room = max(width, 1)
+    if len(text.plain) > room:
+        text.truncate(max(room - 1, 0), overflow="crop")
         text.append("…")
     return text
 

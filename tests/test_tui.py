@@ -2222,7 +2222,7 @@ def test_the_whole_gather_is_bounded_not_just_the_fan_out(monkeypatch):
     """In series, a stale mount held quitting for the sum of three timeouts."""
     monkeypatch.setattr(data, "STORAGE_DEADLINE_S", 0.4)
 
-    def hang():
+    def hang(*args):
         time.sleep(30)
 
     monkeypatch.setattr(data, "home_quota", hang)
@@ -2232,7 +2232,7 @@ def test_the_whole_gather_is_bounded_not_just_the_fan_out(monkeypatch):
     info = data.storage_info("alice")
     assert time.monotonic() - start < 5, "the gather deadline did not fire"
     assert info.home.pending, info.home
-    assert info.mine == []
+    assert [row.pending for row in info.mine] == [True], info.mine
     assert [row.label for row in info.labs] == ["lab@a"]
 
 
@@ -2355,115 +2355,43 @@ async def test_a_detached_query_still_raises_what_it_raised():
 
 
 def test_one_lookup_at_a_time_is_capped_across_the_whole_process(monkeypatch):
-    """A per-fan-out count is not a cap: a second refresh reached twice it."""
+    """A per-fan-out count is not a cap: a second refresh reached twice it.
+
+    A barrier forces the lookups to genuinely overlap and a non-blocking semaphore
+    detects any excess, so the assertion does not depend on how loaded the host is.
+    An earlier version slept, and produced a false failure under load average 41
+    twice, which corrupts a mutation battery it happens to run inside.
+    """
     import threading
 
     import clustertool.process as proc
     import clustertool.storage as storage_module
 
-    targets = [(f"/n/fs/lab{n}", f"lab{n}") for n in range(20)]
+    workers = data.QUOTA_WORKERS
+    targets = [(f"/n/fs/lab{n}", f"lab{n}") for n in range(workers * 3)]
     monkeypatch.setattr(storage_module, "user_groups", lambda user: [])
     monkeypatch.setattr(storage_module, "lab_targets", lambda g, r: targets)
     monkeypatch.setattr(storage_module, "mount_point", lambda p, mounts=None: ("/n/fs", "nfs"))
-    monkeypatch.setattr(data, "GATHER_DEADLINE_S", 0.5)
-    live = peak = 0
-    lock = threading.Lock()
+    slots = threading.Semaphore(workers)
+    barrier = threading.Barrier(workers, timeout=20)
+    excess = []
 
     def fake(cmd, timeout=None, input_text=None):
-        nonlocal live, peak
-        with lock:
-            live += 1
-            peak = max(peak, live)
+        if not slots.acquire(blocking=False):
+            excess.append(cmd)
         try:
-            time.sleep(0.3)
+            try:
+                barrier.wait()
+            except threading.BrokenBarrierError:
+                pass
             return (0, QUOTA_OUT, "")
         finally:
-            with lock:
-                live -= 1
+            slots.release()
 
     monkeypatch.setattr(proc, "probe", fake)
     data.lab_quotas("alice")
     data.lab_quotas("alice")
-    assert peak <= data.QUOTA_WORKERS, f"peak {peak} against a cap of {data.QUOTA_WORKERS}"
-
-
-def test_the_status_bar_says_how_to_quit():
-    """Nothing on screen said how to leave, so a user guessed ctrl+c."""
-    from clustertool.tui.panels.status import KEYS, fit
-
-    who = data.Identity("alice", "A Name", "node01", "Example HPC")
-    line = fit(who, "Sun 2026-08-02 14:32", 120)
-    assert "Q quit" in line
-    assert "? keys" in line
-    assert line.endswith(KEYS), "the hint is held to the right edge"
-    assert len(line) == 120
-
-
-def test_the_key_hint_outranks_the_site_name():
-    """A reader who cannot quit is worse off than one who cannot see the cluster."""
-    from clustertool.tui.panels.status import fit
-
-    who = data.Identity(
-        "mgutierrez", "Maria Fernanda Gutierrez", "holy8a26105", "Kempner AI Cluster"
-    )
-    line = fit(who, "Sun 2026-08-02 14:32", 92)
-    assert "Q quit" in line
-    assert "Kempner AI Cluster" not in line
-
-
-@pytest.mark.parametrize(
-    "who",
-    [
-        data.Identity("alice", "A Name", "node01", "Example HPC"),
-        data.Identity("averylongusername", "Maria Fernanda Gutierrez", "holy8a26105", "Kempner AI"),
-        data.Identity("bob", "", "n", "S"),
-    ],
-)
-def test_widening_the_bar_never_loses_a_field(who):
-    """Taking the hint early cost the host at 46 and gave it back at 55.
-
-    The same cliff the side column had, and the project has twice called it a
-    defect: widening a terminal must not remove information.
-    """
-    from clustertool.tui.panels.status import fit
-
-    stamp = "Sun 2026-08-02 14:32"
-    marks = (who.full_name, f"@ {who.host}", who.site_name, "Q quit")
-    seen = [False] * len(marks)
-    for width in range(8, 205):
-        line = fit(who, stamp, width)
-        assert len(line) <= width, (width, line)
-        for index, mark in enumerate(marks):
-            if mark and mark in line:
-                seen[index] = True
-            elif mark and seen[index]:
-                raise AssertionError(f"{mark!r} was shown then lost at width {width}: {line!r}")
-
-
-def test_the_key_hint_goes_before_the_clock_is_lost():
-    """At a width that holds neither, the bar keeps saying who and when."""
-    from clustertool.tui.panels.status import fit
-
-    who = data.Identity("alice", "", "node01", "Example HPC")
-    line = fit(who, "Sun 2026-08-02 14:32", 30)
-    assert len(line) <= 30
-    assert "Sun 2026-08-02 14:32" in line
-
-
-@pytest.mark.parametrize("width", [200, 120, 100, 80, 70, 60, 45, 40, 30, 20, 10])
-def test_the_status_bar_never_exceeds_its_width(width):
-    from clustertool.tui.panels.status import fit
-
-    who = data.Identity("mgutierrez", "Maria Fernanda Gutierrez", "holy8a26105", "Kempner AI")
-    assert len(fit(who, "Sun 2026-08-02 14:32", width)) <= width
-
-
-async def test_the_quit_hint_is_painted_on_screen():
-    """Asserted on the frame, since a render string could be clipped by the bar."""
-    app = _app()
-    async with app.run_test(size=(120, 24)) as pilot:
-        await pilot.pause()
-        assert "Q quit" in _painted(app)
+    assert excess == [], f"{len(excess)} lookups ran beyond the cap of {workers}"
 
 
 def test_a_job_that_has_not_ended_is_not_counted_in_the_window(monkeypatch):
@@ -2833,3 +2761,148 @@ def test_a_cpu_only_job_does_not_name_an_account(monkeypatch):
 def test_a_suspended_job_has_not_ended():
     for state in ("RUNNING", "PENDING", "SUSPENDED", "REQUEUED", "COMPLETING", "CONFIGURING"):
         assert state in data.UNFINISHED_STATES, state
+
+
+def test_the_idle_lab_fallback_only_names_an_account_that_may_run_there(monkeypatch):
+    """2704 of this cluster's 2742 users default to an account barred from the cap."""
+    monkeypatch.setattr(slurm, "user_gpus_by_account", lambda user, parts: (0, {}))
+    monkeypatch.setattr(slurm, "gpu_by_account", lambda parts: {})
+    monkeypatch.setattr(slurm, "qos_gpu_caps", lambda: (16, 96))
+    monkeypatch.setattr(
+        slurm, "partition_accounts", lambda part: ["kempner_lab_one", "kempner_dev"]
+    )
+
+    monkeypatch.setattr(slurm, "default_account", lambda user: "lab_one")
+    assert data.gpu_standing("alice").account == "kempner_lab_one"
+
+    monkeypatch.setattr(slurm, "default_account", lambda user: "kempner_dev")
+    assert data.gpu_standing("alice").account == "kempner_dev"
+
+    monkeypatch.setattr(slurm, "default_account", lambda user: "aizenberg_lab")
+    assert data.gpu_standing("alice").account == ""
+
+    monkeypatch.setattr(slurm, "default_account", lambda user: "root")
+    assert data.gpu_standing("alice").account == ""
+
+
+def test_an_unreadable_partition_names_no_account(monkeypatch):
+    monkeypatch.setattr(slurm, "user_gpus_by_account", lambda user, parts: (0, {}))
+    monkeypatch.setattr(slurm, "gpu_by_account", lambda parts: {})
+    monkeypatch.setattr(slurm, "qos_gpu_caps", lambda: (16, 96))
+    monkeypatch.setattr(slurm, "default_account", lambda user: "lab_one")
+
+    def boom(part):
+        raise CommandError("controller unreachable")
+
+    monkeypatch.setattr(slurm, "partition_accounts", boom)
+    assert data.gpu_standing("alice").account == ""
+
+
+def test_a_lab_fan_out_that_failed_wholesale_says_so(monkeypatch):
+    """Returning an empty list read as belonging to no labs."""
+    monkeypatch.setattr(data, "home_quota", lambda: _q("home"))
+    monkeypatch.setattr(data, "my_lustre_quotas", lambda user: [])
+
+    def boom(user):
+        raise CommandError("id is not answering")
+
+    monkeypatch.setattr(data, "lab_quotas", boom)
+    info = data.storage_info("alice")
+    assert len(info.labs) == 1
+    assert "id is not answering" in info.labs[0].error
+
+    from clustertool.tui.panels.storage import lines
+
+    plain = "\n".join(line.plain for line in lines(info, 60))
+    assert "id is not answering" in plain
+    assert "No lab directories" not in plain
+
+
+def test_the_status_bar_measures_display_cells_not_code_points():
+    """A two-cell-wide full name fitted by count and then wrapped, taking the clock."""
+    from rich.cells import cell_len
+
+    from clustertool.tui.panels.status import fit
+
+    who = data.Identity("alice", "\u5f35\u5049\u5049\u5049\u5049", "node01", "Example HPC")
+    for width in range(10, 120):
+        assert cell_len(fit(who, "Sun 2026-08-02 14:32", width)) <= width, width
+
+
+def test_the_status_bar_says_how_to_quit():
+    """Nothing on screen said how to leave, so a user guessed ctrl+c."""
+    from clustertool.tui.panels.status import KEYS, fit
+
+    who = data.Identity("alice", "A Name", "node01", "Example HPC")
+    line = fit(who, "Sun 2026-08-02 14:32", 120)
+    assert "Q quit" in line
+    assert "? keys" in line
+    assert line.endswith(KEYS), "the hint is held to the right edge"
+    assert len(line) == 120
+
+
+def test_the_key_hint_outranks_the_site_name():
+    """A reader who cannot quit is worse off than one who cannot see the cluster."""
+    from clustertool.tui.panels.status import fit
+
+    who = data.Identity(
+        "mgutierrez", "Maria Fernanda Gutierrez", "holy8a26105", "Kempner AI Cluster"
+    )
+    line = fit(who, "Sun 2026-08-02 14:32", 92)
+    assert "Q quit" in line
+    assert "Kempner AI Cluster" not in line
+
+
+@pytest.mark.parametrize(
+    "who",
+    [
+        data.Identity("alice", "A Name", "node01", "Example HPC"),
+        data.Identity("averylongusername", "Maria Fernanda Gutierrez", "holy8a26105", "Kempner AI"),
+        data.Identity("bob", "", "n", "S"),
+    ],
+)
+def test_widening_the_bar_never_loses_a_field(who):
+    """Taking the hint early cost the host at 46 and gave it back at 55.
+
+    The same cliff the side column had, and the project has twice called it a
+    defect: widening a terminal must not remove information.
+    """
+    from clustertool.tui.panels.status import fit
+
+    stamp = "Sun 2026-08-02 14:32"
+    marks = (who.full_name, f"@ {who.host}", who.site_name, "Q quit")
+    seen = [False] * len(marks)
+    for width in range(8, 205):
+        line = fit(who, stamp, width)
+        assert len(line) <= width, (width, line)
+        for index, mark in enumerate(marks):
+            if mark and mark in line:
+                seen[index] = True
+            elif mark and seen[index]:
+                raise AssertionError(f"{mark!r} was shown then lost at width {width}: {line!r}")
+
+
+def test_the_key_hint_goes_before_the_clock_is_lost():
+    """At a width that holds neither, the bar keeps saying who and when."""
+    from clustertool.tui.panels.status import fit
+
+    who = data.Identity("alice", "", "node01", "Example HPC")
+    line = fit(who, "Sun 2026-08-02 14:32", 30)
+    assert len(line) <= 30
+    assert "Sun 2026-08-02 14:32" in line
+
+
+@pytest.mark.parametrize("width", [200, 120, 100, 80, 70, 60, 45, 40, 30, 20, 10])
+def test_the_status_bar_never_exceeds_its_width(width):
+    from clustertool.tui.panels.status import fit
+
+    who = data.Identity("mgutierrez", "Maria Fernanda Gutierrez", "holy8a26105", "Kempner AI")
+    assert len(fit(who, "Sun 2026-08-02 14:32", width)) <= width
+
+
+async def test_the_quit_hint_is_painted_on_screen():
+    """Asserted on the frame, since a render string could be clipped by the bar."""
+    app = _app()
+    async with app.run_test(size=(120, 24)) as pilot:
+        await pilot.pause()
+        assert "Q quit" in _painted(app)

@@ -429,8 +429,8 @@ def storage_info(user: str) -> StorageInfo:
         thread.join(max(deadline - time.monotonic(), 0.0))
     return StorageInfo(
         home=_taken(home, QuotaRow("home", "-", "-", "-", error=_why(home))),
-        labs=_taken(labs, []),
-        mine=_taken(mine, []),
+        labs=_taken(labs, [QuotaRow("lab directories", "-", "-", "-", error=_why(labs))]),
+        mine=_taken(mine, [QuotaRow("lustre", "-", "-", "-", error=_why(mine))]),
     )
 
 
@@ -729,9 +729,14 @@ def _charged_account(user: str, mine: dict[str, int], totals: dict[str, int], pr
 
     Whichever of their own running jobs holds the most, since that is the account
     whose ceiling they are actually working against, and the name breaks a tie so an
-    evenly split caller does not see it flip between refreshes. With nothing running
-    there is no such account, so their default is used, prefixed to match the
-    accounts this QoS governs, and only when Slurm knows that name.
+    evenly split caller does not see it flip between refreshes.
+
+    With nothing running there is no such account, so their default is used, tried
+    both prefixed and bare because either can be the governed one, and only when it
+    appears in the capped partition's own AllowAccounts. Asking merely whether Slurm
+    knows the name is not enough: 2704 of this cluster's 2742 users default to an
+    account that cannot run on the capped partitions at all, and naming one against
+    a 96-GPU cap is the same false statement this was fixed to remove.
     """
     from clustertool import slurm
 
@@ -744,12 +749,13 @@ def _charged_account(user: str, mine: dict[str, int], totals: dict[str, int], pr
     for candidate in (f"{prefix}{default}", default):
         if candidate in totals:
             return candidate
+    try:
+        allowed = set(slurm.partition_accounts(slurm.BASE_PARTITIONS[0]))
+    except (CommandError, IndexError):
+        return ""
     for candidate in (f"{prefix}{default}", default):
-        try:
-            if candidate and slurm.account_exists(candidate):
-                return candidate
-        except CommandError:
-            break
+        if candidate in allowed:
+            return candidate
     return ""
 
 

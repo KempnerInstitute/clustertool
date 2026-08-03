@@ -3,6 +3,7 @@
 import datetime
 from collections.abc import Callable
 
+from rich.cells import cell_len
 from textual.widgets import Static
 
 from clustertool.tui import data
@@ -30,6 +31,10 @@ def fit(identity: data.Identity, stamp: str, width: int) -> str:
     as the window is dragged. The key hint sits above the site name and below the
     host, so a reader on any ordinary terminal can see how to quit, and a reader on
     a very narrow one keeps the username and the clock instead.
+
+    Widths are display cells rather than code points. A GECOS full name in a script
+    whose characters are two cells wide fitted by count and then wrapped, which took
+    the clock with it, and accented Latin hid this because it is one cell.
     """
     who = identity
     name = f" ({who.full_name})" if who.full_name else ""
@@ -42,10 +47,11 @@ def fit(identity: data.Identity, stamp: str, width: int) -> str:
         f"{who.user}{name} @ {who.host}{GAP}{who.site_name}{GAP}{stamp}{GAP}{KEYS}",
     ]
     for line in reversed(ladder):
-        if len(line) <= width:
+        if cell_len(line) <= width:
             if not line.endswith(KEYS):
                 return line
-            return line[: -len(KEYS)].rstrip().ljust(width - len(KEYS)) + KEYS
+            head = line[: -len(KEYS)].rstrip()
+            return head + " " * max(width - cell_len(KEYS) - cell_len(head), 0) + KEYS
     return stamp[:width]
 
 
