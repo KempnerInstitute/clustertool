@@ -114,32 +114,47 @@ def report(screen, cols, rows, early):
 
 
 def _headings_verdict(lines):
-    """Check the painted heading positions against the widths layout asked for.
+    """Check the painted headings against what the code says the table may do.
 
     The settling check alone is not enough: it sees a frame that lands wrong and
     then heals, and is blind to one that lands wrong and stays, because then the
     early and the settled screen agree. This compares what is on the screen with
     what the code says should be there, so a wrong frame is wrong either way.
-    """
-    from clustertool.tui.panels.jobs import layout
 
+    Which columns fit is decided by their minimum widths and so can be predicted
+    here. How wide each one grows is decided by the values on screen, which this
+    script cannot know: it drives the real dashboard against the live queue, and
+    reading the queue again to find out would race with it. So the widths are
+    checked against their bounds instead, which is what catches the failure this
+    was written for: a resize that repainted every column at its heading width,
+    narrower than any minimum.
+    """
+    from clustertool.tui.panels.jobs import CELL_PADDING, COLUMNS, layout
+
+    minimum = {name: low for name, low, _ in COLUMNS}
+    ceiling = {name: high for name, _, high in COLUMNS}
     for line in lines:
         edges = [n for n, char in enumerate(line) if char == "│"]
         if len(edges) < 2 or "ID" not in line:
             continue
         table_width = edges[1] - edges[0] - 3
-        want = layout(table_width)
-        offset, expected = edges[0] + 2, []
-        for name, width in want:
-            expected.append((name, offset + 1))
-            offset += width + 2
-        painted = [(name, line.find(name, start - 1)) for name, start in expected]
-        wrong = [
-            (name, start, at)
-            for (name, start), (_, at) in zip(expected, painted, strict=True)
-            if at != start
+        want = [name for name, _ in layout(table_width)]
+        at = [(name, line.find(name, edges[0])) for name in want]
+        missing = [name for name, pos in at if pos < 0]
+        if missing:
+            return f"MISSING {missing}"
+        if [pos for _, pos in at] != sorted(pos for _, pos in at):
+            return f"OUT OF ORDER {at}"
+        painted = [
+            (name, later - pos - CELL_PADDING)
+            for (name, pos), (_, later) in zip(at, at[1:], strict=False)
         ]
-        return f"ok, {len(want)} columns in {table_width}" if not wrong else f"MISPLACED {wrong}"
+        wrong = [
+            (name, width) for name, width in painted if not minimum[name] <= width <= ceiling[name]
+        ]
+        if wrong:
+            return f"OUT OF BOUNDS {wrong}"
+        return f"ok, {len(want)} columns in {table_width}, widths {dict(painted)}"
     return "no table row found"
 
 

@@ -797,6 +797,68 @@ def test_layout_drops_columns_before_it_starves_the_ones_that_stay():
         assert all(w >= 1 for _, w in columns), (width, columns)
 
 
+def test_a_column_grows_no_wider_than_the_widest_value_it_holds():
+    """Otherwise the width goes to a column that does not need it.
+
+    At 100 columns ID took 18 cells for a 9-character id while NODE was cut to 9 of
+    the 47 its value needed, because the ceilings are the widest each field runs to
+    across every job on the cluster rather than across the rows on screen.
+    """
+    from clustertool.tui.panels.jobs import layout
+
+    fitted = dict(layout(120, SAMPLE_JOBS))
+    blind = dict(layout(120))
+    assert fitted["ID"] == 12, fitted
+    assert blind["ID"] > fitted["ID"], (blind, fitted)
+    assert fitted["PART"] == len("kempner_h100"), fitted
+
+
+def test_a_column_still_pays_its_minimum_when_its_values_are_shorter():
+    """The minimums are the width at which a column says anything, data or no data."""
+    from clustertool.tui.panels.jobs import COLUMNS, layout
+
+    minimum = {name: low for name, low, _ in COLUMNS}
+    short = [_row("1", partition="p", elapsed="0:00", nodelist="n1")]
+    for name, width in layout(120, short):
+        assert width >= minimum[name], (name, width)
+
+
+def test_width_left_over_is_unspent_rather_than_padding_the_columns_out():
+    """The table ends where its content does, which is what leaves NODE its room."""
+    from clustertool.tui.panels.jobs import CELL_PADDING, layout
+
+    columns = layout(200, SAMPLE_JOBS)
+    taken = sum(width for _, width in columns) + CELL_PADDING * len(columns)
+    assert taken < 200, columns
+
+
+def test_the_ceilings_never_exceed_the_static_ones():
+    """A value longer than any field runs to would otherwise blow the table out."""
+    from clustertool.tui.panels.jobs import COLUMNS, ceilings
+
+    static = {name: high for name, _, high in COLUMNS}
+    grown = ceilings([_row("9" * 400, partition="p," * 200, nodelist="n" * 500, nnodes=3)])
+    for name, width in grown.items():
+        assert width <= static[name], (name, width)
+
+
+async def test_no_value_is_cut_when_the_panel_has_room_for_every_one_of_them():
+    """The point of the whole exercise, asserted on the frame rather than the widths."""
+    from clustertool.tui.panels.jobs import JobsPanel
+
+    app = _app()
+    async with app.run_test(size=(160, 30)) as pilot:
+        await pilot.pause()
+        app.query_one(JobsPanel).show(SAMPLE_JOBS)
+        await pilot.pause()
+        painted = _painted(app)
+        for row in SAMPLE_JOBS:
+            for value in (row.jobid, row.partition, row.elapsed, row.where):
+                assert value in painted, value
+        table = app.query_one("#jobs-table")
+        assert table.virtual_size.width <= table.size.width
+
+
 def _wide_rows():
     return [
         _row(

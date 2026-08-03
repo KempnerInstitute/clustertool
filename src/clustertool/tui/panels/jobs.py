@@ -117,13 +117,44 @@ def elide(text: str, width: int) -> str:
     return kept + "…"
 
 
-def layout(width: int) -> list[tuple[str, int]]:
+def ceilings(rows: list[data.JobRow]) -> dict[str, int]:
+    """Return how wide each column may grow for these rows, its own rule permitting.
+
+    A column grown past the widest value it holds takes that width from one that had
+    to be cut. At 100 columns ID took 18 cells for a 9-character id while NODE was
+    cut to 9 of the 47 its value needed, because the static ceiling is the widest
+    value the field takes across every job on the cluster rather than across the
+    ones on screen. The heading counts, since a column narrower than its own
+    heading cuts that instead.
+
+    The cost is that the columns move when the data does: one pending array
+    element with a folded id widens ID for as long as it is queued. That is the
+    trade, and it is the right way round, because a width that shifts is still
+    readable and a value cut to a fragment is not.
+
+    No rows means no constraint rather than the headings alone. An empty table has
+    no value to fit, and a caller asking what the table may do without naming any
+    rows is asking about the widest it goes.
+    """
+    if not rows:
+        return {name: high for name, _, high in COLUMNS}
+    values = [cells(row) for row in rows]
+    return {
+        name: min(high, max([cell_len(name), *(cell_len(value[name]) for value in values)]))
+        for name, _, high in COLUMNS
+    }
+
+
+def layout(width: int, rows: list[data.JobRow] | None = None) -> list[tuple[str, int]]:
     """Return the columns that fit in width, and how wide each cell may be.
 
     Drops whole columns before it lets the remaining ones fall below the width at
     which they say anything, then shares what is left over round by round, so no
-    single column takes all the slack.
+    single column takes all the slack. Width left over once every column holds its
+    own widest value is left unspent rather than padding the columns out to the
+    panel's edge.
     """
+    grown = ceilings(rows or [])
     columns = list(COLUMNS)
     for name in DROP_ORDER:
         if _needs(columns) <= width or len(columns) <= 2:
@@ -139,7 +170,7 @@ def layout(width: int) -> list[tuple[str, int]]:
         deficit -= 1
     spare = width - _needs(columns)
     while spare > 0:
-        growable = [name for name, _, high in columns if widths[name] < high]
+        growable = [name for name, _, _ in columns if widths[name] < grown[name]]
         if not growable:
             break
         for name in growable:
@@ -153,6 +184,18 @@ def layout(width: int) -> list[tuple[str, int]]:
 def _needs(columns: list[tuple[str, int, int]]) -> int:
     """Return the width the columns take at their narrowest, padding included."""
     return sum(low for _, low, _ in columns) + CELL_PADDING * len(columns)
+
+
+def cells(row: data.JobRow) -> dict[str, str]:
+    """Return the row keyed by column heading, so a dropped column just goes unread."""
+    return {
+        "ID": row.jobid,
+        "PART": row.partition,
+        "ST": row.code,
+        "GPU": str(row.gpus) if row.gpus else "-",
+        "ELAP": row.elapsed,
+        "NODE": row.where,
+    }
 
 
 class JobsPanel(Vertical):
@@ -190,7 +233,7 @@ class JobsPanel(Vertical):
         and the overflow would be clipped without an ellipsis.
         """
         table = self.query_one("#jobs-table", DataTable)
-        if layout(table.size.width or 80) != self._columns:
+        if layout(table.size.width or 80, self._rows) != self._columns:
             self._paint()
         elif self._extra:
             self._refresh_detail()
@@ -213,14 +256,14 @@ class JobsPanel(Vertical):
         table = self.query_one("#jobs-table", DataTable)
         if rows is None:
             rows, previous = self._rows, self.selected.jobid if self.selected else None
-        columns = layout(table.size.width or 80)
+        columns = layout(table.size.width or 80, rows)
         self._columns = columns
         table.clear(columns=True)
         for name, width in columns:
             table.add_column(name, width=width)
         for row in rows:
-            cells = self._cells(row)
-            table.add_row(*(elide(cells[name], width) for name, width in columns), key=row.jobid)
+            value = cells(row)
+            table.add_row(*(elide(value[name], width) for name, width in columns), key=row.jobid)
         self._rows = rows
         if previous is not None:
             for index, row in enumerate(rows):
@@ -228,18 +271,6 @@ class JobsPanel(Vertical):
                     table.move_cursor(row=index)
                     break
         self._refresh_detail()
-
-    @staticmethod
-    def _cells(row: data.JobRow) -> dict[str, str]:
-        """Return the row keyed by column heading, so a dropped column just goes unread."""
-        return {
-            "ID": row.jobid,
-            "PART": row.partition,
-            "ST": row.code,
-            "GPU": str(row.gpus) if row.gpus else "-",
-            "ELAP": row.elapsed,
-            "NODE": row.where,
-        }
 
     def show_text(self, text: str, jobid: str) -> None:
         """Add something read off the cluster below the detail.
