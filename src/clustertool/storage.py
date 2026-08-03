@@ -182,6 +182,34 @@ def lustre_ost_count(path: str) -> int:
     return sum(1 for line in out.splitlines() if "_UUID" in line)
 
 
+def mount_point(path: str, mounts: str | None = None) -> tuple[str, str]:
+    """Return the (mount point, filesystem type) a path sits on, or ('', '').
+
+    Read from mountinfo rather than by trying a tool and seeing whether it works,
+    so a Lustre-only query is not sent to an NFS path in the first place. The
+    longest matching mount point wins, since mounts nest.
+    """
+    try:
+        if mounts is None:
+            with open("/proc/self/mountinfo", encoding="utf-8", errors="replace") as handle:
+                mounts = handle.read()
+    except OSError:
+        return "", ""
+    target = os.path.realpath(path)
+    best, kind = "", ""
+    for line in mounts.splitlines():
+        head, _, tail = line.partition(" - ")
+        fields = head.split()
+        if len(fields) < 5:
+            continue
+        point = fields[4]
+        if (target == point or target.startswith(point.rstrip("/") + "/")) and len(point) > len(
+            best
+        ):
+            best, kind = point, tail.split()[0] if tail.split() else ""
+    return best, kind
+
+
 def used_bytes(text: str) -> float:
     """Return a rendered usage figure as bytes, for ordering rows of equal percent."""
     return _to_bytes(text)

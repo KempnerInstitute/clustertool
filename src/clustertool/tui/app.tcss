@@ -21,6 +21,12 @@ Screen {
     border: round $panel-lighten-2;
     border-title-align: left;
     padding: 0 1;
+    scrollbar-size-vertical: 1;
+}
+
+#storage-body {
+    height: auto;
+    width: 100%;
 }
 
 #standing {

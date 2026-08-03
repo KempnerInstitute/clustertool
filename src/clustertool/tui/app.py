@@ -7,6 +7,7 @@ from collections.abc import Callable
 from textual import events, work
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
+from textual.css.query import NoMatches
 from textual.screen import ModalScreen
 from textual.widgets import DataTable, Static
 
@@ -14,6 +15,7 @@ from clustertool.process import CommandError
 from clustertool.tui import data
 from clustertool.tui.panels.jobs import JobsPanel
 from clustertool.tui.panels.status import StatusBar
+from clustertool.tui.panels.storage import StoragePanel
 
 SIDE_BY_SIDE = 80
 """Narrowest terminal that still holds the jobs panel and the side column together.
@@ -36,7 +38,8 @@ Keys
   up down      move between jobs
   tab          next panel
   shift+tab    previous panel
-  r            refresh the jobs now
+  r            refresh the focused panel
+  R            refresh every panel
   ?            this help
   Q            quit
 """
@@ -51,6 +54,15 @@ def _reason(exc: BaseException) -> str:
     if isinstance(exc, CommandError):
         return str(exc)
     return f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
+
+
+def _settle(panel, info=None, reason="") -> None:
+    """Take the panel out of its loading state and show the result or the failure."""
+    panel.loading = False
+    if reason:
+        panel.fail(reason)
+    else:
+        panel.show(info)
 
 
 class HelpScreen(ModalScreen):
@@ -73,6 +85,7 @@ class MeApp(App):
         ("ctrl+c", "quit", "quit"),
         ("question_mark", "help", "help"),
         ("r", "refresh", "refresh"),
+        ("R", "refresh_all", "refresh all"),
         ("tab", "focus_next", "next panel"),
         ("shift+tab", "focus_previous", "previous panel"),
     ]
@@ -88,22 +101,23 @@ class MeApp(App):
         self._clock = clock
         self._interval = interval
         self._loading = False
+        self._loading_storage = False
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="body"):
             yield JobsPanel()
-            yield Static("", id="storage", classes="panel")
+            yield StoragePanel()
         yield Static("", id="standing", classes="panel")
         yield StatusBar(self._identity, clock=self._clock)
 
     def on_mount(self) -> None:
-        for widget_id, title in (("#storage", "Storage"), ("#standing", "Standing")):
-            panel = self.query_one(widget_id)
-            panel.border_title = title
-            panel.can_focus = True
+        standing = self.query_one("#standing")
+        standing.border_title = "Standing"
+        standing.can_focus = True
         self.query_one("#jobs-table", DataTable).focus()
         if self._interval > 0:
             self.load_jobs()
+            self.load_storage()
             self.set_interval(self._interval, self.load_jobs)
 
     @work(group="jobs")
@@ -122,11 +136,26 @@ class MeApp(App):
         self._loading = True
         try:
             rows = await asyncio.to_thread(data.jobs, self._identity.user)
-            self.query_one(JobsPanel).show(rows)
+            self._on(JobsPanel, lambda panel: panel.show(rows))
         except Exception as exc:
-            self.query_one(JobsPanel).fail(_reason(exc))
+            reason = _reason(exc)
+            self._on(JobsPanel, lambda panel: panel.fail(reason))
         finally:
             self._loading = False
+
+    def _on(self, kind: type, action: Callable) -> None:
+        """Run action on a panel if it is still mounted, and drop it if not.
+
+        A worker outlives the screen when the app is shutting down with a query in
+        flight. The lookup then raises, and doing that inside the handler that
+        reports a failure replaces the failure with a WorkerFailed and a traceback
+        over the terminal, which is the thing the handler exists to prevent.
+        """
+        try:
+            panel = self.query_one(kind)
+        except NoMatches:
+            return
+        action(panel)
 
     def on_resize(self, event: events.Resize) -> None:
         """Drop the side column when two panels no longer fit across the terminal.
@@ -137,9 +166,48 @@ class MeApp(App):
         """
         self.query_one("#storage").display = event.size.width >= SIDE_BY_SIDE
 
+    @work(group="storage")
+    async def load_storage(self) -> None:
+        """Read the quotas off the filesystems without blocking the interface.
+
+        Not on the timer: quotas move slowly, the fan-out is a second warm and six
+        cold, and every viewer of this dashboard would be putting that on a shared
+        quota service every few seconds for a figure that had not changed.
+        """
+        if self._loading_storage:
+            return
+        self._loading_storage = True
+        self._on(StoragePanel, lambda panel: setattr(panel, "loading", True))
+        try:
+            info = await asyncio.to_thread(data.storage_info, self._identity.user)
+            self._on(StoragePanel, lambda panel: _settle(panel, info=info))
+        except Exception as exc:
+            reason = _reason(exc)
+            self._on(StoragePanel, lambda panel: _settle(panel, reason=reason))
+        finally:
+            self._loading_storage = False
+
     def action_refresh(self) -> None:
-        """Read the jobs again now, rather than waiting for the timer."""
+        """Read the focused panel again now, rather than waiting for the timer."""
+        if self._focused_panel() is StoragePanel:
+            self.load_storage()
+            return
         self.load_jobs()
+
+    def _focused_panel(self) -> type | None:
+        """Return the panel class holding focus, which decides what r refreshes."""
+        focused = self.focused
+        if focused is None:
+            return None
+        for widget in focused.ancestors_with_self:
+            if isinstance(widget, StoragePanel | JobsPanel):
+                return type(widget)
+        return None
+
+    def action_refresh_all(self) -> None:
+        """Read every panel again, whichever one has focus."""
+        self.load_jobs()
+        self.load_storage()
 
     def action_help(self) -> None:
         """Open the key reference, which is the only discovery route for the bindings."""

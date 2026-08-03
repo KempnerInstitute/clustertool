@@ -50,6 +50,15 @@ def _drain(fd, stream, seconds, decoder):
                 return
 
 
+FIRST_LOAD = 9.0
+"""Time allowed before the walk starts, for every panel to hold real data.
+
+The quota fan-out takes about six seconds cold. Beginning the walk before it lands
+makes the panel change during the sample window, and the settling check then
+reports that arrival rather than a redraw that went wrong.
+"""
+
+
 def run(binary, sizes, settle=2.0):
     """Start the app, walk the sizes, and print each resulting screen."""
     first = sizes[0]
@@ -60,7 +69,7 @@ def run(binary, sizes, settle=2.0):
     decoder = codecs.getincrementaldecoder("utf-8")("replace")
     screen = pyte.Screen(first[0], first[1])
     _resize(fd, *first)
-    _drain(fd, pyte.Stream(screen), settle + 1, decoder)
+    _drain(fd, pyte.Stream(screen), FIRST_LOAD, decoder)
     for cols, rows in sizes:
         nudge = max(rows - 1, 2)
         _resize(fd, cols, nudge)

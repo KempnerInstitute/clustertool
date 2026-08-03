@@ -7,6 +7,7 @@ import pwd
 import socket
 import subprocess
 import sys
+import time
 
 import pytest
 from click.testing import CliRunner
@@ -1047,3 +1048,424 @@ async def test_a_failing_query_marks_the_panel_and_leaves_the_app_up(monkeypatch
         assert expected in app.query_one(JobsPanel)._detail_text()
         assert "stale" in str(app.query_one(JobsPanel).border_title)
     assert app.return_code in (0, None)
+
+
+QUOTA_OUT = (
+    "Disk quotas for grp lab (gid 1):\n"
+    "     Filesystem    used   quota   limit   grace   files   quota   limit   grace\n"
+    "   /n/fs  1.5T     2T     2T       - 100  200 200       -\n"
+)
+
+
+def _quota_out(used, cap):
+    """Return quota output the site tool would print for one directory."""
+    return (
+        "Disk quotas for grp lab (gid 1):\n"
+        "     Filesystem used quota limit grace files quota limit grace\n"
+        f"   /n/fs {used} {cap} {cap} - 100 200 200 -\n"
+    )
+
+
+def _quota_probe(monkeypatch, out=QUOTA_OUT, code=0, err="", delay=0.0, seen=None):
+    """Stub every subprocess the storage layer makes."""
+    import time
+
+    import clustertool.process as proc
+
+    def fake(cmd, timeout=None, input_text=None):
+        if seen is not None:
+            seen.append(cmd)
+        if delay:
+            time.sleep(delay)
+        return (code, out, err)
+
+    monkeypatch.setattr(proc, "probe", fake)
+
+
+def test_bar_marks_any_usage_and_never_overflows():
+    from clustertool.tui.panels.storage import bar
+
+    assert bar(None) == "      "
+    assert bar(0.0) == "░░░░░░"
+    assert bar(0.01) == "█░░░░░", "a directory holding data must not read as empty"
+    assert bar(0.5) == "███░░░"
+    assert bar(1.0) == "██████"
+    assert bar(1.3) == "██████", "over quota cannot draw more cells than there are"
+    assert bar(0.5, 0) == ""
+
+
+def test_the_bar_distinguishes_nearly_full_from_full():
+    """Rounding up filled every cell from 84%, so 90 percent looked like 100."""
+    from clustertool.tui.panels.storage import bar
+
+    assert bar(0.90) != bar(0.98)
+    assert bar(0.98) == "██████"
+
+
+@pytest.mark.parametrize(
+    ("fraction", "expected"),
+    [(None, "dim"), (0.0, ""), (0.74, ""), (0.75, "yellow"), (0.89, "yellow"), (0.90, "bold red")],
+)
+def test_style_turns_at_the_documented_thresholds(fraction, expected):
+    from clustertool.tui.panels.storage import style_for
+
+    assert style_for(fraction) == expected
+
+
+def test_a_bracket_in_a_lab_name_is_not_read_as_markup():
+    """A label carries a group name off the filesystem, so it is not trusted."""
+    from clustertool.tui.panels.storage import row_text
+
+    row = data.QuotaRow("fs/[bold red]lab", "1T", "2T", "93%")
+    from clustertool.tui.panels.storage import BAR_WIDTH, PERCENT_WIDTH
+
+    text = row_text(row, 40)
+    assert "[bold red]" in text.plain
+    label_end = 40 - PERCENT_WIDTH - BAR_WIDTH - 1
+    assert all(span.start >= label_end for span in text.spans), text.spans
+
+
+def test_a_row_that_could_not_be_read_says_why_instead_of_a_bar():
+    from clustertool.tui.panels.storage import row_text
+
+    row = data.QuotaRow("fs/lab", "-", "-", "-", error="quota timed out")
+    plain = row_text(row, 40).plain
+    assert "timed out" in plain
+    assert "█" not in plain and "░" not in plain
+
+
+def test_a_row_never_exceeds_the_width_it_is_given():
+    from clustertool.tui.panels.storage import row_text
+
+    row = data.QuotaRow("netscratch/kempner_a_very_long_lab_name_indeed", "1T", "2T", "93%")
+    for width in range(14, 60):
+        assert len(row_text(row, width).plain) <= width, width
+
+
+def test_lines_names_every_section_and_counts_the_labs():
+    from clustertool.tui.panels.storage import lines
+
+    info = data.StorageInfo(
+        home=data.QuotaRow("home", "76G", "95G", "80%"),
+        labs=[data.QuotaRow("fs/a", "1T", "2T", "50%"), data.QuotaRow("fs/b", "2T", "2T", "99%")],
+        mine=[data.QuotaRow("holylfs06", "50T", "0k", "-")],
+    )
+    plain = "\n".join(line.plain for line in lines(info, 40))
+    assert "home" in plain
+    assert "labs (2)" in plain
+    assert "you, on lustre" in plain
+    assert "fs/a" in plain and "fs/b" in plain
+
+
+def test_lines_says_so_when_there_are_no_lab_directories():
+    """An empty section would read as a panel that failed to load."""
+    from clustertool.tui.panels.storage import NO_LABS, lines
+
+    info = data.StorageInfo(home=None, labs=[], mine=[])
+    plain = "\n".join(line.plain for line in lines(info, 40))
+    assert NO_LABS[:20] in plain
+    assert "you, on lustre" not in plain
+
+
+def test_home_quota_reads_the_df_row(monkeypatch):
+    out = "Filesystem Size Used Avail Use% Mounted on\n/dev/x 95G 76G 19G 80% /n/home14\n"
+    _quota_probe(monkeypatch, out=out)
+    row = data.home_quota()
+    assert (row.used, row.quota, row.percent) == ("76G", "95G", "80%")
+    assert row.error == ""
+
+
+@pytest.mark.parametrize(
+    ("out", "code", "expected"),
+    [
+        ("", 127, "not found on this host"),
+        ("", 124, "timed out"),
+        ("Filesystem Size\n", 0, "no rows"),
+        ("Filesystem Size\n/dev/x 95G\n", 0, "short"),
+    ],
+)
+def test_home_quota_explains_a_failure(monkeypatch, out, code, expected):
+    _quota_probe(monkeypatch, out=out, code=code)
+    row = data.home_quota()
+    assert expected in row.error
+    assert row.percent == "-"
+
+
+def test_lab_quotas_run_in_parallel(monkeypatch):
+    """Serial, forty directories took 6.9s live; the panel cannot wait that long."""
+    import time
+
+    import clustertool.storage as storage_module
+
+    targets = [(f"/n/fs/lab{n}", f"lab{n}") for n in range(12)]
+    monkeypatch.setattr(storage_module, "user_groups", lambda user: ["lab0"])
+    monkeypatch.setattr(storage_module, "lab_targets", lambda groups, roots: targets)
+    monkeypatch.setattr(storage_module, "mount_point", lambda path, mounts=None: ("/n/fs", "nfs"))
+    _quota_probe(monkeypatch, delay=0.1)
+    start = time.monotonic()
+    rows = data.lab_quotas("alice")
+    elapsed = time.monotonic() - start
+    assert len(rows) == 12
+    serial = 12 * 0.1
+    assert elapsed < serial / 2, f"{elapsed:.2f}s for what serial takes {serial:.2f}s"
+
+
+def test_lab_quotas_put_the_fullest_first(monkeypatch):
+    """The panel is a side column, so what is nearly full has to be on screen."""
+    import clustertool.process as proc
+    import clustertool.storage as storage_module
+
+    caps = {"a": ("1T", "10T"), "b": ("99T", "100T"), "c": ("1T", "0"), "d": ("5T", "10T")}
+    targets = [(f"/n/fs/{name}", name) for name in caps]
+    monkeypatch.setattr(storage_module, "user_groups", lambda user: [])
+    monkeypatch.setattr(storage_module, "lab_targets", lambda groups, roots: targets)
+    monkeypatch.setattr(storage_module, "mount_point", lambda path, mounts=None: ("/n/fs", "nfs"))
+    monkeypatch.setattr(
+        proc, "probe", lambda cmd, **kw: (0, _quota_out(*caps[cmd[-1].rsplit("/", 1)[-1]]), "")
+    )
+    assert [row.label for row in data.lab_quotas("alice")] == ["fs/b", "fs/d", "fs/a", "fs/c"]
+
+
+def test_a_lab_whose_quota_cannot_be_read_still_gets_a_row(monkeypatch):
+    """Dropping it would silently shrink the list and hide the failure."""
+    import clustertool.storage as storage_module
+
+    monkeypatch.setattr(storage_module, "user_groups", lambda user: [])
+    monkeypatch.setattr(storage_module, "lab_targets", lambda g, r: [("/n/fs/a", "a")])
+    monkeypatch.setattr(storage_module, "mount_point", lambda path, mounts=None: ("/n/fs", "nfs"))
+    _quota_probe(monkeypatch, out="", code=124)
+    rows = data.lab_quotas("alice")
+    assert len(rows) == 1
+    assert "timed out" in rows[0].error
+    assert rows[0].fraction is None
+
+
+def test_only_lustre_roots_get_a_per_user_query(monkeypatch):
+    """lfs quota is a Lustre command, and the NFS roots do not answer it usefully."""
+    import clustertool.site as site_module
+    import clustertool.storage as storage_module
+
+    kinds = {"/n/lustre1": "lustre", "/n/lustre2": "lustre", "/n/nfs1": "nfs"}
+    monkeypatch.setattr(
+        site_module,
+        "storage_lab_roots",
+        lambda: ["/n/lustre1/LABS", "/n/lustre2/LABS", "/n/nfs1"],
+    )
+
+    def mount(path, mounts=None):
+        for root, kind in kinds.items():
+            if path.startswith(root):
+                return root, kind
+        return "", ""
+
+    monkeypatch.setattr(storage_module, "mount_point", mount)
+    seen = []
+    _quota_probe(monkeypatch, out="/n/lustre1 50T 0k - -\n", seen=seen)
+    rows = data.my_lustre_quotas("alice")
+    assert [row.label for row in rows] == ["lustre1", "lustre2"]
+    assert all("lfs" in cmd[0] and "-u" in cmd for cmd in seen)
+    assert not any("nfs1" in cmd[-1] for cmd in seen)
+
+
+def test_a_lustre_root_is_asked_once_per_mount(monkeypatch):
+    """Two lab roots on one filesystem share its per-user quota."""
+    import clustertool.site as site_module
+    import clustertool.storage as storage_module
+
+    monkeypatch.setattr(site_module, "storage_lab_roots", lambda: ["/n/lfs/LABS", "/n/lfs/OTHER"])
+    monkeypatch.setattr(storage_module, "mount_point", lambda p, mounts=None: ("/n/lfs", "lustre"))
+    seen = []
+    _quota_probe(monkeypatch, out="/n/lfs 50T 0k - -\n", seen=seen)
+    assert len(data.my_lustre_quotas("alice")) == 1
+    assert len(seen) == 1
+
+
+def test_mount_point_takes_the_longest_match():
+    """Mounts nest, so the shortest prefix would name the wrong filesystem."""
+    from clustertool import storage
+
+    mounts = (
+        "3 1 0:3 / /n/holylfs06/LABS/x rw - ext4 /dev/sda rw\n"
+        "2 1 0:2 / /n/holylfs06 rw - lustre mds:/lfs rw\n"
+        "1 1 0:1 / /n rw - nfs srv:/n rw\n"
+    )
+    assert storage.mount_point("/n/holylfs06/LABS/kempner_dev", mounts) == (
+        "/n/holylfs06",
+        "lustre",
+    )
+    assert storage.mount_point("/n/netscratch/lab", mounts) == ("/n", "nfs")
+    assert storage.mount_point("/n/holylfs06/LABS/x/deep", mounts) == (
+        "/n/holylfs06/LABS/x",
+        "ext4",
+    )
+
+
+def test_mount_point_survives_an_unreadable_mountinfo(monkeypatch):
+    from clustertool import storage
+
+    def boom(*args, **kwargs):
+        raise OSError("no /proc")
+
+    monkeypatch.setattr("builtins.open", boom)
+    assert storage.mount_point("/n/anything") == ("", "")
+
+
+async def test_the_app_loads_the_storage_panel_on_start(monkeypatch):
+    from clustertool.tui.panels.storage import StoragePanel
+
+    info = data.StorageInfo(home=data.QuotaRow("home", "1G", "2G", "50%"), labs=[], mine=[])
+    calls = []
+    monkeypatch.setattr(data, "storage_info", lambda user: (calls.append(user), info)[1])
+    app = _app(interval=30)
+    async with app.run_test(size=(120, 30)) as pilot:
+        panel = app.query_one(StoragePanel)
+        assert await _until(pilot, lambda: panel._info is not None), "storage never loaded"
+        assert calls == ["alice"]
+        assert not panel.loading
+
+
+async def test_the_storage_panel_is_not_on_the_jobs_timer(monkeypatch):
+    """Quotas move slowly and the fan-out is seconds, so polling them is pure load."""
+    monkeypatch.setattr(data, "jobs", lambda user: [])
+    info = data.StorageInfo(home=None, labs=[], mine=[])
+    calls = []
+    monkeypatch.setattr(data, "storage_info", lambda user: (calls.append(user), info)[1])
+    app = _app(interval=0.05)
+    async with app.run_test(size=(120, 30)) as pilot:
+        await pilot.pause(0.5)
+        assert len(calls) == 1, f"storage was read {len(calls)} times on a 0.05s tick"
+
+
+async def test_r_refreshes_the_focused_panel_and_R_refreshes_both(monkeypatch):
+    from clustertool.tui.panels.storage import StoragePanel
+
+    monkeypatch.setattr(data, "jobs", lambda user: [])
+    info = data.StorageInfo(home=None, labs=[], mine=[])
+    jobs_calls, storage_calls = [], []
+    monkeypatch.setattr(data, "jobs", lambda user: (jobs_calls.append(user), [])[1])
+    monkeypatch.setattr(data, "storage_info", lambda user: (storage_calls.append(user), info)[1])
+    app = _app(interval=0)
+    async with app.run_test(size=(120, 30)) as pilot:
+        await pilot.pause()
+        await pilot.press("r")
+        assert await _until(pilot, lambda: len(jobs_calls) == 1), "r did not refresh jobs"
+        assert storage_calls == []
+        app.query_one(StoragePanel).focus()
+        await pilot.pause()
+        await pilot.press("r")
+        assert await _until(pilot, lambda: len(storage_calls) == 1), "r did not refresh storage"
+        assert len(jobs_calls) == 1
+        await pilot.press("R")
+        assert await _until(pilot, lambda: len(jobs_calls) == 2 and len(storage_calls) == 2)
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [(CommandError("quota service down"), "quota service down"), (ValueError("bad"), "ValueError")],
+)
+async def test_a_failing_quota_read_marks_the_panel_and_leaves_the_app_up(
+    monkeypatch, error, expected
+):
+    from clustertool.tui.panels.storage import StoragePanel
+
+    def boom(user):
+        raise error
+
+    monkeypatch.setattr(data, "jobs", lambda user: [])
+    monkeypatch.setattr(data, "storage_info", boom)
+    app = _app(interval=30)
+    async with app.run_test(size=(120, 30)) as pilot:
+        panel = app.query_one(StoragePanel)
+        assert await _until(pilot, lambda: bool(panel._error)), "no failure reached the panel"
+        assert app.is_running
+        assert expected in panel._error
+        assert "stale" in str(panel.border_title)
+        assert not panel.loading
+
+
+async def test_a_storage_row_is_one_line_however_long_the_label(monkeypatch):
+    """Text.join builds from the separator, so a no-wrap flag on the rows is lost."""
+    from clustertool.tui.panels.storage import StoragePanel
+
+    labs = [
+        data.QuotaRow(f"netscratch/kempner_a_long_lab_name_{n}", "1T", "2T", "90%")
+        for n in range(30)
+    ]
+    monkeypatch.setattr(data, "jobs", lambda user: [])
+    monkeypatch.setattr(
+        data, "storage_info", lambda user: data.StorageInfo(home=None, labs=labs, mine=[])
+    )
+    app = _app(interval=30)
+    async with app.run_test(size=(120, 30)) as pilot:
+        panel = app.query_one(StoragePanel)
+        assert await _until(pilot, lambda: panel._info is not None)
+        await pilot.pause()
+        from clustertool.tui.panels.storage import lines
+
+        expected = len(lines(panel._info, panel.content_size.width - 1))
+        assert panel.virtual_size.height == expected, panel.virtual_size
+        widest = max(len(line.plain) for line in lines(panel._info, panel.content_size.width - 1))
+        assert widest <= panel.content_size.width - 1, widest
+
+
+async def test_a_query_that_outlives_the_screen_does_not_crash_the_worker(monkeypatch):
+    """The handler that reports a failure must not raise a worse one.
+
+    Shutting the app down with a query in flight leaves the worker holding a
+    screen that no longer has the panel, and looking the panel up there turned a
+    reported failure into a WorkerFailed with a traceback over the terminal.
+    """
+    import asyncio
+
+    from clustertool.tui.panels.jobs import JobsPanel
+
+    started = asyncio.Event()
+
+    def slow(user):
+        started.set()
+        time.sleep(0.4)
+        raise CommandError("controller busy")
+
+    monkeypatch.setattr(data, "jobs", slow)
+    monkeypatch.setattr(
+        data, "storage_info", lambda user: data.StorageInfo(home=None, labs=[], mine=[])
+    )
+    app = _app(interval=30)
+    async with app.run_test(size=(120, 30)) as pilot:
+        await _until(pilot, started.is_set)
+        await app.query_one(JobsPanel).remove()
+        await pilot.pause()
+        app._on(JobsPanel, lambda panel: panel.fail("would raise on a gone panel"))
+        await pilot.pause(0.5)
+    assert app.return_code in (0, None), app.return_code
+
+
+async def test_the_storage_panel_leaves_its_loading_state_on_failure(monkeypatch):
+    """A panel stuck showing a spinner reads as a query that never came back."""
+    from clustertool.tui.panels.storage import StoragePanel
+
+    monkeypatch.setattr(data, "jobs", lambda user: [])
+
+    def boom(user):
+        raise CommandError("quota service down")
+
+    monkeypatch.setattr(data, "storage_info", boom)
+    app = _app(interval=30)
+    async with app.run_test(size=(120, 30)) as pilot:
+        panel = app.query_one(StoragePanel)
+        assert await _until(pilot, lambda: bool(panel._error))
+        assert not panel.loading
+
+
+def test_every_storage_line_fits_the_narrowest_panel():
+    """The section headings are the one text not built to a width."""
+    from clustertool.tui.panels.storage import lines
+
+    info = data.StorageInfo(
+        home=data.QuotaRow("home", "1G", "2G", "50%"),
+        labs=[data.QuotaRow(f"fs/lab{n}", "1T", "2T", "90%") for n in range(40)],
+        mine=[data.QuotaRow("holylfs06", "50T", "0k", "-")],
+    )
+    for width in range(8, 40):
+        for line in lines(info, width):
+            assert len(line.plain) <= width, (width, line.plain)

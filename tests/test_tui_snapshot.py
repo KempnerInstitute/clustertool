@@ -8,8 +8,9 @@ the painted screen, so a layout regression shows up as a diff.
 import datetime
 
 from clustertool.tui.app import MeApp
-from clustertool.tui.data import Identity, JobRow
+from clustertool.tui.data import Identity, JobRow, QuotaRow, StorageInfo
 from clustertool.tui.panels.jobs import JobsPanel
+from clustertool.tui.panels.storage import StoragePanel
 
 FIXED_CLOCK = datetime.datetime(2026, 8, 2, 14, 32)
 WHO = Identity("alice", "A Name", "node01", "Example HPC")
@@ -133,3 +134,69 @@ def test_jobs_stale_after_a_failed_refresh(snap_compare):
         await pilot.pause()
 
     assert snap_compare(_app(), terminal_size=(100, 26), run_before=stale)
+
+
+STORAGE = StorageInfo(
+    home=QuotaRow("home", "76G", "95G", "80%"),
+    labs=[
+        QuotaRow("holylabs/sham_lab", "4.0Ti", "4.0Ti", "100%"),
+        QuotaRow("holylfs06/sham_lab", "39.05T", "40T", "98%"),
+        QuotaRow("netscratch/kempner_dev", "18T", "20T", "90%"),
+        QuotaRow("holylfs06/kempner_dev", "45.51T", "75T", "61%"),
+        QuotaRow("holylabs/kempner_a_very_long_lab_name", "1.0Ti", "4.0Ti", "25%"),
+        QuotaRow("netscratch/kempner_project_a", "-", "-", "-", error="quota timed out"),
+    ],
+    mine=[QuotaRow("holylfs06", "50.43T", "0k", "-")],
+)
+
+
+async def _storage(pilot, info):
+    pilot.app.query_one(StoragePanel).show(info)
+    await pilot.pause()
+
+
+def test_storage_loaded(snap_compare):
+    assert snap_compare(
+        _app(),
+        terminal_size=(120, 30),
+        run_before=lambda pilot: _storage(pilot, STORAGE),
+    )
+
+
+def test_storage_still_reading(snap_compare):
+    """The panel before its first result, which is what a cold six-second load shows."""
+    assert snap_compare(_app(), terminal_size=(120, 30))
+
+
+def test_storage_stale_after_a_failed_read(snap_compare):
+    async def stale(pilot):
+        panel = pilot.app.query_one(StoragePanel)
+        panel.show(STORAGE)
+        await pilot.pause()
+        panel.fail("quota service did not answer")
+        await pilot.pause()
+
+    assert snap_compare(_app(), terminal_size=(120, 30), run_before=stale)
+
+
+def test_storage_with_no_lab_directories(snap_compare):
+    empty = StorageInfo(home=QuotaRow("home", "1G", "95G", "1%"), labs=[], mine=[])
+    assert snap_compare(
+        _app(),
+        terminal_size=(120, 30),
+        run_before=lambda pilot: _storage(pilot, empty),
+    )
+
+
+def test_storage_at_80_columns(snap_compare):
+    """The narrowest terminal that shows the panel at all, where rows are 22 wide.
+
+    The bar survives even here: dropping it needs a row under 17, which the panel's
+    own width floor rules out, so that branch is a backstop rather than a layout
+    the app can reach.
+    """
+    assert snap_compare(
+        _app(),
+        terminal_size=(80, 24),
+        run_before=lambda pilot: _storage(pilot, STORAGE),
+    )
