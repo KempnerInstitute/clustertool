@@ -3836,3 +3836,91 @@ def test_the_array_check_asks_squeue_to_unfold_the_range(monkeypatch):
     assert slurm.array_elements("9") == {"9_1", "9_2"}
     assert "-r" in seen[0]
     assert "all" in seen[0]
+
+
+CJK_LOG = "\n".join(
+    [
+        "日本語のログ行です日本語のログ行です日本語のログ行です日本語のログ行です",
+        "epoch\tloss\tacc\tlr\tgrad\tmem\ttime\tstep",
+        "訓練が失敗しました 訓練が失敗しました 訓練が失敗しました",
+        "torch.OutOfMemoryError: 訓練が失敗しました",
+    ]
+)
+"""A log whose lines are wider than their length, and one built from tabs.
+
+A line counted by code point fitted and then took two rows, and a tab took up to
+eight, so the row budget was wrong by however many such lines a log held.
+"""
+
+
+@pytest.mark.parametrize("rows", [20, 24, 30, 40])
+@pytest.mark.parametrize("cols", [80, 120, 160])
+@pytest.mark.parametrize("stale", [False, True])
+async def test_a_wide_character_log_keeps_its_last_line(monkeypatch, cols, rows, stale):
+    """The renderer measures cells, so a guarantee counted in code points is not one."""
+    from clustertool.tui import actions
+
+    monkeypatch.setattr(actions, "log_tail", lambda jobid, **kw: CJK_LOG)
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(cols, rows)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        if stale:
+            app.query_one(JobsPanel).fail("squeue timed out; the controller is not answering")
+        await pilot.press("l")
+        assert await _until(pilot, lambda: "torch.OutOfMemoryError" in _painted(app)), (
+            cols,
+            rows,
+            stale,
+        )
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "日本語のログ行です日本語のログ行です日本語のログ行です",
+        "epoch\tloss\tacc\tlr\tgrad\tmem",
+        "emoji 🔥🔥🔥 progress bar",
+        "plain ascii, long enough to be cut somewhere in the middle of it",
+    ],
+)
+@pytest.mark.parametrize("width", [4, 8, 12, 20, 40, 74])
+def test_elide_never_exceeds_its_width_in_cells(text, width):
+    from rich.cells import cell_len
+
+    from clustertool.tui.panels.jobs import elide
+
+    assert cell_len(elide(text, width)) <= width, (text, width)
+
+
+def test_elide_expands_a_tab_rather_than_counting_it_as_one():
+    from rich.cells import cell_len
+
+    from clustertool.tui.panels.jobs import elide
+
+    assert "\t" not in elide("a\tb", 40)
+    assert cell_len(elide("a\tb", 40)) > 3
+
+
+async def test_a_long_head_line_is_cut_so_it_stays_one_row(monkeypatch):
+    """A job in five partitions gives a 77 character head, three rows at 40 columns."""
+    from clustertool.tui import actions
+
+    wide = _row(
+        "36871925",
+        partition="kempner_h100,kempner_requeue,shared,serial_requeue,test",
+        nodelist="",
+        code="PD",
+        state="PENDING",
+        reason="Priority",
+    )
+    monkeypatch.setattr(actions, "log_tail", lambda jobid, **kw: "line one\nline two\nlast line")
+    monkeypatch.setattr(data, "jobs", lambda user: [wide])
+    monkeypatch.setattr(data, "storage_info", lambda user: data.StorageInfo(None, [], []))
+    monkeypatch.setattr(data, "standing", lambda user: _standing())
+    app = _app(interval=30)
+    async with app.run_test(size=(40, 24)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("l")
+        assert await _until(pilot, lambda: "last line" in _painted(app))
+        first = app.query_one(JobsPanel)._detail_text().splitlines()[0]
+        assert first.endswith("…"), first

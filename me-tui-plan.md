@@ -279,8 +279,8 @@ on a throwaway job of my own, submitted and canceled deliberately.
    that is more than a 24-row terminal has: the detail pane measures 6 rows however
    tall the terminal is, and below about 15 rows the widgets below it draw over its
    region rather than the layout clipping it. Phase 5 sizes a read to the 6 rows it
-   really gets, which holds at 20 rows and above; below that a read still loses its
-   last line, because no budget in the pane can fix a pane that is drawn over. The
+   really gets, which holds at 20 rows and above; at 19 and below a read still
+   loses its last line, because no budget in the pane can fix a pane that is drawn over. The
    heights themselves are what wants fixing.
 
 Docs are deliberately not part of Phase 6. The dashboard gets a review from the

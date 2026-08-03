@@ -1,5 +1,6 @@
 """The jobs panel and the detail pane beneath it."""
 
+from rich.cells import cell_len
 from textual.app import ComposeResult
 from textual.containers import Vertical
 from textual.widgets import DataTable, Static
@@ -49,9 +50,10 @@ PANE_ROWS = 5
 """How many lines of text the detail pane actually shows, measured, not declared.
 
 Its own rule allows eight rows. The panel does not have eight to give once the table
-keeps its minimum, and of what it does give one row is the pane's top padding, which
-is why this is five rather than the six the pane reports as its height. Verified by
-sweeping every width from 40 to 204 at 20, 24, 30 and 40 rows. That the pane cannot
+keeps its minimum, and of what it does give one row is the pane's top
+padding, so the number of lines it paints is fewer than the rows its region
+measures. Five is the painted count, verified by sweeping every width from 40 to
+204 at 20, 24, 30 and 40 rows. That the pane cannot
 have its declared height is a layout over-commitment recorded against phase 6.
 
 Everything the pane shows is budgeted against this, because the pane cannot scroll
@@ -73,11 +75,28 @@ fills the pane and pushes the TRES out of it.
 """
 
 
+TAB_WIDTH = 8
+"""How wide a tab is taken to be, matching the usual terminal default."""
+
+
 def elide(text: str, width: int) -> str:
-    """Return text no wider than width, marking a cut with an ellipsis."""
-    if width < 1 or len(text) <= width:
-        return text
-    return text[: width - 1] + "…"
+    """Return text no wider than width display cells, marking a cut with an ellipsis.
+
+    Cells rather than code points, and tabs expanded first, because the renderer
+    measures in cells and this is what makes one line of a read one row. Counted by
+    code point, a line of Japanese that fitted took two rows and a tab took up to
+    eight, so the row budget was wrong by however many such lines there were and the
+    last line of a log went missing at every terminal size, not only short ones.
+    """
+    flat = text.expandtabs(TAB_WIDTH)
+    if width < 1 or cell_len(flat) <= width:
+        return flat
+    kept = ""
+    for char in flat:
+        if cell_len(kept) + cell_len(char) > width - 1:
+            break
+        kept += char
+    return kept + "…"
 
 
 def layout(width: int) -> list[tuple[str, int]]:
