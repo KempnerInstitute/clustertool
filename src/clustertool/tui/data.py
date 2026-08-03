@@ -572,7 +572,7 @@ def jobs(user: str) -> list[JobRow]:
 STANDING_DAYS = 7
 """How far back the standing panel looks, in days."""
 
-STANDING_TIMEOUT_S = 30
+STANDING_TIMEOUT_S = 20
 
 RECENT_FIELDS = ("JobID", "State", "Elapsed", "AllocTRES", "AdminComment")
 """The sacct fields the standing panel reads, in the order it asks for them."""
@@ -597,12 +597,18 @@ with eleven running jobs and nothing finished on "11 jobs: 11 other", and the
 jobs panel already shows what is running.
 """
 
-STANDING_DEADLINE_S = 12.0
+STANDING_DEADLINE_S = 30.0
 """How long the whole standing gather may take, across all of its parts.
 
 Every query but the sacct one goes through a helper that passes no timeout, and
 without a deadline one hung call left the panel saying it was reading for good,
 with the in-flight guard set so no later refresh could recover it.
+
+Generous, and it can afford to be: the gather is awaited on a daemon thread, so a
+deadline this long costs nothing at quit. It has to sit above the sacct timeout, or
+a slow window could never reach its own timeout and would always be reported as
+unfinished instead of as timed out. Measured gathers on this login node under a
+load average of 45 run 0.73 to 3.14s, median 1.29s.
 """
 
 
@@ -617,6 +623,7 @@ class Standing:
     account_gpus: int
     account_cap: int | None
     caps_known: bool
+    other_accounts: int
     days: int
     states: dict[str, int]
     measured: int
@@ -625,7 +632,21 @@ class Standing:
     gpu: int | None
     gpu_jobs: int
     note: str = ""
-    """Why the efficiency half is missing, when it is."""
+    """Why the window is missing, when it is."""
+
+    share_note: str = ""
+    """Why the share is missing, when it is.
+
+    Kept apart from an empty share, because a user with six accounts whose sshare
+    did not answer would otherwise be told they have none.
+    """
+
+    caps_note: str = ""
+    """Why the GPU counts are missing, when they are.
+
+    Kept apart from holding nothing, because nought against a cap of sixteen reads
+    as all your room being free when a query simply did not return.
+    """
 
     @property
     def total(self) -> int:
@@ -659,6 +680,11 @@ class GpuStanding:
     account_gpus: int
     account_cap: int | None
     caps_known: bool
+    other_accounts: int = 0
+    """How many further capped accounts the caller also holds GPUs under.
+
+    Each has its own ceiling, so the one named may not be the binding one.
+    """
 
 
 def gpu_standing(user: str) -> GpuStanding:
@@ -694,6 +720,7 @@ def gpu_standing(user: str) -> GpuStanding:
         account_gpus=totals.get(account, 0),
         account_cap=account_cap,
         caps_known=caps_known,
+        other_accounts=max(len(mine) - 1, 0),
     )
 
 
@@ -701,14 +728,15 @@ def _charged_account(user: str, mine: dict[str, int], totals: dict[str, int], pr
     """Name the account the caller's capped usage is charged to.
 
     Whichever of their own running jobs holds the most, since that is the account
-    whose ceiling they are actually working against. With nothing running there is
-    no such account, so their default is used, prefixed to match the accounts this
-    QoS governs, and only when that names one Slurm reports.
+    whose ceiling they are actually working against, and the name breaks a tie so an
+    evenly split caller does not see it flip between refreshes. With nothing running
+    there is no such account, so their default is used, prefixed to match the
+    accounts this QoS governs, and only when Slurm knows that name.
     """
     from clustertool import slurm
 
     if mine:
-        return max(mine.items(), key=lambda item: item[1])[0]
+        return sorted(mine.items(), key=lambda item: (-item[1], item[0]))[0][0]
     try:
         default = slurm.default_account(user)
     except CommandError:
@@ -716,6 +744,12 @@ def _charged_account(user: str, mine: dict[str, int], totals: dict[str, int], pr
     for candidate in (f"{prefix}{default}", default):
         if candidate in totals:
             return candidate
+    for candidate in (f"{prefix}{default}", default):
+        try:
+            if candidate and slurm.account_exists(candidate):
+                return candidate
+        except CommandError:
+            break
     return ""
 
 
@@ -800,7 +834,6 @@ def standing(user: str, days: int = STANDING_DAYS) -> Standing:
     rows = _taken(share, [])
     caps = _taken(gpus, GpuStanding(0, None, "", 0, None, False))
     states, metrics = _taken(recent, ({}, []))
-    note = _why(recent)
     gpu_values = [entry[2] for entry in metrics if entry[2] is not None]
     return Standing(
         fairshare=rows,
@@ -810,6 +843,9 @@ def standing(user: str, days: int = STANDING_DAYS) -> Standing:
         account_gpus=caps.account_gpus,
         account_cap=caps.account_cap,
         caps_known=caps.caps_known,
+        other_accounts=caps.other_accounts,
+        share_note=_why(share),
+        caps_note=_why(gpus),
         days=days,
         states=states,
         measured=len(metrics),
@@ -817,7 +853,7 @@ def standing(user: str, days: int = STANDING_DAYS) -> Standing:
         mem=_median([entry[1] for entry in metrics]),
         gpu=_median(gpu_values),
         gpu_jobs=len(gpu_values),
-        note=note,
+        note=_why(recent),
     )
 
 

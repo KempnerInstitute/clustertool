@@ -22,33 +22,31 @@ way to the rest of the keys are the two that have to be visible without asking.
 def fit(identity: data.Identity, stamp: str, width: int) -> str:
     """Return the widest status line that fits, shedding the least useful part first.
 
-    The bar is one row, so anything too long would wrap and be clipped, taking
-    the clock with it. The username, host and clock are what the bar exists for,
-    so the site name goes first and the full name second, and only then is the
-    line cut.
-
-    The key hint is held to the right edge and outranks the host, the full name
-    and the site name, since a reader who cannot see how to quit is worse off than
-    one who cannot see which cluster they are on. It never outranks the username or
-    the clock: an arrangement that has shed everything down to the clock alone is
-    not one to spend fifteen columns of on a hint.
+    The bar is one row, so anything too long would wrap and be clipped, taking the
+    clock with it. The order below is fixed, and each rung adds one thing to the one
+    beneath it. That is what keeps widening the terminal from ever removing
+    something: any priority that reorders across the width range produces a rung
+    that has a field its neighbor lacks, and the field then appears and disappears
+    as the window is dragged. The key hint sits above the site name and below the
+    host, so a reader on any ordinary terminal can see how to quit, and a reader on
+    a very narrow one keeps the username and the clock instead.
     """
     who = identity
     name = f" ({who.full_name})" if who.full_name else ""
-    candidates = [
-        f"{who.user}{name} @ {who.host}{GAP}{who.site_name}{GAP}{stamp}",
-        f"{who.user}{name} @ {who.host}{GAP}{stamp}",
-        f"{who.user} @ {who.host}{GAP}{stamp}",
-        f"{who.user}{GAP}{stamp}",
+    ladder = [
         stamp,
+        f"{who.user}{GAP}{stamp}",
+        f"{who.user} @ {who.host}{GAP}{stamp}",
+        f"{who.user}{name} @ {who.host}{GAP}{stamp}",
+        f"{who.user}{name} @ {who.host}{GAP}{stamp}{GAP}{KEYS}",
+        f"{who.user}{name} @ {who.host}{GAP}{who.site_name}{GAP}{stamp}{GAP}{KEYS}",
     ]
-    for line in candidates[:-1]:
-        if len(line) + len(GAP) + len(KEYS) <= width:
-            return line.ljust(width - len(KEYS)) + KEYS
-    for line in candidates:
+    for line in reversed(ladder):
         if len(line) <= width:
-            return line
-    return candidates[-1][:width]
+            if not line.endswith(KEYS):
+                return line
+            return line[: -len(KEYS)].rstrip().ljust(width - len(KEYS)) + KEYS
+    return stamp[:width]
 
 
 class StatusBar(Static):

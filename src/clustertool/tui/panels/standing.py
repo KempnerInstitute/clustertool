@@ -55,10 +55,18 @@ def cap_style(used: int, cap: int | None) -> str:
     return "yellow" if fraction >= CAP_WARN else ""
 
 
+def unread(note: str) -> str:
+    """Say why a figure is missing, in words rather than a row marker."""
+    return "still reading" if note == data.STILL_READING else note
+
+
 def share_text(standing: data.Standing, width: int) -> Text:
     """Render the fairshare line, naming the accounts with the most share first."""
     text = Text(no_wrap=True, overflow="crop")
     text.append("share    ", style="dim")
+    if standing.share_note:
+        text.append(f"unavailable: {unread(standing.share_note)}", style="dim")
+        return _fit(text, width)
     if not standing.fairshare:
         text.append("no accounts reported", style="dim")
         return _fit(text, width)
@@ -77,9 +85,15 @@ def gpu_text(standing: data.Standing, width: int) -> Text:
     Both, because either can be what stops the next job starting, and they are
     different limits. Reading a user's own usage against the account cap, which is
     six times larger here, said they had room they did not have.
+
+    A count that could not be read says so rather than showing nought against the
+    cap, which reads as all the room being free when a query simply did not return.
     """
     text = Text(no_wrap=True, overflow="crop")
     text.append("gpus     ", style="dim")
+    if standing.caps_note:
+        text.append(f"unavailable: {unread(standing.caps_note)}", style="dim")
+        return _fit(text, width)
     if standing.gpu_cap:
         text.append(
             f"{standing.gpus_used} of {standing.gpu_cap} yours",
@@ -96,6 +110,8 @@ def gpu_text(standing: data.Standing, width: int) -> Text:
             f"{standing.account_gpus} of {standing.account_cap}",
             style=cap_style(standing.account_gpus, standing.account_cap),
         )
+        if standing.other_accounts:
+            text.append(f" +{standing.other_accounts} more capped", style="dim")
     return _fit(text, width)
 
 
@@ -104,7 +120,9 @@ def states_text(standing: data.Standing, width: int) -> Text:
     text = Text(no_wrap=True, overflow="crop")
     text.append(f"last {standing.days}d  ", style="dim")
     if not standing.states:
-        text.append(f"unavailable: {standing.note}" if standing.note else NO_JOBS, style="dim")
+        text.append(
+            f"unavailable: {unread(standing.note)}" if standing.note else NO_JOBS, style="dim"
+        )
         return _fit(text, width)
     parts = [
         f"{count} {STATE_WORDS.get(state, state.lower())}"

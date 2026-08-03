@@ -1825,6 +1825,7 @@ def _standing(**kwargs):
         account_gpus=52,
         account_cap=96,
         caps_known=True,
+        other_accounts=0,
         days=7,
         states={"COMPLETED": 9, "FAILED": 1},
         measured=8,
@@ -2405,9 +2406,38 @@ def test_the_key_hint_outranks_the_site_name():
     who = data.Identity(
         "mgutierrez", "Maria Fernanda Gutierrez", "holy8a26105", "Kempner AI Cluster"
     )
-    line = fit(who, "Sun 2026-08-02 14:32", 78)
+    line = fit(who, "Sun 2026-08-02 14:32", 92)
     assert "Q quit" in line
     assert "Kempner AI Cluster" not in line
+
+
+@pytest.mark.parametrize(
+    "who",
+    [
+        data.Identity("alice", "A Name", "node01", "Example HPC"),
+        data.Identity("averylongusername", "Maria Fernanda Gutierrez", "holy8a26105", "Kempner AI"),
+        data.Identity("bob", "", "n", "S"),
+    ],
+)
+def test_widening_the_bar_never_loses_a_field(who):
+    """Taking the hint early cost the host at 46 and gave it back at 55.
+
+    The same cliff the side column had, and the project has twice called it a
+    defect: widening a terminal must not remove information.
+    """
+    from clustertool.tui.panels.status import fit
+
+    stamp = "Sun 2026-08-02 14:32"
+    marks = (who.full_name, f"@ {who.host}", who.site_name, "Q quit")
+    seen = [False] * len(marks)
+    for width in range(8, 205):
+        line = fit(who, stamp, width)
+        assert len(line) <= width, (width, line)
+        for index, mark in enumerate(marks):
+            if mark and mark in line:
+                seen[index] = True
+            elif mark and seen[index]:
+                raise AssertionError(f"{mark!r} was shown then lost at width {width}: {line!r}")
 
 
 def test_the_key_hint_goes_before_the_clock_is_lost():
@@ -2685,3 +2715,121 @@ def test_a_canceled_job_is_spelled_the_way_the_rest_of_the_project_spells_it():
     from clustertool.tui.panels.standing import STATE_WORDS
 
     assert STATE_WORDS["CANCELLED"] == "canceled"
+
+
+def test_a_caller_charged_to_two_capped_accounts_is_told_so(monkeypatch):
+    """Each has its own ceiling, so the one named may not be the binding one."""
+    _stub_gpus(
+        monkeypatch,
+        mine={"kempner_lab_one": 9, "kempner_lab_two": 4},
+        totals={"kempner_lab_one": 40, "kempner_lab_two": 90},
+    )
+    result = data.gpu_standing("alice")
+    assert result.account == "kempner_lab_one"
+    assert result.other_accounts == 1
+
+    from clustertool.tui.panels.standing import gpu_text
+
+    plain = gpu_text(_standing(other_accounts=1), 140).plain
+    assert "+1 more capped" in plain
+
+
+def test_an_even_split_names_the_same_account_every_refresh(monkeypatch):
+    """max() broke ties by squeue output order, so the name could flip."""
+    _stub_gpus(monkeypatch, mine={"b_lab": 4, "a_lab": 4}, totals={"a_lab": 4, "b_lab": 4})
+    assert data.gpu_standing("alice").account == "a_lab"
+
+
+def test_a_share_that_could_not_be_read_is_not_no_accounts():
+    """A user with six accounts was told they had none."""
+    from clustertool.tui.panels.standing import share_text
+
+    plain = share_text(_standing(fairshare=[], share_note="sshare is not answering"), 120).plain
+    assert "unavailable" in plain
+    assert "sshare" in plain
+    assert "no accounts reported" not in plain
+
+
+def test_a_gpu_count_that_could_not_be_read_is_not_nought():
+    """Nought against a cap of sixteen reads as all the room being free."""
+    from clustertool.tui.panels.standing import gpu_text
+
+    broken = _standing(gpus_used=0, gpu_cap=None, caps_known=False, caps_note=data.STILL_READING)
+    plain = gpu_text(broken, 120).plain
+    assert "unavailable" in plain
+    assert "still reading" in plain
+    assert "0 of" not in plain
+
+
+def test_an_unfinished_part_reads_as_words_not_a_row_marker():
+    """The storage row marker rendered as 'unavailable: unfinished'."""
+    from clustertool.tui.panels.standing import unread
+
+    assert unread(data.STILL_READING) == "still reading"
+    assert unread("sacct timed out") == "sacct timed out"
+
+
+def test_the_standing_gather_reports_a_part_it_abandoned(monkeypatch):
+    """The reasons were recorded and then never read, so the panel invented figures."""
+    monkeypatch.setattr(data, "STANDING_DEADLINE_S", 0.3)
+
+    def hang(*args, **kwargs):
+        time.sleep(30)
+
+    monkeypatch.setattr(data, "fairshare_rows", hang)
+    monkeypatch.setattr(data, "gpu_standing", hang)
+    monkeypatch.setattr(data, "recent_work", lambda user, days=7: ({"COMPLETED": 1}, []))
+    result = data.standing("alice")
+    assert result.share_note == data.STILL_READING
+    assert result.caps_note == data.STILL_READING
+    assert result.note == ""
+
+
+def test_a_window_can_reach_its_own_timeout():
+    """Above the deadline it never could, so a slow window never read as timed out."""
+    assert data.STANDING_TIMEOUT_S < data.STANDING_DEADLINE_S
+
+
+def test_an_unknown_qos_name_is_a_failed_read_not_an_absent_cap(monkeypatch):
+    """sacctmgr answers an unknown QoS with exit 0 and no output."""
+    import clustertool.process as proc
+
+    monkeypatch.setattr(proc, "probe", lambda cmd, **kw: (0, "\n", ""))
+    with pytest.raises(CommandError, match="limits"):
+        slurm.qos_gpu_caps()
+
+
+def test_the_cap_fields_are_read_in_the_order_they_are_asked_for(monkeypatch):
+    """Swapping the format string alone restored the original harm."""
+    import clustertool.process as proc
+
+    seen = []
+    monkeypatch.setattr(
+        proc, "probe", lambda cmd, **kw: (seen.append(cmd), (0, "gres/gpu=16|gres/gpu=96\n", ""))[1]
+    )
+    assert slurm.qos_gpu_caps() == (16, 96)
+    assert "format=MaxTRESPU,MaxTRESPA" in seen[0], seen[0]
+
+
+def test_the_user_gpu_query_asks_only_for_the_capped_partitions(monkeypatch):
+    """The call site was pinned but the command it builds was not."""
+    seen = []
+    monkeypatch.setattr(
+        slurm, "_run", lambda cmd: (seen.append(cmd), "kempner_lab_one gres/gpu=4\n")[1]
+    )
+    total, by_account = slurm.user_gpus_by_account("alice", ("kempner", "kempner_h100"))
+    assert total == 4
+    assert by_account == {"kempner_lab_one": 4}
+    assert "-p" in seen[0]
+    assert "kempner,kempner_h100" in seen[0]
+
+
+def test_a_cpu_only_job_does_not_name_an_account(monkeypatch):
+    """A zero-GPU row made mine truthy and named an account holding nothing."""
+    monkeypatch.setattr(slurm, "_run", lambda cmd: "kempner_lab_one cpu=8,mem=64G\n")
+    assert slurm.user_gpus_by_account("alice", ("kempner",)) == (0, {})
+
+
+def test_a_suspended_job_has_not_ended():
+    for state in ("RUNNING", "PENDING", "SUSPENDED", "REQUEUED", "COMPLETING", "CONFIGURING"):
+        assert state in data.UNFINISHED_STATES, state

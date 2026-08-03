@@ -394,7 +394,7 @@ def qos_gpu_caps() -> tuple[int | None, int | None]:
         ["sacctmgr", "-nP", "show", "qos", site.base_qos(), "format=MaxTRESPU,MaxTRESPA"],
         timeout=_QOS_TIMEOUT_S,
     )
-    if code != 0:
+    if code != 0 or not out.strip():
         raise CommandError(f"could not read the {site.base_qos()} limits: {err.strip() or code}")
     fields = out.strip().split("|")
     per_user = parse_gpu_count(fields[0]) if fields else 0
@@ -404,6 +404,9 @@ def qos_gpu_caps() -> tuple[int | None, int | None]:
 
 def user_gpus_by_account(user: str, partitions: tuple[str, ...] | list[str]):
     """Return (GPUs the user holds on these partitions, and how they split by account).
+
+    Only accounts the user actually holds GPUs under are recorded, so a CPU-only
+    job on a capped partition does not name an account the caller holds nothing in.
 
     Restricted to the given partitions because a QoS cap governs only the
     partitions carrying that QoS: this site's cap sits on the base partitions,
@@ -432,7 +435,8 @@ def user_gpus_by_account(user: str, partitions: tuple[str, ...] | list[str]):
             continue
         gpus = parse_gpu_count(line)
         total += gpus
-        by_account[fields[0]] = by_account.get(fields[0], 0) + gpus
+        if gpus:
+            by_account[fields[0]] = by_account.get(fields[0], 0) + gpus
     return total, by_account
 
 
