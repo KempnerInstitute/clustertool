@@ -261,7 +261,13 @@ on a throwaway job of my own, submitted and canceled deliberately.
 2. Color that works on light and dark terminals, and with `NO_COLOR`.
 3. Narrow-terminal behavior: below 100 columns the right column moves below the
    jobs panel; below 80, the panels stack. Phase 2 hides the side column below 80
-   rather than stacking it, which is the cheap half of this.
+   rather than stacking it, which is the cheap half of this. Done: below 80 columns
+   the side column goes underneath instead of being hidden, so a narrow terminal
+   loses the arrangement rather than the quotas. Stacking cost the jobs panel two
+   thirds of its height, which is what exposed the detail pane's row budget being a
+   constant: it claimed five rows of a pane that had two and left two rows of a
+   pane that had seven unused. The budget is now the layout's own arithmetic and is
+   checked against the painted frame at every size.
 4. Give a jobs column no more width than its widest value needs. Phase 2 shares
    spare width round by round against a per-column ceiling, so at 100 columns ID
    takes 18 for a 9-character id while NODE is cut to 9 from 47. Capping growth at
@@ -274,14 +280,12 @@ on a throwaway job of my own, submitted and canceled deliberately.
    caller's last week, 88% of the GPU-hours they held were idle. Elapsed and
    AllocTRES are already read and discarded, so this needs no new query.
 
-7. The panel heights over-commit a short terminal. `#standing` takes a fixed 7
-   rows, the jobs detail asks for up to 8, and with the banner and the status bar
-   that is more than a 24-row terminal has: the detail pane measures 6 rows however
-   tall the terminal is, and below about 15 rows the widgets below it draw over its
-   region rather than the layout clipping it. Phase 5 sizes a read to the 6 rows it
-   really gets, which holds at 20 rows and above; at 19 and below a read still
-   loses its last line, because no budget in the pane can fix a pane that is drawn over. The
-   heights themselves are what wants fixing.
+7. The panel heights over-commit a short terminal. Done: the banner now takes no
+   room until it has something to say, which moved the floor from 20 rows to 18,
+   and budgeting the pane from the height the panel actually has moved it to 15 at
+   every width rather than at 80 columns and up. Below 15 rows the whole of the
+   pane's region is its border, so no budget inside it can help; the remaining cost
+   is the standing panel's own height on a terminal that short.
 
 Docs are deliberately not part of Phase 6. The dashboard gets a review from the
 user first, and whatever that changes would make documentation written now wrong.

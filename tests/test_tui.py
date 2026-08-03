@@ -278,22 +278,29 @@ async def test_status_bar_sets_a_refresh_timer(monkeypatch):
     assert intervals == [1.0]
 
 
-async def test_the_side_column_goes_away_before_it_is_drawn_off_screen():
-    """Two panels with width floors overflow a narrow terminal, and the second is lost."""
+async def test_the_side_column_stacks_rather_than_being_drawn_off_screen():
+    """Two panels with width floors overflow a narrow terminal, and the second is lost.
+
+    Going underneath keeps it. Hiding it was the earlier answer and it cost the
+    quotas outright, which is a worse thing to lose on a narrow terminal than the
+    arrangement.
+    """
     from clustertool.tui.app import SIDE_BY_SIDE
 
     app = _app()
-    async with app.run_test(size=(SIDE_BY_SIDE, 14)) as pilot:
+    async with app.run_test(size=(SIDE_BY_SIDE, 24)) as pilot:
         await pilot.pause()
-        assert app.query_one("#storage").display
-        assert app.query_one("#jobs").region.right <= SIDE_BY_SIDE
-        await pilot.resize_terminal(SIDE_BY_SIDE - 4, 14)
+        jobs, storage = app.query_one("#jobs"), app.query_one("#storage")
+        assert storage.display and storage.region.x >= jobs.region.right, "beside it"
+        assert jobs.region.right <= SIDE_BY_SIDE
+        await pilot.resize_terminal(SIDE_BY_SIDE - 4, 24)
         await pilot.pause()
-        assert not app.query_one("#storage").display
-        assert app.query_one("#jobs").region.right <= SIDE_BY_SIDE - 4
-        await pilot.resize_terminal(100, 14)
+        assert storage.display and storage.region.y >= jobs.region.bottom, "under it"
+        assert storage.region.right <= SIDE_BY_SIDE - 4
+        assert jobs.region.right <= SIDE_BY_SIDE - 4
+        await pilot.resize_terminal(100, 24)
         await pilot.pause()
-        assert app.query_one("#storage").display
+        assert storage.region.x >= jobs.region.right, "beside it again"
 
 
 async def test_the_jobs_panel_keeps_a_usable_width_when_narrow():
@@ -1760,8 +1767,13 @@ async def test_repeated_storage_refreshes_do_not_stack(monkeypatch):
         assert probe.peak == 1, f"{probe.calls} fan-outs ran, {probe.peak} at once"
 
 
-async def test_refresh_all_skips_a_side_column_that_is_not_on_screen(monkeypatch):
-    """Forty lookups for a panel nobody can see is pure load on a shared service."""
+async def test_refresh_all_reads_a_side_column_that_is_stacked(monkeypatch):
+    """It is on screen when stacked, so skipping it would leave it showing old figures.
+
+    The skip was right while a narrow terminal hid the panel: forty lookups for
+    something nobody can see is pure load on a shared service. It became wrong the
+    moment the panel moved underneath instead.
+    """
     from clustertool.tui.app import SIDE_BY_SIDE
 
     monkeypatch.setattr(data, "jobs", lambda user: [])
@@ -1774,10 +1786,9 @@ async def test_refresh_all_skips_a_side_column_that_is_not_on_screen(monkeypatch
     app = _app(interval=0)
     async with app.run_test(size=(SIDE_BY_SIDE - 10, 24)) as pilot:
         await pilot.pause()
-        assert not app.query_one("#storage").display
+        assert app.query_one("#storage").display
         await pilot.press("R")
-        await pilot.pause(0.3)
-        assert storage_calls == []
+        assert await _until(pilot, lambda: storage_calls != [])
 
 
 async def test_the_app_says_it_is_reading_while_the_fan_out_is_in_flight(monkeypatch):
@@ -3789,14 +3800,19 @@ for the fixture rather than for anything a job really writes.
 """
 
 
-@pytest.mark.parametrize("rows", [20, 22, 24, 30, 40])
-@pytest.mark.parametrize("cols", [46, 80, 100, 120, 160])
+@pytest.mark.parametrize("rows", [15, 16, 18, 22, 30, 40])
+@pytest.mark.parametrize("cols", [30, 46, 79, 80, 120])
 @pytest.mark.parametrize("stale", [False, True])
 async def test_the_last_line_of_a_read_survives_a_wrapping_log(monkeypatch, cols, rows, stale):
     """Counting logical lines lost it three ways: to the stale mark, and to two wraps.
 
-    Twenty rows is the floor: below it the panel is drawn over by the widgets beneath
-    and no budget inside the pane can help, which is recorded against phase 6.
+    Fifteen rows is the floor, at any width, and both halves of that sentence were
+    once false. The banner takes no room until it has something to say, which
+    bought three rows; and the pane's budget is now taken from the height the panel
+    actually has, which is what a width below eighty changes, since the panels
+    stack there and the jobs panel keeps a fraction of the screen rather than all
+    of it. Below fifteen rows the whole of the pane's region is its border and no
+    budget inside it can help.
     """
     from clustertool.tui import actions
 
@@ -3812,6 +3828,122 @@ async def test_the_last_line_of_a_read_survives_a_wrapping_log(monkeypatch, cols
             rows,
             stale,
         )
+
+
+@pytest.mark.parametrize("size", [(46, 18), (46, 24), (60, 20), (80, 16), (120, 40), (200, 30)])
+async def test_every_line_the_pane_holds_is_one_the_screen_paints(monkeypatch, size):
+    """The pane cannot scroll, so a line it holds and does not paint is one lost.
+
+    Asserted against the frame rather than against the pane's own text, which is
+    what a budget of five lines for a pane with room for two passed while the
+    screen showed neither the count nor the error.
+    """
+    from clustertool.tui import actions
+
+    monkeypatch.setattr(actions, "log_tail", lambda jobid, **kw: REAL_TRACEBACK)
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=size) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("l")
+        panel = app.query_one(JobsPanel)
+        assert await _until(pilot, lambda: "torch.OutOfMemoryError" in panel._detail_text())
+        frame = [
+            "".join(segment.text for segment in strip)
+            for strip in app.screen._compositor.render_strips()
+        ]
+        for line in panel._detail_text().splitlines():
+            assert any(line in row for row in frame), (line, size)
+
+
+def test_the_pane_budget_is_taken_from_the_stylesheets_own_numbers():
+    """The three rows the arithmetic counts are declared in app.tcss, not here.
+
+    A constant that drifts from the rule it models is the failure this guards: the
+    budget would go on claiming rows the layout had stopped giving, and the symptom
+    is a missing last line rather than anything that looks like a style change.
+    """
+    import re
+    from pathlib import Path
+
+    from clustertool.tui.panels import jobs
+
+    sheet = (Path(jobs.__file__).parent.parent / "app.tcss").read_text()
+    detail = re.search(r"#jobs-detail \{(.*?)\}", sheet, re.S).group(1)
+    table = re.search(r"#jobs-table \{(.*?)\}", sheet, re.S).group(1)
+    assert re.search(r"max-height: (\d+)", detail).group(1) == str(jobs.DETAIL_CEILING)
+    assert re.search(r"min-height: (\d+)", table).group(1) == str(jobs.TABLE_FLOOR)
+    assert "padding: 0 1" in re.search(r"#jobs-detail\.tight \{(.*?)\}", sheet, re.S).group(1)
+
+
+@pytest.mark.parametrize(
+    ("content_height", "budget"),
+    [(2, 0), (3, 0), (4, 1), (5, 2), (8, 5), (10, 7), (11, 7), (40, 7)],
+)
+def test_the_pane_paints_no_line_when_its_whole_region_is_border(content_height, budget):
+    """Nought is a real answer, and rounding it up to one is how this went wrong.
+
+    The ceiling holds at the top of the range: the pane may not take more than its
+    rule allows however tall the panel is, or the table would lose its rows.
+    """
+    from clustertool.tui.panels.jobs import pane_rows
+
+    assert pane_rows(content_height) == budget
+
+
+async def test_a_pane_of_one_row_still_marks_that_the_read_was_cut(monkeypatch):
+    """A cut nobody can see reads as a whole log, and one row can still carry a mark.
+
+    The count goes on the job line when there is room for the job line, and onto
+    the front of the line itself when there is not.
+    """
+    from clustertool.tui import actions
+
+    monkeypatch.setattr(actions, "log_tail", lambda jobid, **kw: REAL_TRACEBACK)
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(60, 16)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("l")
+        panel = app.query_one(JobsPanel)
+        assert await _until(pilot, lambda: "torch.OutOfMemoryError" in panel._detail_text())
+        shown = panel._detail_text().splitlines()
+        assert len(shown) == 1, shown
+        assert shown[0].startswith("…"), shown
+
+
+async def test_a_pane_with_one_row_for_text_spends_it_on_the_detail(monkeypatch):
+    """At seventy columns by sixteen rows that row was the pane's top padding.
+
+    So the pane drew its rule and then nothing under it, at a size where the panel
+    still had a row to give.
+    """
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(70, 16)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        assert "111  RUNNING  on kempner_h100" in _painted(app)
+
+
+async def test_the_detail_keeps_its_separation_when_the_pane_has_the_room(monkeypatch):
+    """The padding is not waste: it is what holds the detail off the rule above it."""
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(120, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        assert not app.query_one("#jobs-detail").has_class("tight")
+
+
+async def test_a_tall_panel_spends_the_rows_it_has_on_the_read(monkeypatch):
+    """The other half of a fixed budget: two rows of a pane left blank on a tall one."""
+    from clustertool.tui import actions
+
+    monkeypatch.setattr(actions, "log_tail", lambda jobid, **kw: REAL_TRACEBACK)
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(120, 40)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("l")
+        panel = app.query_one(JobsPanel)
+        assert await _until(pilot, lambda: "torch.OutOfMemoryError" in panel._detail_text())
+        shown = panel._detail_text().splitlines()
+        assert len(shown) == 7, shown
+        assert "Traceback (most recent call last):" in shown[1], shown
 
 
 def test_an_array_check_that_could_not_run_is_not_an_empty_array(monkeypatch):
@@ -3924,3 +4056,44 @@ async def test_a_long_head_line_is_cut_so_it_stays_one_row(monkeypatch):
         assert await _until(pilot, lambda: "last line" in _painted(app))
         first = app.query_one(JobsPanel)._detail_text().splitlines()[0]
         assert first.endswith("…"), first
+
+
+async def test_the_banner_takes_no_room_until_it_speaks():
+    """Its row is the difference between a read showing its last line and losing it."""
+    app = _app()
+    async with app.run_test(size=(120, 24)) as pilot:
+        await pilot.pause()
+        assert not app.query_one("#banner").display
+        app.announce("cancel 111: done")
+        await pilot.pause()
+        assert app.query_one("#banner").display
+        assert "cancel 111: done" in _painted(app)
+
+
+@pytest.mark.parametrize("cols", [46, 60, 79])
+async def test_a_narrow_terminal_stacks_the_panels_rather_than_hiding_one(monkeypatch, cols):
+    """Hiding the side column lost the quotas; stacking loses only the arrangement."""
+    from clustertool.tui.panels.storage import StoragePanel
+
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(cols, 30)) as pilot:
+        await pilot.pause()
+        storage = app.query_one(StoragePanel)
+        jobs = app.query_one(JobsPanel)
+        assert storage.display, "the quotas must still be reachable"
+        assert storage.region.y > jobs.region.y, "stacked, not side by side"
+        assert storage.region.right <= cols
+        assert jobs.region.right <= cols
+
+
+@pytest.mark.parametrize("cols", [80, 100, 120, 160])
+async def test_a_wide_terminal_keeps_them_side_by_side(monkeypatch, cols):
+    from clustertool.tui.panels.storage import StoragePanel
+
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(cols, 30)) as pilot:
+        await pilot.pause()
+        storage = app.query_one(StoragePanel)
+        jobs = app.query_one(JobsPanel)
+        assert storage.region.y == jobs.region.y, "side by side"
+        assert storage.region.right <= cols

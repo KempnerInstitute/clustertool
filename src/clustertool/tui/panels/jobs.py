@@ -46,26 +46,44 @@ TITLE = "Jobs"
 
 EMPTY = "No jobs of yours are queued or running."
 
-PANE_ROWS = 5
-"""How many lines of text the detail pane actually shows, measured, not declared.
+DETAIL_CEILING = 8
+"""The max-height of the detail pane in app.tcss, in rows of its region."""
 
-Its own rule allows eight rows. The panel does not have eight to give once the table
-keeps its minimum, and of what it does give one row is the pane's top
-padding, so the number of lines it paints is fewer than the rows its region
-measures. Five is the painted count, verified by sweeping every width from 40 to
-204 at 20, 24, 30 and 40 rows. That the pane cannot
-have its declared height is a layout over-commitment recorded against phase 6.
+TABLE_FLOOR = 2
+"""The min-height of the table in app.tcss, which the pane cannot take from."""
 
-Everything the pane shows is budgeted against this, because the pane cannot scroll
-and a row past its edge is one nobody can read.
+DETAIL_TRIM = 1
+"""Rows of the pane's region that are not a line of text: its dashed border-top.
 
-The pane cannot scroll: it takes no focus and the arrow keys belong to the table,
-so whatever does not fit is clipped from the bottom and unreachable. Three attempts
-to compute the room available disagreed with how the layout resolves the height, so
-the count is a small fixed one that fits any pane worth calling a pane, and the
-lines keep their own order: a traceback read bottom-upwards is harder to follow than
-one missing its oldest frame.
+Its top padding is the other, and that is what the tight class takes away: with it
+the pane paints one line fewer than it measures, and that line was the last of a
+read.
 """
+
+
+def pane_rows(content_height: int) -> int:
+    """Return how many lines of text the detail pane paints in a panel this tall.
+
+    The pane cannot scroll: it takes no focus and the arrow keys belong to the
+    table, so a line past its edge is one nobody can read. Everything the pane
+    shows is budgeted against this count.
+
+    A constant here was wrong, and wrong in the direction that loses lines. The
+    panel is a third of a stacked layout on a narrow terminal and the whole of a
+    side-by-side one, so its height varies by a factor of three; a budget of five
+    overran a pane that had room for two and left two rows of a pane that had room
+    for seven blank. The arithmetic is the layout's own: the table keeps its
+    minimum, the pane takes what is left up to its ceiling, and one row of that
+    goes on the border rather than on text. It is checked against the painted
+    frame rather than trusted, since the three numbers it uses live in the
+    stylesheet.
+
+    Nought is a real answer, and rounding it up to one is how this went wrong the
+    first time. Below fifteen rows of terminal the whole of the pane's region is its
+    border, and a budget of one put a line where no line is painted.
+    """
+    return max(min(DETAIL_CEILING, content_height - TABLE_FLOOR) - DETAIL_TRIM, 0)
+
 
 NODES_IN_DETAIL = 240
 """Longest node list shown in full in the detail pane.
@@ -261,8 +279,19 @@ class JobsPanel(Vertical):
         self._refresh_detail()
 
     def _refresh_detail(self) -> None:
-        """Repaint the detail pane."""
-        self.query_one("#jobs-detail", Static).update(self._detail_text())
+        """Repaint the detail pane, giving up its top padding when the lines need the row.
+
+        That padding separates the detail from the dashed rule above it, and it is a
+        row of the pane's region: with it a pane five rows tall paints four lines. It
+        goes exactly when what the pane holds would not otherwise fit, which is a
+        read at any size and the plain detail on a short terminal. At seventy
+        columns by sixteen rows the pane has one row for text, the padding was it,
+        and the pane showed nothing at all.
+        """
+        detail = self.query_one("#jobs-detail", Static)
+        text = self._detail_text()
+        detail.set_class(len(text.splitlines()) >= pane_rows(self.content_size.height), "tight")
+        detail.update(text)
 
     def _detail_text(self) -> str:
         """Render the pane, showing a read only under the job it was taken from."""
@@ -301,21 +330,39 @@ class JobsPanel(Vertical):
         stale mark being a row at all, to a traceback line naming an absolute path
         wrapping onto two, and to the stale message itself wrapping at 46 and 80
         columns once everything else had been cut.
+
+        What the rows are spent on, in the order the last one is given up: the read's
+        final line, which is what a caller pressed the key for; the line naming the
+        job; how many lines were dropped; the stale mark, which is on the border
+        title as well; and then the earlier lines of the read. A pane with no room
+        for the count says it on the end of the job line instead, and a pane of one
+        row marks it with a leading ellipsis on the line itself, so that a cut is
+        marked at every size rather than only at the comfortable ones.
         """
         lines = [line for line in self._extra.splitlines() if line.strip()]
         if len(lines) <= 1:
             return ""
         width = max(self.query_one("#jobs-detail", Static).content_size.width, 8)
-        stale = [elide(f"stale: {self._error}", width)] if self._error else []
-        head = f"{row.jobid}  {row.state}  on {row.partition}"
-        budget = max(PANE_ROWS - len(stale) - 1, 1)
-        if len(lines) <= budget:
-            kept, note = lines, []
-        else:
-            kept = lines[-(budget - 1) :] if budget > 1 else lines[-1:]
-            note = [f"...{len(lines) - len(kept)} earlier lines not shown"]
-        shown = [elide(line, width) for line in kept]
-        return "\n".join([*stale, elide(head, width), *note, *shown])
+        budget = pane_rows(self.content_size.height)
+        if budget < 1:
+            return elide(lines[-1], width)
+        top = []
+        if budget >= 2:
+            top.append(f"{row.jobid}  {row.state}  on {row.partition}")
+            budget -= 1
+        if self._error and budget >= 2:
+            top.insert(0, f"stale: {self._error}")
+            budget -= 1
+        kept = lines[-budget:]
+        dropped = len(lines) - len(kept)
+        if dropped and budget >= 2:
+            kept = lines[-(budget - 1) :]
+            top.append(f"...{len(lines) - len(kept)} earlier lines not shown")
+        elif dropped and top:
+            top[-1] += f"  (+{dropped} earlier)"
+        elif dropped:
+            kept = [f"…{kept[0]}"]
+        return "\n".join(elide(line, width) for line in [*top, *kept])
 
 
 def _nodes(row: data.JobRow) -> str:

@@ -23,10 +23,11 @@ from clustertool.tui.panels.storage import StoragePanel
 SIDE_BY_SIDE = 80
 """Narrowest terminal that still holds the jobs panel and the side column together.
 
-Below it the side column is hidden rather than drawn past the right edge. The
-jobs panel carries no floor of its own: a floor cannot make a panel fit a
-terminal narrower than itself, it only pushes the panel off the right edge, which
-is the very thing this constant exists to prevent.
+Below it the side column goes underneath the jobs panel rather than past the right
+edge, where nothing it holds would be on screen. The jobs panel carries no floor
+of its own: a floor cannot make a panel fit a terminal narrower than itself, it
+only pushes the panel off the right edge, which is the very thing this constant
+exists to prevent.
 
 80 rather than the sum of the floors, which was 48: bringing the side column back
 costs the jobs table the side column's whole width at once, and at 48 that took
@@ -110,6 +111,14 @@ async def detached(call: Callable):
 
 BANNER_ROWS = 2
 """How many rows the banner may wrap to, matching its max-height in the stylesheet."""
+
+BANNER_PADDING = 2
+"""Columns the banner's own padding takes, matching its rule in the stylesheet.
+
+The width comes from the screen rather than from the widget, because the widget
+reports nothing while it is hidden and it is hidden until the moment it is given
+something to say: measuring it there cut every message to a single character.
+"""
 
 
 def _shorten(said: str, width: int) -> str:
@@ -228,7 +237,9 @@ class MeApp(App):
             yield JobsPanel()
             yield StoragePanel()
         yield StandingPanel()
-        yield Static("", id="banner", markup=False)
+        banner = Static("", id="banner", markup=False)
+        banner.display = False
+        yield banner
         yield StatusBar(self._identity, clock=self._clock)
 
     def on_mount(self) -> None:
@@ -277,13 +288,14 @@ class MeApp(App):
         action(panel)
 
     def on_resize(self, event: events.Resize) -> None:
-        """Drop the side column when two panels no longer fit across the terminal.
+        """Stack the panels when they no longer fit across the terminal.
 
-        Both panels hold a width floor, and below their sum the pair is drawn off
-        the right edge: the second panel loses its right border and whatever it
-        holds is simply not on screen. One panel that fits beats two that do not.
+        Side by side below their combined width floor, the second panel is drawn off
+        the right edge and whatever it holds is simply not on screen. Stacking keeps
+        it, which is better than the earlier answer of hiding it: a narrow terminal
+        loses the arrangement rather than the quotas.
         """
-        self.query_one("#storage").display = event.size.width >= SIDE_BY_SIDE
+        self.query_one("#body").set_class(event.size.width < SIDE_BY_SIDE, "stacked")
 
     @work(group="storage")
     async def load_storage(self) -> None:
@@ -352,13 +364,13 @@ class MeApp(App):
     def action_refresh_all(self) -> None:
         """Read every panel again, whichever one has focus.
 
-        A hidden side column is skipped: on a narrow terminal it is not on screen,
-        and its fan-out is forty lookups nobody would see the result of.
+        Every panel, since a narrow terminal now stacks the side column rather than
+        hiding it. While it was hidden this skipped it, its fan-out being forty
+        lookups nobody would see the result of; a stacked panel is on screen.
         """
         self.load_jobs()
         self.load_standing()
-        if self.query_one("#storage").display:
-            self.load_storage()
+        self.load_storage()
 
     def action_act(self, name: str) -> None:
         """Ask before doing something to the selected job, then do it.
@@ -391,13 +403,18 @@ class MeApp(App):
     def announce(self, said: str) -> None:
         """Put a line on the banner, which is where an action reports itself.
 
+        The banner takes no room until it has something to say. It is one row, and
+        on a short terminal that row is the difference between the detail pane
+        showing its last line and losing it.
+
         Control characters are dropped: what a tool wrote to stderr ends up here,
         and an escape byte in it would be a command to the terminal rather than
         text on the banner.
         """
         try:
             banner = self.query_one("#banner", Static)
-            width = max(banner.content_size.width, 1)
+            banner.display = bool(said)
+            width = max(self.size.width - BANNER_PADDING, 1)
             banner.update(_shorten(actions.printable(said), width))
         except NoMatches:
             return
