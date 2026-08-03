@@ -36,6 +36,17 @@ headings. 80 is the first width where the table keeps every column it had at 79,
 measured across 30 to 130 columns.
 """
 
+THEMES = {"dark": "textual-dark", "light": "textual-light", "ansi": "ansi-dark"}
+"""Short names for the themes worth naming, mapped to Textual's own.
+
+Any other Textual theme name is passed through, since the app validates against
+the list it actually has. The two that matter are dark and light: the app paints
+its own background, so the theme rather than the terminal decides whether the
+screen is light, and the emphasis colors are ANSI names that Textual maps through
+a palette chosen for the theme's lightness. The ansi themes go further and use the
+terminal's own sixteen colors, for a terminal whose palette is the point.
+"""
+
 HELP = """\
 Keys
 
@@ -222,12 +233,14 @@ class MeApp(App):
         clock: Callable[[], datetime.datetime] = datetime.datetime.now,
         interval: float = 5.0,
         days: int = data.STANDING_DAYS,
+        theme: str | None = None,
     ) -> None:
         super().__init__()
         self._identity = identity or data.identity()
         self._clock = clock
         self._interval = interval
         self._days = days
+        self._theme = theme
         self._loading = False
         self._loading_storage = False
         self._loading_standing = False
@@ -245,12 +258,29 @@ class MeApp(App):
         yield StatusBar(self._identity, clock=self._clock)
 
     def on_mount(self) -> None:
+        self.apply_theme()
         self.query_one("#jobs-table", DataTable).focus()
         if self._interval > 0:
             self.load_jobs()
             self.load_storage()
             self.load_standing()
             self.set_interval(self._interval, self.load_jobs)
+
+    def apply_theme(self) -> None:
+        """Switch to the theme that was asked for, saying so if there is no such thing.
+
+        Nothing is set when none was named, so TEXTUAL_THEME keeps working. A name
+        the version of Textual in use does not have is reported on the banner rather
+        than raised: a dashboard that will not open because of a color is worse than
+        one that opens in the wrong one.
+        """
+        if not self._theme:
+            return
+        wanted = THEMES.get(self._theme, self._theme)
+        if wanted not in self.available_themes:
+            self.announce(f"no theme called {self._theme}; showing {self.theme}")
+            return
+        self.theme = wanted
 
     @work(group="jobs")
     async def load_jobs(self) -> None:
@@ -491,6 +521,7 @@ def run(
     identity: data.Identity | None = None,
     interval: float = 5.0,
     days: int = data.STANDING_DAYS,
+    theme: str | None = None,
 ) -> None:
     """Start the dashboard, returning when the user quits."""
-    MeApp(identity=identity, interval=interval, days=days).run()
+    MeApp(identity=identity, interval=interval, days=days, theme=theme).run()

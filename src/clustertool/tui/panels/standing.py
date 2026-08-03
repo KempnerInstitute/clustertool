@@ -4,7 +4,7 @@ from rich.text import Text
 from textual.containers import VerticalScroll
 from textual.widgets import Static
 
-from clustertool.tui import data
+from clustertool.tui import data, styles
 
 TITLE = "Standing"
 
@@ -32,7 +32,7 @@ STATE_WORDS = {
 """Plain words for the states, in the order the panel lists them."""
 
 
-def share_style(score: str) -> str:
+def share_style(score: str, color: bool = True) -> str:
     """Return the style for a fairshare score, empty when it is unremarkable.
 
     A score below a half means the account has used more than its share and its
@@ -42,17 +42,17 @@ def share_style(score: str) -> str:
         value = float(score)
     except ValueError:
         return "dim"
-    return "yellow" if value < LOW_SHARE else ""
+    return styles.resolve(styles.WARN, color) if value < LOW_SHARE else ""
 
 
-def cap_style(used: int, cap: int | None) -> str:
+def cap_style(used: int, cap: int | None, color: bool = True) -> str:
     """Return the style for the GPU line, which turns as the cap is approached."""
     if not cap:
         return "dim"
     fraction = used / cap
     if fraction >= CAP_FULL:
-        return "bold red"
-    return "yellow" if fraction >= CAP_WARN else ""
+        return styles.resolve(styles.ALARM, color)
+    return styles.resolve(styles.WARN, color) if fraction >= CAP_WARN else ""
 
 
 def unread(note: str) -> str:
@@ -60,7 +60,7 @@ def unread(note: str) -> str:
     return "still reading" if note == data.STILL_READING else note
 
 
-def share_text(standing: data.Standing, width: int) -> Text:
+def share_text(standing: data.Standing, width: int, color: bool = True) -> Text:
     """Render the fairshare line, naming the accounts with the most share first."""
     text = Text(no_wrap=True, overflow="crop")
     text.append("share    ", style="dim")
@@ -72,14 +72,14 @@ def share_text(standing: data.Standing, width: int) -> Text:
         return _fit(text, width)
     for account, score in standing.fairshare[:ACCOUNTS_SHOWN]:
         text.append(f"{account} ")
-        text.append(f"{score}  ", style=share_style(score))
+        text.append(f"{score}  ", style=share_style(score, color))
     extra = len(standing.fairshare) - ACCOUNTS_SHOWN
     if extra > 0:
         text.append(f"+{extra} more", style="dim")
     return _fit(text, width)
 
 
-def gpu_text(standing: data.Standing, width: int) -> Text:
+def gpu_text(standing: data.Standing, width: int, color: bool = True) -> Text:
     """Render the GPU line: the caller against their cap, their account against its.
 
     Both, because either can be what stops the next job starting, and they are
@@ -97,7 +97,7 @@ def gpu_text(standing: data.Standing, width: int) -> Text:
     if standing.gpu_cap:
         text.append(
             f"{standing.gpus_used} of {standing.gpu_cap} yours",
-            style=cap_style(standing.gpus_used, standing.gpu_cap),
+            style=cap_style(standing.gpus_used, standing.gpu_cap, color),
         )
     elif standing.caps_known:
         text.append(f"{standing.gpus_used} running, no per-user cap", style="dim")
@@ -108,7 +108,7 @@ def gpu_text(standing: data.Standing, width: int) -> Text:
         text.append(f"{standing.account} ", style="dim")
         text.append(
             f"{standing.account_gpus} of {standing.account_cap}",
-            style=cap_style(standing.account_gpus, standing.account_cap),
+            style=cap_style(standing.account_gpus, standing.account_cap, color),
         )
         if standing.other_accounts:
             text.append(f" +{standing.other_accounts} more capped", style="dim")
@@ -158,14 +158,14 @@ IDLE_WARN = 50
 IDLE_BAD = 75
 
 
-def idle_style(unused: int) -> str:
+def idle_style(unused: int, color: bool = True) -> str:
     """Return the style for the unused share, which is the point of showing it."""
     if unused >= IDLE_BAD:
-        return "bold red"
-    return "yellow" if unused >= IDLE_WARN else ""
+        return styles.resolve(styles.ALARM, color)
+    return styles.resolve(styles.WARN, color) if unused >= IDLE_WARN else ""
 
 
-def unused_text(standing: data.Standing, width: int) -> Text:
+def unused_text(standing: data.Standing, width: int, color: bool = True) -> Text:
     """Render how much of the GPU time the caller held went unused.
 
     The median utilization is honest but is not the figure that changes what anyone
@@ -181,12 +181,14 @@ def unused_text(standing: data.Standing, width: int) -> Text:
     text = Text(no_wrap=True, overflow="crop")
     text.append("unused   ", style="dim")
     hours = standing.hours
-    text.append(f"{hours.unused}% of {hours.held:.0f} gpu-hours", style=idle_style(hours.unused))
+    text.append(
+        f"{hours.unused}% of {hours.held:.0f} gpu-hours", style=idle_style(hours.unused, color)
+    )
     text.append(f"  over {hours.covered} of {hours.gpu_jobs} gpu jobs", style="dim")
     return _fit(text, width)
 
 
-def lines(standing: data.Standing, width: int) -> list[Text]:
+def lines(standing: data.Standing, width: int, color: bool = True) -> list[Text]:
     """Render the whole panel, one line per fact.
 
     The median line is dropped rather than left as a bare label when the window
@@ -194,11 +196,15 @@ def lines(standing: data.Standing, width: int) -> list[Text]:
     goes when no GPU job of the caller's was measured, which is every job for
     someone who runs none: a label with nothing after it says less than no line.
     """
-    out = [share_text(standing, width), gpu_text(standing, width), states_text(standing, width)]
+    out = [
+        share_text(standing, width, color),
+        gpu_text(standing, width, color),
+        states_text(standing, width),
+    ]
     if not standing.note:
         out.append(efficiency_text(standing, width))
         if standing.hours.unused is not None and standing.hours.covered:
-            out.append(unused_text(standing, width))
+            out.append(unused_text(standing, width, color))
     return out
 
 
@@ -282,5 +288,5 @@ class StandingPanel(VerticalScroll):
             if not self._error:
                 blocks.append(_fit(Text("reading your standing", style="dim"), width))
         else:
-            blocks.extend(lines(self._standing, width))
+            blocks.extend(lines(self._standing, width, not self.app.no_color))
         body.update(Text("\n", no_wrap=True, overflow="crop").join(blocks))

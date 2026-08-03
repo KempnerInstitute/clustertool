@@ -93,7 +93,14 @@ def _show_access(user: str) -> None:
     show_default=True,
     help="Days of finished jobs the dashboard standing panel covers.",
 )
-def me(user: str | None, plain: bool, access: bool, interval: float, days: int) -> None:
+@click.option(
+    "--theme",
+    default=None,
+    help="Dashboard color theme: dark, light, ansi, or any Textual theme name.",
+)
+def me(
+    user: str | None, plain: bool, access: bool, interval: float, days: int, theme: str | None
+) -> None:
     """Show a personal overview: your jobs, GPUs in use, and fairshare standing.
 
     A one-screen summary of your cluster life, so you do not have to run squeue
@@ -112,6 +119,7 @@ def me(user: str | None, plain: bool, access: bool, interval: float, days: int) 
       -a, --access    Also show your accounts, submission map, and priority tiers.
       -i, --interval  Seconds between dashboard job refreshes.
       -d, --days      Days of finished jobs the standing panel covers.
+      --theme         dark, light, ansi, or any Textual theme name.
 
     Run in a terminal with no other flags, this opens an interactive dashboard
     where the optional tui extra is installed. Naming a user, asking for the
@@ -126,7 +134,7 @@ def me(user: str | None, plain: bool, access: bool, interval: float, days: int) 
         except ImportError:
             pass
         else:
-            run(interval=interval, days=days)
+            run(interval=interval, days=days, theme=theme)
             return
     user = user or _caller()
     click.echo(f"clustertool overview for {user}")

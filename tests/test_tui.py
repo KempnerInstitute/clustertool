@@ -41,8 +41,8 @@ def test_me_dispatches_to_the_dashboard(monkeypatch):
     calls = []
     monkeypatch.setattr(app_module, "run", lambda **kwargs: calls.append(kwargs))
     monkeypatch.setattr(me_cmd, "_wants_dashboard", lambda user, plain, access: True)
-    me_cmd.me.callback(user=None, plain=False, access=False, interval=5.0, days=7)
-    assert calls == [{"interval": 5.0, "days": 7}]
+    me_cmd.me.callback(user=None, plain=False, access=False, interval=5.0, days=7, theme=None)
+    assert calls == [{"interval": 5.0, "days": 7, "theme": None}]
 
 
 def test_the_dashboard_flags_reach_the_app(monkeypatch):
@@ -54,7 +54,50 @@ def test_the_dashboard_flags_reach_the_app(monkeypatch):
     monkeypatch.setattr(me_cmd, "_wants_dashboard", lambda user, plain, access: True)
     result = CliRunner().invoke(main, ["me", "-i", "30", "-d", "14"])
     assert result.exit_code == 0, result.output
-    assert seen == {"interval": 30.0, "days": 14}
+    assert seen == {"interval": 30.0, "days": 14, "theme": None}
+
+
+@pytest.mark.parametrize(
+    ("asked", "expected"),
+    [("light", "textual-light"), ("dark", "textual-dark"), ("ansi", "ansi-dark"), ("nord", "nord")],
+)
+async def test_the_theme_flag_picks_the_theme(asked, expected):
+    """The app paints its own background, so the theme decides light or dark, not the
+    terminal. A full Textual theme name passes through, since the app checks the
+    list it has rather than a table here that would go stale.
+    """
+    app = _app(theme=asked)
+    async with app.run_test(size=(100, 26)) as pilot:
+        await pilot.pause()
+        assert app.theme == expected
+
+
+async def test_an_unknown_theme_says_so_and_opens_anyway():
+    """A dashboard that will not open over a color is worse than one in the wrong one."""
+    app = _app(theme="chartreuse")
+    async with app.run_test(size=(100, 26)) as pilot:
+        await pilot.pause()
+        assert app.theme == "textual-dark"
+        assert "no theme called chartreuse" in _painted(app)
+
+
+async def test_naming_no_theme_leaves_the_environments_choice_alone(monkeypatch):
+    """TEXTUAL_THEME is Textual's own way in, and the flag defaults to not using it."""
+    app = _app()
+    async with app.run_test(size=(100, 26)) as pilot:
+        await pilot.pause()
+        assert app.theme == "textual-dark", "the default, which is what Textual starts with"
+
+
+def test_the_theme_flag_reaches_the_app(monkeypatch):
+    import clustertool.tui.app as app_module
+
+    seen = {}
+    monkeypatch.setattr(app_module, "run", lambda **kwargs: seen.update(kwargs))
+    monkeypatch.setattr(me_cmd, "_wants_dashboard", lambda user, plain, access: True)
+    result = CliRunner().invoke(main, ["me", "--theme", "light"])
+    assert result.exit_code == 0, result.output
+    assert seen["theme"] == "light", seen
 
 
 def test_an_interval_under_the_floor_is_refused(monkeypatch):
@@ -218,7 +261,7 @@ its count.
 FIXED_CLOCK = datetime.datetime(2026, 8, 2, 14, 32)
 
 
-def _app(full_name="A Name", interval=0, days=data.STANDING_DAYS):
+def _app(full_name="A Name", interval=0, days=data.STANDING_DAYS, theme=None):
     """Build the app with the timer off, so a shell test never asks a scheduler.
 
     With the timer on, these ran squeue for real: they passed on a login node and
@@ -231,6 +274,7 @@ def _app(full_name="A Name", interval=0, days=data.STANDING_DAYS):
         clock=lambda: FIXED_CLOCK,
         interval=interval,
         days=days,
+        theme=theme,
     )
 
 
@@ -2301,6 +2345,78 @@ def test_the_unused_share_turns_as_it_grows(unused, expected):
     from clustertool.tui.panels.standing import idle_style
 
     assert idle_style(unused) == expected
+
+
+def test_every_emphasis_has_an_attribute_to_fall_back_on():
+    """Color is the shortcut, never the fact: without it the emphasis has to survive."""
+    from clustertool.tui import styles
+
+    assert set(styles.COLORED) == set(styles.MONOCHROME)
+    for emphasis in styles.COLORED:
+        plain = styles.resolve(emphasis, color=False)
+        assert plain and not set(plain.split()) & {"red", "yellow", "green", "blue"}, plain
+    assert styles.resolve("", color=False) == ""
+    assert styles.resolve(styles.ALARM) == "bold red"
+
+
+@pytest.mark.parametrize(
+    ("panel", "name", "args", "colored"),
+    [
+        ("standing", "share_style", ("0.1",), "yellow"),
+        ("standing", "cap_style", (16, 16), "bold red"),
+        ("standing", "idle_style", (90,), "bold red"),
+        ("storage", "style_for", (1.0,), "bold red"),
+        ("storage", "style_for", (0.8,), "yellow"),
+    ],
+)
+def test_a_panel_style_drops_its_color_when_color_is_off(panel, name, args, colored):
+    """Every style function shares one vocabulary, so none of them can be missed."""
+    import importlib
+
+    from clustertool.tui import styles
+
+    style = getattr(importlib.import_module(f"clustertool.tui.panels.{panel}"), name)
+    assert style(*args) == colored
+    emphasis = styles.WARN if colored == "yellow" else styles.ALARM
+    assert style(*args, False) == styles.MONOCHROME[emphasis]
+
+
+def _luminance(color) -> int | None:
+    """Return a painted color's brightness, which is all NO_COLOR leaves of it."""
+    if color is None or color.triplet is None:
+        return None
+    red, green, blue = color.triplet
+    return round(0.2126 * red + 0.7152 * green + 0.0722 * blue)
+
+
+async def test_no_color_leaves_the_alarming_figure_the_brightest_thing_on_its_line(monkeypatch):
+    """Textual answers NO_COLOR by mapping each color to its luminance.
+
+    The alarm red went to a darker gray than the dim label beside it, so the figure
+    that mattered most was the hardest of the line to see. Asserted on the painted
+    frame, since that mapping happens below anything this code can see.
+    """
+    from clustertool.tui.panels.standing import StandingPanel
+
+    monkeypatch.setenv("NO_COLOR", "1")
+    hours = data.GpuHours(held=100.0, used=5.0, covered=9, gpu_jobs=12)
+    app = _app()
+    async with app.run_test(size=(130, 30)) as pilot:
+        assert app.no_color, "the app reads the variable at construction"
+        await pilot.pause()
+        app.query_one(StandingPanel).show(_standing(gpus_used=16, gpu_cap=16, hours=hours))
+        await pilot.pause()
+        found = {}
+        for strip in app.screen._compositor.render_strips():
+            for segment in strip:
+                if segment.text.strip() in ("unused", "95% of 100 gpu-hours", "16 of 16 yours"):
+                    found[segment.text.strip()] = segment.style
+        assert set(found) == {"unused", "95% of 100 gpu-hours", "16 of 16 yours"}, found
+        label = _luminance(found["unused"].color)
+        for text in ("95% of 100 gpu-hours", "16 of 16 yours"):
+            style = found[text]
+            assert _luminance(style.color) >= label, (text, _luminance(style.color), label)
+            assert style.bold and style.underline, (text, style)
 
 
 @pytest.mark.parametrize(

@@ -258,7 +258,15 @@ on a throwaway job of my own, submitted and canceled deliberately.
 ### Phase 6: polish
 
 1. `--interval` and `--plain`.
-2. Color that works on light and dark terminals, and with `NO_COLOR`.
+2. Color that works on light and dark terminals, and with `NO_COLOR`. Done: the
+   emphasis colors are ANSI names, which Textual maps through a palette chosen for
+   the theme's lightness, so the share warning is #fd971f on the dark theme and
+   #cb9000 on the light one rather than one hex value that is wrong on one of them.
+   A `--theme` flag picks between them, since the app paints its own background and
+   the terminal cannot be asked. Under `NO_COLOR` Textual maps every color to its
+   luminance, which put the alarm red at a darker gray than the dim label beside
+   it: the emphasis now falls back to bold and underline, which that filter leaves
+   alone. Snapshots cover the light theme and `NO_COLOR`.
 3. Narrow-terminal behavior: below 100 columns the right column moves below the
    jobs panel; below 80, the panels stack. Phase 2 hides the side column below 80
    rather than stacking it, which is the cheap half of this. Done: below 80 columns

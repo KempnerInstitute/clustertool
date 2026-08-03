@@ -4,7 +4,7 @@ from rich.text import Text
 from textual.containers import VerticalScroll
 from textual.widgets import Static
 
-from clustertool.tui import data
+from clustertool.tui import data, styles
 
 TITLE = "Storage"
 
@@ -52,14 +52,14 @@ def bar(fraction: float | None, width: int = BAR_WIDTH) -> str:
     return FILLED * filled + EMPTY_CELL * (width - filled)
 
 
-def style_for(fraction: float | None) -> str:
+def style_for(fraction: float | None, color: bool = True) -> str:
     """Return the style for a usage figure, empty when it is unremarkable."""
     if fraction is None:
         return "dim"
     if fraction >= FULL_AT:
-        return "bold red"
+        return styles.resolve(styles.ALARM, color)
     if fraction >= WARN_AT:
-        return "yellow"
+        return styles.resolve(styles.WARN, color)
     return ""
 
 
@@ -74,7 +74,7 @@ distinguishable names.
 """
 
 
-def row_text(row: data.QuotaRow, width: int) -> Text:
+def row_text(row: data.QuotaRow, width: int, color: bool = True) -> Text:
     """Render one quota row as label, percent and bar, cut to width.
 
     Built as styled spans rather than as markup, because a label carries a group
@@ -100,10 +100,10 @@ def row_text(row: data.QuotaRow, width: int) -> Text:
     fraction = row.fraction
     text.append(_cut(row.label, room).ljust(room))
     text.append(" ")
-    text.append(f"{_cut(figure, shown):>{shown}}", style=style_for(fraction))
+    text.append(f"{_cut(figure, shown):>{shown}}", style=style_for(fraction, color))
     if with_bar:
         text.append(" ")
-        text.append(bar(fraction), style=style_for(fraction))
+        text.append(bar(fraction), style=style_for(fraction, color))
     text.truncate(width, overflow="crop")
     return text
 
@@ -122,7 +122,7 @@ def _figure(row: data.QuotaRow) -> str:
     return f"{percent}i" if row.files_bound else percent
 
 
-def lines(info: data.StorageInfo, width: int) -> list[Text]:
+def lines(info: data.StorageInfo, width: int, color: bool = True) -> list[Text]:
     """Render the whole panel, section by section, every line cut to width.
 
     The section headings are cut as well as the rows: they are the one text here
@@ -130,17 +130,17 @@ def lines(info: data.StorageInfo, width: int) -> list[Text]:
     """
     out: list[Text] = []
     if info.home is not None:
-        out.append(row_text(info.home, width))
+        out.append(row_text(info.home, width, color))
         out.append(Text(""))
     out.append(Text(_cut(_labs_heading(info.labs), width), style="dim"))
     if info.labs:
-        out.extend(row_text(row, width) for row in info.labs)
+        out.extend(row_text(row, width, color) for row in info.labs)
     else:
         out.append(Text(_cut(NO_LABS, width), style="dim"))
     if info.mine:
         out.append(Text(""))
         out.append(Text(_cut("you, on lustre", width), style="dim"))
-        out.extend(row_text(row, width) for row in info.mine)
+        out.extend(row_text(row, width, color) for row in info.mine)
     return out
 
 
@@ -245,5 +245,5 @@ class StoragePanel(VerticalScroll):
         else:
             if self._reading:
                 blocks.append(Text(_cut("reading quotas", width), style="dim"))
-            blocks.extend(lines(self._info, width))
+            blocks.extend(lines(self._info, width, not self.app.no_color))
         body.update(Text("\n", no_wrap=True, overflow="crop").join(blocks))

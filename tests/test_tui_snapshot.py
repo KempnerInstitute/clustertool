@@ -18,8 +18,8 @@ FIXED_CLOCK = datetime.datetime(2026, 8, 2, 14, 32)
 WHO = Identity("alice", "A Name", "node01", "Example HPC")
 
 
-def _app():
-    return MeApp(identity=WHO, clock=lambda: FIXED_CLOCK, interval=0)
+def _app(theme=None):
+    return MeApp(identity=WHO, clock=lambda: FIXED_CLOCK, interval=0, theme=theme)
 
 
 def test_shell_at_80x24(snap_compare):
@@ -278,6 +278,36 @@ def test_standing_degraded_to_the_share_alone(snap_compare):
 def test_standing_at_the_gpu_cap(snap_compare):
     """The line turns red at the cap, which is when new jobs stop starting."""
     at_cap = dataclasses.replace(STANDING, gpus_used=16, account_gpus=96)
+    assert snap_compare(
+        _app(),
+        terminal_size=(130, 30),
+        run_before=lambda pilot: _standing_shown(pilot, at_cap),
+    )
+
+
+def test_standing_on_a_light_theme(snap_compare):
+    """The app paints its own background, so a light terminal needs a light theme.
+
+    The emphasis colors are ANSI names, which Textual maps through a palette chosen
+    for the theme's lightness: the share warning is #cb9000 here and #fd971f on the
+    dark theme, rather than one hex value that is wrong on one of them.
+    """
+    at_cap = dataclasses.replace(STANDING, fairshare=[("nayar_lab", "0.4")], gpus_used=16)
+    assert snap_compare(
+        _app(theme="light"),
+        terminal_size=(130, 30),
+        run_before=lambda pilot: _standing_shown(pilot, at_cap),
+    )
+
+
+def test_standing_with_no_color(snap_compare, monkeypatch):
+    """NO_COLOR is answered by mapping color to luminance, which buried the alarm.
+
+    The emphasis falls back to bold and underline, so what mattered is still the
+    first thing on the line rather than the darkest thing on it.
+    """
+    monkeypatch.setenv("NO_COLOR", "1")
+    at_cap = dataclasses.replace(STANDING, fairshare=[("nayar_lab", "0.4")], gpus_used=16)
     assert snap_compare(
         _app(),
         terminal_size=(130, 30),
