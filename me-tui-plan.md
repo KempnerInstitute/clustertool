@@ -265,7 +265,13 @@ on a throwaway job of my own, submitted and cancelled deliberately.
    takes 18 for a 9-character id while NODE is cut to 9 from 47. Capping growth at
    the widest value in the current rows spends that width where it is read,
    at the cost of columns that shift when the data does.
-5. `docs/commands/me.md`, the README row, and the command index.
+5. A `--days` flag for the standing window, which Phase 4 made a keyword argument
+   but nothing passes, and a `--interval` for the jobs timer.
+6. Show the share of GPU-hours that went unused. Phase 4 reports a median
+   utilization, which is honest but not the figure that changes behavior: over the
+   caller's last week, 88% of the GPU-hours they held were idle. Elapsed and
+   AllocTRES are already read and discarded, so this needs no new query.
+7. `docs/commands/me.md`, the README row, and the command index.
 
 Verification: snapshots at 80, 100 and 160 columns; a `NO_COLOR` snapshot; the
 doc audit from `CONTRIBUTING.md` step 7.

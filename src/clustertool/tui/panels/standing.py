@@ -22,7 +22,7 @@ NO_JOBS = "No jobs of yours ended in the window."
 
 STATE_WORDS = {
     "COMPLETED": "done",
-    "CANCELLED": "cancelled",
+    "CANCELLED": "canceled",
     "FAILED": "failed",
     "TIMEOUT": "timeout",
     "OUT_OF_MEMORY": "oom",
@@ -85,8 +85,10 @@ def gpu_text(standing: data.Standing, width: int) -> Text:
             f"{standing.gpus_used} of {standing.gpu_cap} yours",
             style=cap_style(standing.gpus_used, standing.gpu_cap),
         )
-    else:
+    elif standing.caps_known:
         text.append(f"{standing.gpus_used} running, no per-user cap", style="dim")
+    else:
+        text.append(f"{standing.gpus_used} running, cap unknown", style="dim")
     if standing.account and standing.account_cap:
         text.append("   ")
         text.append(f"{standing.account} ", style="dim")
@@ -102,7 +104,7 @@ def states_text(standing: data.Standing, width: int) -> Text:
     text = Text(no_wrap=True, overflow="crop")
     text.append(f"last {standing.days}d  ", style="dim")
     if not standing.states:
-        text.append(standing.note or NO_JOBS, style="dim")
+        text.append(f"unavailable: {standing.note}" if standing.note else NO_JOBS, style="dim")
         return _fit(text, width)
     parts = [
         f"{count} {STATE_WORDS.get(state, state.lower())}"
@@ -117,13 +119,12 @@ def efficiency_text(standing: data.Standing, width: int) -> Text:
     """Render the median utilization, naming how many jobs it was taken over.
 
     The count is part of the figure: fewer than half of this caller's jobs carry
-    metrics at all, and a bare percentage would read as covering all of them.
+    metrics at all, and a bare percentage would read as covering all of them. When
+    the window could not be read the line says nothing, since the line above has
+    already said why and two of four lines on one sentence is a waste of the panel.
     """
     text = Text(no_wrap=True, overflow="crop")
     text.append("median   ", style="dim")
-    if standing.note:
-        text.append(f"efficiency unavailable: {standing.note}", style="dim")
-        return _fit(text, width)
     if not standing.measured:
         text.append("no job carried utilization data", style="dim")
         return _fit(text, width)
@@ -136,18 +137,27 @@ def efficiency_text(standing: data.Standing, width: int) -> Text:
 
 
 def lines(standing: data.Standing, width: int) -> list[Text]:
-    """Render the whole panel, one line per fact."""
-    return [
-        share_text(standing, width),
-        gpu_text(standing, width),
-        states_text(standing, width),
-        efficiency_text(standing, width),
-    ]
+    """Render the whole panel, one line per fact.
+
+    The median line is dropped rather than left as a bare label when the window
+    could not be read, since the line above has already said why.
+    """
+    out = [share_text(standing, width), gpu_text(standing, width), states_text(standing, width)]
+    if not standing.note:
+        out.append(efficiency_text(standing, width))
+    return out
 
 
 def _fit(text: Text, width: int) -> Text:
-    """Cut a line to the width it is drawn in."""
-    text.truncate(max(width, 1), overflow="crop")
+    """Cut a line to the width it is drawn in, marking the cut.
+
+    The other two panels mark theirs, and the tail here is usually a number: a
+    fairshare score cropped to 0. reads as complete and is the exact value the
+    warning color exists for.
+    """
+    if len(text.plain) > max(width, 1):
+        text.truncate(max(width - 1, 1), overflow="crop")
+        text.append("…")
     return text
 
 

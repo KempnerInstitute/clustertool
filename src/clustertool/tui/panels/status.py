@@ -10,6 +10,14 @@ from clustertool.tui import data
 CLOCK_FORMAT = "%a %Y-%m-%d %H:%M"
 GAP = "   "
 
+KEYS = "? keys   Q quit"
+"""The two keys a first-time reader needs, kept at the right of the bar.
+
+Every binding is in the help overlay, but the overlay is itself behind a key, so
+nothing on screen said how to leave. A user had to guess ctrl+c. Quitting and the
+way to the rest of the keys are the two that have to be visible without asking.
+"""
+
 
 def fit(identity: data.Identity, stamp: str, width: int) -> str:
     """Return the widest status line that fits, shedding the least useful part first.
@@ -18,6 +26,12 @@ def fit(identity: data.Identity, stamp: str, width: int) -> str:
     the clock with it. The username, host and clock are what the bar exists for,
     so the site name goes first and the full name second, and only then is the
     line cut.
+
+    The key hint is held to the right edge and outranks the host, the full name
+    and the site name, since a reader who cannot see how to quit is worse off than
+    one who cannot see which cluster they are on. It never outranks the username or
+    the clock: an arrangement that has shed everything down to the clock alone is
+    not one to spend fifteen columns of on a hint.
     """
     who = identity
     name = f" ({who.full_name})" if who.full_name else ""
@@ -28,6 +42,9 @@ def fit(identity: data.Identity, stamp: str, width: int) -> str:
         f"{who.user}{GAP}{stamp}",
         stamp,
     ]
+    for line in candidates[:-1]:
+        if len(line) + len(GAP) + len(KEYS) <= width:
+            return line.ljust(width - len(KEYS)) + KEYS
     for line in candidates:
         if len(line) <= width:
             return line

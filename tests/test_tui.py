@@ -329,7 +329,7 @@ def test_fit_sheds_the_site_name_before_the_full_name():
     from clustertool.tui.panels.status import fit
 
     who = data.Identity("mgutierrez", "A Name", "host01", "A Very Long Site Name Indeed")
-    line = fit(who, "Sun 2026-08-02 14:32", 60)
+    line = fit(who, "Sun 2026-08-02 14:32", 80)
     assert "A Name" in line
     assert "Very Long Site" not in line
 
@@ -1824,6 +1824,7 @@ def _standing(**kwargs):
         account="lab_one",
         account_gpus=52,
         account_cap=96,
+        caps_known=True,
         days=7,
         states={"COMPLETED": 9, "FAILED": 1},
         measured=8,
@@ -1842,26 +1843,96 @@ def test_fairshare_puts_the_most_share_first(monkeypatch):
     assert [row[0] for row in data.fairshare_rows("alice")] == ["b", "d", "a", "c"]
 
 
-def test_a_missing_gpu_cap_is_not_a_failure(monkeypatch):
-    """A site with no cap on its base QoS still has a GPU count worth showing."""
-    monkeypatch.setattr(slurm, "user_gpu_count", lambda user: 3)
-
-    def boom(*args):
-        raise CommandError("sacctmgr not found")
-
-    monkeypatch.setattr(slurm, "user_cap", boom)
-    monkeypatch.setattr(slurm, "default_account", boom)
-    assert data.gpu_standing("alice") == (3, None, "", 0, None)
+def _stub_gpus(monkeypatch, mine=None, totals=None, caps=(16, 96), default="lab_one"):
+    monkeypatch.setattr(
+        slurm, "user_gpus_by_account", lambda user, parts: (sum((mine or {}).values()), mine or {})
+    )
+    monkeypatch.setattr(slurm, "gpu_by_account", lambda parts: totals or {})
+    monkeypatch.setattr(slurm, "qos_gpu_caps", lambda: caps)
+    monkeypatch.setattr(slurm, "default_account", lambda user: default)
 
 
-def test_the_user_cap_is_not_the_account_cap(monkeypatch):
-    """This site allows a user 16 and their account 96, so one cannot stand for both."""
-    monkeypatch.setattr(slurm, "user_gpu_count", lambda user: 4)
-    monkeypatch.setattr(slurm, "user_cap", lambda: 16)
-    monkeypatch.setattr(slurm, "account_cap", lambda: 96)
-    monkeypatch.setattr(slurm, "default_account", lambda user: "lab_one")
-    monkeypatch.setattr(slurm, "gpu_by_account", lambda parts: {"lab_one": 52})
-    assert data.gpu_standing("alice") == (4, 16, "lab_one", 52, 96)
+def test_a_cap_that_could_not_be_read_is_not_a_cap_that_is_unset(monkeypatch):
+    """process.run returns stdout whatever the exit code, so both looked the same."""
+
+    def boom():
+        raise CommandError("slurmdbd is not answering")
+
+    _stub_gpus(monkeypatch, mine={"kempner_lab_one": 3}, totals={"kempner_lab_one": 3})
+    monkeypatch.setattr(slurm, "qos_gpu_caps", boom)
+    result = data.gpu_standing("alice")
+    assert result.used == 3
+    assert result.cap is None
+    assert not result.caps_known
+
+
+def test_a_site_with_no_cap_says_so(monkeypatch):
+    _stub_gpus(monkeypatch, mine={"lab_one": 3}, totals={"lab_one": 3}, caps=(None, None))
+    result = data.gpu_standing("alice")
+    assert result.cap is None
+    assert result.caps_known
+
+
+def test_only_gpus_on_the_capped_partitions_count(monkeypatch):
+    """The cap sits on the base partitions, and one user held 239 GPUs elsewhere."""
+    seen = []
+    monkeypatch.setattr(
+        slurm,
+        "user_gpus_by_account",
+        lambda user, parts: (seen.append(tuple(parts)), (12, {"kempner_lab_one": 12}))[1],
+    )
+    monkeypatch.setattr(slurm, "gpu_by_account", lambda parts: {"kempner_lab_one": 40})
+    monkeypatch.setattr(slurm, "qos_gpu_caps", lambda: (16, 96))
+    result = data.gpu_standing("alice")
+    assert seen == [tuple(slurm.BASE_PARTITIONS)], seen
+    assert result.used == 12
+
+
+def test_the_account_is_the_one_the_jobs_run_under(monkeypatch):
+    """Every base job runs under a prefixed account while the default is unprefixed.
+
+    All 43 users then running had a default naming an account with no usage.
+    """
+    _stub_gpus(
+        monkeypatch,
+        mine={"kempner_lab_one": 12, "kempner_lab_two": 4},
+        totals={"kempner_lab_one": 40, "lab_one": 0},
+        default="lab_one",
+    )
+    result = data.gpu_standing("alice")
+    assert result.account == "kempner_lab_one"
+    assert result.account_gpus == 40
+
+
+def test_with_nothing_running_the_default_account_is_prefixed(monkeypatch):
+    _stub_gpus(monkeypatch, mine={}, totals={"kempner_lab_one": 40}, default="lab_one")
+    assert data.gpu_standing("alice").account == "kempner_lab_one"
+
+
+def test_an_account_slurm_does_not_report_is_not_named(monkeypatch):
+    _stub_gpus(monkeypatch, mine={}, totals={"kempner_other": 4}, default="lab_one")
+    assert data.gpu_standing("alice").account == ""
+
+
+def test_the_caps_come_from_the_per_user_and_per_account_fields(monkeypatch):
+    """MaxTRESPU is 16 here and MaxTRESPA is 96, so neither can stand for the other."""
+    import clustertool.process as proc
+
+    seen = []
+    monkeypatch.setattr(
+        proc, "probe", lambda cmd, **kw: (seen.append(cmd), (0, "gres/gpu=16|gres/gpu=96\n", ""))[1]
+    )
+    assert slurm.qos_gpu_caps() == (16, 96)
+    joined = " ".join(seen[0])
+    assert "MaxTRESPU" in joined and "MaxTRESPA" in joined
+
+
+def test_a_failed_cap_read_raises_rather_than_reporting_no_cap(monkeypatch):
+    import clustertool.process as proc
+
+    monkeypatch.setattr(proc, "probe", lambda cmd, **kw: (1, "", "slurmdbd down"))
+    with pytest.raises(CommandError, match="limits"):
+        slurm.qos_gpu_caps()
 
 
 def test_the_gpu_line_names_both_limits():
@@ -1924,7 +1995,9 @@ def test_recent_work_raises_when_sacct_fails(monkeypatch):
 def test_standing_keeps_the_share_when_the_window_cannot_be_read(monkeypatch):
     """Fairshare and the cap are cheap, and are what a user checks most."""
     monkeypatch.setattr(data, "fairshare_rows", lambda user: [("lab_one", "0.9")])
-    monkeypatch.setattr(data, "gpu_standing", lambda user: (4, 16, "lab_one", 52, 96))
+    monkeypatch.setattr(
+        data, "gpu_standing", lambda user: data.GpuStanding(4, 16, "lab_one", 52, 96, True)
+    )
 
     def boom(user, days=7):
         raise CommandError("accounting is not answering just now")
@@ -1961,12 +2034,20 @@ def test_the_efficiency_line_says_how_many_jobs_it_covers():
     assert "(5 gpu)" in plain
 
 
-def test_the_efficiency_line_says_why_it_is_missing():
-    from clustertool.tui.panels.standing import efficiency_text
+def test_the_window_line_says_why_it_is_missing_and_the_median_line_does_not():
+    """Two of four lines on one sentence is a waste of the panel."""
+    from clustertool.tui.panels.standing import efficiency_text, states_text
 
-    plain = efficiency_text(_standing(note="slurmdbd is not answering", states={}), 120).plain
-    assert "unavailable" in plain
-    assert "slurmdbd" in plain
+    broken = _standing(note="slurmdbd is not answering", states={})
+    window = states_text(broken, 120).plain
+    assert "unavailable" in window
+    assert "slurmdbd" in window
+    assert "slurmdbd" not in efficiency_text(broken, 120).plain
+    from clustertool.tui.panels.standing import lines
+
+    rendered = [line.plain for line in lines(broken, 120)]
+    assert len(rendered) == 3, rendered
+    assert not any(line.strip() == "median" for line in rendered)
 
 
 def test_the_efficiency_line_when_no_job_carried_data():
@@ -2303,3 +2384,304 @@ def test_one_lookup_at_a_time_is_capped_across_the_whole_process(monkeypatch):
     data.lab_quotas("alice")
     data.lab_quotas("alice")
     assert peak <= data.QUOTA_WORKERS, f"peak {peak} against a cap of {data.QUOTA_WORKERS}"
+
+
+def test_the_status_bar_says_how_to_quit():
+    """Nothing on screen said how to leave, so a user guessed ctrl+c."""
+    from clustertool.tui.panels.status import KEYS, fit
+
+    who = data.Identity("alice", "A Name", "node01", "Example HPC")
+    line = fit(who, "Sun 2026-08-02 14:32", 120)
+    assert "Q quit" in line
+    assert "? keys" in line
+    assert line.endswith(KEYS), "the hint is held to the right edge"
+    assert len(line) == 120
+
+
+def test_the_key_hint_outranks_the_site_name():
+    """A reader who cannot quit is worse off than one who cannot see the cluster."""
+    from clustertool.tui.panels.status import fit
+
+    who = data.Identity(
+        "mgutierrez", "Maria Fernanda Gutierrez", "holy8a26105", "Kempner AI Cluster"
+    )
+    line = fit(who, "Sun 2026-08-02 14:32", 78)
+    assert "Q quit" in line
+    assert "Kempner AI Cluster" not in line
+
+
+def test_the_key_hint_goes_before_the_clock_is_lost():
+    """At a width that holds neither, the bar keeps saying who and when."""
+    from clustertool.tui.panels.status import fit
+
+    who = data.Identity("alice", "", "node01", "Example HPC")
+    line = fit(who, "Sun 2026-08-02 14:32", 30)
+    assert len(line) <= 30
+    assert "Sun 2026-08-02 14:32" in line
+
+
+@pytest.mark.parametrize("width", [200, 120, 100, 80, 70, 60, 45, 40, 30, 20, 10])
+def test_the_status_bar_never_exceeds_its_width(width):
+    from clustertool.tui.panels.status import fit
+
+    who = data.Identity("mgutierrez", "Maria Fernanda Gutierrez", "holy8a26105", "Kempner AI")
+    assert len(fit(who, "Sun 2026-08-02 14:32", width)) <= width
+
+
+async def test_the_quit_hint_is_painted_on_screen():
+    """Asserted on the frame, since a render string could be clipped by the bar."""
+    app = _app()
+    async with app.run_test(size=(120, 24)) as pilot:
+        await pilot.pause()
+        assert "Q quit" in _painted(app)
+
+
+def test_a_job_that_has_not_ended_is_not_counted_in_the_window(monkeypatch):
+    """A user whose only recent activity was running jobs saw 11 jobs: 11 other."""
+    import clustertool.process as proc
+
+    out = (
+        "1|COMPLETED|00:10:00|cpu=8|\n"
+        "2|RUNNING|00:10:00|cpu=8|\n"
+        "3|PENDING|00:00:00|cpu=8|\n"
+        "4|REQUEUED|00:01:00|cpu=8|\n"
+        "5|NODE_FAIL|00:01:00|cpu=8|\n"
+    )
+    monkeypatch.setattr(proc, "probe", lambda cmd, **kw: (0, out, ""))
+    states, _ = data.recent_work("alice", 7)
+    assert states == {"COMPLETED": 1, "OTHER": 1}, states
+
+
+def test_an_out_of_memory_job_is_counted_by_name():
+    assert "OUT_OF_MEMORY" in data.TERMINAL_STATES
+
+
+def test_the_window_asks_for_one_row_per_job(monkeypatch):
+    """Without -X the window went 155 rows to 423, all 268 steps carrying no blob."""
+    import clustertool.process as proc
+
+    seen = []
+    monkeypatch.setattr(proc, "probe", lambda cmd, **kw: (seen.append(cmd), (0, "", ""))[1])
+    data.recent_work("alice", 7)
+    assert "-X" in seen[0]
+
+
+def test_the_window_length_comes_from_the_constant(monkeypatch):
+    """A hardcoded 7 in the fixtures let the default change unnoticed."""
+    import clustertool.process as proc
+
+    seen = []
+    monkeypatch.setattr(proc, "probe", lambda cmd, **kw: (seen.append(cmd), (0, "", ""))[1])
+    monkeypatch.setattr(data, "fairshare_rows", lambda user: [])
+    monkeypatch.setattr(
+        data, "gpu_standing", lambda user: data.GpuStanding(0, None, "", 0, None, True)
+    )
+    result = data.standing("alice")
+    assert result.days == data.STANDING_DAYS
+    assert f"now-{data.STANDING_DAYS}days" in seen[0]
+
+
+def test_cpu_and_memory_are_not_transposed(monkeypatch):
+    """Every efficiency test built Standing by hand, so the wiring went unchecked."""
+    from jobscope import blob
+
+    import clustertool.process as proc
+
+    monkeypatch.setattr(blob, "decode_admin_comment", lambda text: {"x": 1})
+    monkeypatch.setattr(blob, "blob_metrics", lambda stats: (11, 77, 33, 44))
+    monkeypatch.setattr(proc, "probe", lambda cmd, **kw: (0, "1|COMPLETED|1:00|cpu=8|blob\n", ""))
+    monkeypatch.setattr(data, "fairshare_rows", lambda user: [])
+    monkeypatch.setattr(
+        data, "gpu_standing", lambda user: data.GpuStanding(0, None, "", 0, None, True)
+    )
+    result = data.standing("alice")
+    assert (result.cpu, result.mem, result.gpu) == (11, 77, 33), (
+        result.cpu,
+        result.mem,
+        result.gpu,
+    )
+
+
+def test_a_cpu_only_job_is_left_out_of_the_gpu_median_not_counted_as_zero():
+    """51 of 71 measured jobs have no GPU figure; zeroing them moved the median to 0."""
+    assert data._median([10, 20, 30]) == 20
+
+
+def test_the_gpu_median_ignores_jobs_with_no_gpu_figure(monkeypatch):
+    from jobscope import blob
+
+    import clustertool.process as proc
+
+    metrics = iter([(1, 1, None, None), (1, 1, None, None), (1, 1, 40, 50)])
+    monkeypatch.setattr(blob, "decode_admin_comment", lambda text: {"x": 1})
+    monkeypatch.setattr(blob, "blob_metrics", lambda stats: next(metrics))
+    out = "1|COMPLETED|1:00|cpu=8|b\n2|COMPLETED|1:00|cpu=8|b\n3|COMPLETED|1:00|cpu=8|b\n"
+    monkeypatch.setattr(proc, "probe", lambda cmd, **kw: (0, out, ""))
+    monkeypatch.setattr(data, "fairshare_rows", lambda user: [])
+    monkeypatch.setattr(
+        data, "gpu_standing", lambda user: data.GpuStanding(0, None, "", 0, None, True)
+    )
+    result = data.standing("alice")
+    assert result.gpu == 40, result.gpu
+    assert result.gpu_jobs == 1
+
+
+def test_an_sshare_failure_does_not_take_the_whole_panel_down(monkeypatch):
+    """Only the efficiency half was ever meant to degrade."""
+
+    def boom(user):
+        raise CommandError("sshare is not answering")
+
+    monkeypatch.setattr(data, "fairshare_rows", boom)
+    monkeypatch.setattr(
+        data, "gpu_standing", lambda user: data.GpuStanding(4, 16, "lab", 8, 96, True)
+    )
+    monkeypatch.setattr(data, "recent_work", lambda user, days=7: ({"COMPLETED": 2}, []))
+    result = data.standing("alice")
+    assert result.fairshare == []
+    assert result.gpu_cap == 16
+    assert result.states == {"COMPLETED": 2}
+
+
+def test_a_squeue_failure_does_not_take_the_whole_panel_down(monkeypatch):
+    def boom(user):
+        raise CommandError("squeue is not answering")
+
+    monkeypatch.setattr(data, "fairshare_rows", lambda user: [("lab", "0.9")])
+    monkeypatch.setattr(data, "gpu_standing", boom)
+    monkeypatch.setattr(data, "recent_work", lambda user, days=7: ({"COMPLETED": 2}, []))
+    result = data.standing("alice")
+    assert result.fairshare == [("lab", "0.9")]
+    assert not result.caps_known
+    assert result.states == {"COMPLETED": 2}
+
+
+def test_the_standing_gather_is_bounded(monkeypatch):
+    """One hung call left the panel reading for good, with no refresh able to recover."""
+    monkeypatch.setattr(data, "STANDING_DEADLINE_S", 0.4)
+
+    def hang(*args, **kwargs):
+        time.sleep(30)
+
+    monkeypatch.setattr(data, "fairshare_rows", hang)
+    monkeypatch.setattr(data, "gpu_standing", hang)
+    monkeypatch.setattr(data, "recent_work", lambda user, days=7: ({"COMPLETED": 1}, []))
+    start = time.monotonic()
+    result = data.standing("alice")
+    assert time.monotonic() - start < 5, "the deadline did not fire"
+    assert result.fairshare == []
+    assert result.states == {"COMPLETED": 1}
+
+
+async def test_repeated_standing_refreshes_do_not_stack(monkeypatch):
+    from clustertool.tui.panels.standing import StandingPanel
+
+    monkeypatch.setattr(data, "jobs", lambda user: [])
+    monkeypatch.setattr(data, "storage_info", lambda user: data.StorageInfo(None, [], []))
+    probe = _Probe()
+    lock = __import__("threading").Lock()
+
+    def slow(user):
+        with lock:
+            probe.calls += 1
+            probe.live += 1
+            probe.peak = max(probe.peak, probe.live)
+        try:
+            time.sleep(0.4)
+            return _standing()
+        finally:
+            with lock:
+                probe.live -= 1
+
+    monkeypatch.setattr(data, "standing", slow)
+    app = _app(interval=0)
+    async with app.run_test(size=(130, 30)) as pilot:
+        await pilot.pause()
+        app.query_one(StandingPanel).focus()
+        await pilot.pause()
+        for _ in range(10):
+            await pilot.press("r")
+        await pilot.pause(0.6)
+        assert probe.peak == 1, f"{probe.calls} reads ran, {probe.peak} at once"
+
+
+async def test_a_cancelled_standing_read_clears_the_reading_mark(monkeypatch):
+    import threading
+
+    from clustertool.tui.panels.standing import StandingPanel
+
+    started = threading.Event()
+    release = threading.Event()
+    monkeypatch.setattr(data, "jobs", lambda user: [])
+    monkeypatch.setattr(data, "storage_info", lambda user: data.StorageInfo(None, [], []))
+
+    def blocking(user):
+        started.set()
+        release.wait(5)
+        return _standing()
+
+    monkeypatch.setattr(data, "standing", blocking)
+    app = _app(interval=30)
+    try:
+        async with app.run_test(size=(130, 30)) as pilot:
+            panel = app.query_one(StandingPanel)
+            assert await _until(pilot, started.is_set)
+            await pilot.pause()
+            assert "reading" in str(panel.border_title)
+            app.workers.cancel_group(app, "standing")
+            release.set()
+            assert await _until(pilot, lambda: "reading" not in str(panel.border_title)), (
+                panel.border_title
+            )
+    finally:
+        release.set()
+
+
+async def test_the_app_says_it_is_reading_the_standing_panel(monkeypatch):
+    import threading
+
+    from clustertool.tui.panels.standing import StandingPanel
+
+    started = threading.Event()
+    release = threading.Event()
+    monkeypatch.setattr(data, "jobs", lambda user: [])
+    monkeypatch.setattr(data, "storage_info", lambda user: data.StorageInfo(None, [], []))
+
+    def blocking(user):
+        started.set()
+        release.wait(5)
+        return _standing()
+
+    monkeypatch.setattr(data, "standing", blocking)
+    app = _app(interval=30)
+    try:
+        async with app.run_test(size=(130, 30)) as pilot:
+            panel = app.query_one(StandingPanel)
+            assert await _until(pilot, started.is_set)
+            await pilot.pause()
+            assert "reading" in str(panel.border_title)
+            assert "╭" in _painted(app), "the panel lost its border while reading"
+            release.set()
+            assert await _until(pilot, lambda: panel._standing is not None)
+            await pilot.pause()
+            assert "reading" not in str(panel.border_title)
+    finally:
+        release.set()
+
+
+def test_a_cut_standing_line_is_marked():
+    """A fairshare score cropped to 0. reads as complete and is the warning value."""
+    from clustertool.tui.panels.standing import share_text
+
+    who = _standing(fairshare=[("a_long_account_name", "0.496300")])
+    for width in (20, 28, 34):
+        plain = share_text(who, width).plain
+        assert len(plain) <= width
+        assert plain.endswith("…"), plain
+
+
+def test_a_canceled_job_is_spelled_the_way_the_rest_of_the_project_spells_it():
+    """jobs failures and jobs debug both chose the US form for this state."""
+    from clustertool.tui.panels.standing import STATE_WORDS
+
+    assert STATE_WORDS["CANCELLED"] == "canceled"

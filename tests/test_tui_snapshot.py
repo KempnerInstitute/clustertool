@@ -230,6 +230,7 @@ STANDING = Standing(
     account="nayar_lab",
     account_gpus=88,
     account_cap=96,
+    caps_known=True,
     days=7,
     states={"COMPLETED": 90, "CANCELLED": 51, "FAILED": 7, "TIMEOUT": 4},
     measured=72,

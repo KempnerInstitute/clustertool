@@ -428,18 +428,34 @@ def storage_info(user: str) -> StorageInfo:
     for thread in threads:
         thread.join(max(deadline - time.monotonic(), 0.0))
     return StorageInfo(
-        home=home[0] if home else QuotaRow("home", "-", "-", "-", error=STILL_READING),
-        labs=labs[0] if labs else [],
-        mine=mine[0] if mine else [],
+        home=_taken(home, QuotaRow("home", "-", "-", "-", error=_why(home))),
+        labs=_taken(labs, []),
+        mine=_taken(mine, []),
     )
 
 
 def _collect(box: list, call) -> None:
-    """Run call and put its result in box, leaving box empty when it fails."""
+    """Run call and record (True, result), or (False, why) when it raises.
+
+    The reason is kept rather than dropped: a panel that says only that something
+    could not be read is far less use than one naming the tool that did not answer.
+    """
     try:
-        box.append(call())
-    except Exception:
-        return
+        box.append((True, call()))
+    except Exception as exc:
+        box.append((False, _short_reason(exc)))
+
+
+def _taken(box: list, fallback):
+    """Return what a collected call produced, or the fallback when it has none."""
+    return box[0][1] if box and box[0][0] else fallback
+
+
+def _why(box: list) -> str:
+    """Return why a collected call has no result: its reason, or that it is unfinished."""
+    if not box:
+        return STILL_READING
+    return "" if box[0][0] else box[0][1]
 
 
 def _label(path: str, group: str) -> str:
@@ -562,7 +578,32 @@ RECENT_FIELDS = ("JobID", "State", "Elapsed", "AllocTRES", "AdminComment")
 """The sacct fields the standing panel reads, in the order it asks for them."""
 
 TERMINAL_STATES = ("COMPLETED", "CANCELLED", "FAILED", "TIMEOUT", "OUT_OF_MEMORY", "PREEMPTED")
-"""States worth counting separately; anything else is grouped as other."""
+"""Ended states worth counting separately; any other ended state groups as other."""
+
+UNFINISHED_STATES = (
+    "RUNNING",
+    "PENDING",
+    "SUSPENDED",
+    "REQUEUED",
+    "REQUEUE_HOLD",
+    "RESIZING",
+    "CONFIGURING",
+    "COMPLETING",
+)
+"""States of a job that has not ended, and so does not belong in a window count.
+
+The window says how recent work went. Counting a running job in it put a user
+with eleven running jobs and nothing finished on "11 jobs: 11 other", and the
+jobs panel already shows what is running.
+"""
+
+STANDING_DEADLINE_S = 12.0
+"""How long the whole standing gather may take, across all of its parts.
+
+Every query but the sacct one goes through a helper that passes no timeout, and
+without a deadline one hung call left the panel saying it was reading for good,
+with the in-flight guard set so no later refresh could recover it.
+"""
 
 
 @dataclasses.dataclass(frozen=True)
@@ -575,6 +616,7 @@ class Standing:
     account: str
     account_gpus: int
     account_cap: int | None
+    caps_known: bool
     days: int
     states: dict[str, int]
     measured: int
@@ -607,29 +649,74 @@ def _share(text: str) -> float:
         return -1.0
 
 
-def gpu_standing(user: str) -> tuple[int, int | None, str, int, int | None]:
+@dataclasses.dataclass(frozen=True)
+class GpuStanding:
+    """What the caller holds against their cap, and their account against its."""
+
+    used: int
+    cap: int | None
+    account: str
+    account_gpus: int
+    account_cap: int | None
+    caps_known: bool
+
+
+def gpu_standing(user: str) -> GpuStanding:
     """Return the caller's GPUs and cap, and their account's GPUs and cap.
 
     Both levels, because either can be what stops a job starting and they are
-    different numbers: this site allows a user 16 and their account 96. Reading a
-    user's own usage against the account cap, as this first did, says a user may
-    reach 96 when their own limit is a sixth of that.
+    different numbers: this site allows a user 16 and their account 96.
+
+    Both counts are restricted to the partitions the capped QoS is set on. Anywhere
+    else does not count toward the cap, and counting it does not merely overstate:
+    one user holding 239 GPUs on the requeue partition, and none on a base
+    partition, was shown as 239 of 16 in the color that means no room left.
+
+    The account is the one the caller's own jobs run under, not their default
+    account. At this site every base-partition job runs under a prefixed account
+    while the default is the unprefixed one, so the default named an account with
+    no usage for all 43 users then running.
+    """
+    from clustertool import site, slurm
+
+    used, mine = slurm.user_gpus_by_account(user, slurm.BASE_PARTITIONS)
+    try:
+        cap, account_cap = slurm.qos_gpu_caps()
+        caps_known = True
+    except CommandError:
+        cap, account_cap, caps_known = None, None, False
+    totals = slurm.gpu_by_account(slurm.BASE_PARTITIONS)
+    account = _charged_account(user, mine, totals, site.lab_account_prefix())
+    return GpuStanding(
+        used=used,
+        cap=cap,
+        account=account,
+        account_gpus=totals.get(account, 0),
+        account_cap=account_cap,
+        caps_known=caps_known,
+    )
+
+
+def _charged_account(user: str, mine: dict[str, int], totals: dict[str, int], prefix: str) -> str:
+    """Name the account the caller's capped usage is charged to.
+
+    Whichever of their own running jobs holds the most, since that is the account
+    whose ceiling they are actually working against. With nothing running there is
+    no such account, so their default is used, prefixed to match the accounts this
+    QoS governs, and only when that names one Slurm reports.
     """
     from clustertool import slurm
 
-    used = slurm.user_gpu_count(user)
+    if mine:
+        return max(mine.items(), key=lambda item: item[1])[0]
     try:
-        cap = slurm.user_cap()
+        default = slurm.default_account(user)
     except CommandError:
-        cap = None
-    account, account_gpus, account_cap = "", 0, None
-    try:
-        account = slurm.default_account(user)
-        account_cap = slurm.account_cap()
-        account_gpus = slurm.gpu_by_account(slurm.BASE_PARTITIONS).get(account, 0)
-    except CommandError:
-        pass
-    return used, cap, account, account_gpus, account_cap
+        return ""
+    for candidate in (f"{prefix}{default}", default):
+        if candidate in totals:
+            return candidate
+    return ""
 
 
 def recent_work(user: str, days: int = STANDING_DAYS) -> tuple[dict[str, int], list[tuple]]:
@@ -670,7 +757,7 @@ def recent_work(user: str, days: int = STANDING_DAYS) -> tuple[dict[str, int], l
             continue
         field = dict(zip(RECENT_FIELDS, (p.strip() for p in parts), strict=False))
         head = field["State"].split()[0] if field["State"].split() else ""
-        if not head:
+        if not head or head in UNFINISHED_STATES:
             continue
         states[head if head in TERMINAL_STATES else "OTHER"] = (
             states.get(head if head in TERMINAL_STATES else "OTHER", 0) + 1
@@ -685,25 +772,44 @@ def recent_work(user: str, days: int = STANDING_DAYS) -> tuple[dict[str, int], l
 def standing(user: str, days: int = STANDING_DAYS) -> Standing:
     """Gather everything the standing panel shows.
 
-    Fairshare and the GPU cap come from Slurm and are cheap. The efficiency half
-    degrades on its own: a window that cannot be read leaves the share and the cap
-    on the panel with a note, since those are the figures a user checks most.
+    The three parts run side by side under one deadline and fail independently.
+    Sharing a failure was wrong twice over: an sshare or squeue error took the whole
+    panel down where only the efficiency half was ever meant to degrade, and with no
+    deadline a single hung call left the panel reading for good, its in-flight guard
+    set so no later refresh could recover.
     """
-    rows = fairshare_rows(user)
-    used, cap, account, account_gpus, account_cap = gpu_standing(user)
-    try:
-        states, metrics = recent_work(user, days)
-        note = ""
-    except Exception as exc:
-        states, metrics, note = {}, [], _short_reason(exc)
+    share: list = []
+    gpus: list = []
+    recent: list = []
+    work = (
+        (share, lambda: fairshare_rows(user)),
+        (gpus, lambda: gpu_standing(user)),
+        (recent, lambda: recent_work(user, days)),
+    )
+    threads = [
+        threading.Thread(
+            target=_collect, args=(box, call), daemon=True, name="clustertool-standing"
+        )
+        for box, call in work
+    ]
+    for thread in threads:
+        thread.start()
+    deadline = time.monotonic() + STANDING_DEADLINE_S
+    for thread in threads:
+        thread.join(max(deadline - time.monotonic(), 0.0))
+    rows = _taken(share, [])
+    caps = _taken(gpus, GpuStanding(0, None, "", 0, None, False))
+    states, metrics = _taken(recent, ({}, []))
+    note = _why(recent)
     gpu_values = [entry[2] for entry in metrics if entry[2] is not None]
     return Standing(
         fairshare=rows,
-        gpus_used=used,
-        gpu_cap=cap,
-        account=account,
-        account_gpus=account_gpus,
-        account_cap=account_cap,
+        gpus_used=caps.used,
+        gpu_cap=caps.cap,
+        account=caps.account,
+        account_gpus=caps.account_gpus,
+        account_cap=caps.account_cap,
+        caps_known=caps.caps_known,
         days=days,
         states=states,
         measured=len(metrics),
