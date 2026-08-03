@@ -86,7 +86,7 @@ def gpu_text(standing: data.Standing, width: int, color: bool = True) -> Text:
     different limits. Reading a user's own usage against the account cap, which is
     six times larger here, said they had room they did not have.
 
-    A count that could not be read says so rather than showing nought against the
+    A count that could not be read says so rather than showing zero against the
     cap, which reads as all the room being free when a query simply did not return.
     """
     text = Text(no_wrap=True, overflow="crop")
@@ -208,6 +208,25 @@ def lines(standing: data.Standing, width: int, color: bool = True) -> list[Text]
     return out
 
 
+TITLE_REASON_WORDS = 6
+"""How much of a failure the border title names before the panel stops quoting it.
+
+The title is a border, so Textual cuts what will not fit. Six words is what a
+narrow panel shows of a reason, and the reason's first words are the ones that say
+what happened.
+"""
+
+
+def _stale_title(reason: str) -> str:
+    """Return the border title for a panel whose figures are old, naming the cause.
+
+    On the title rather than in the body because the body has no row to spare, and
+    a mark that says only stale leaves a reader with nothing to act on.
+    """
+    said = " ".join(reason.split()[:TITLE_REASON_WORDS])
+    return f"{TITLE} (stale: {said})" if said else f"{TITLE} (stale)"
+
+
 def _fit(text: Text, width: int) -> Text:
     """Cut a line to the width it is drawn in, marking the cut.
 
@@ -253,7 +272,7 @@ class StandingPanel(VerticalScroll):
         """Clear the reading mark if it is still set, whatever ended the read."""
         if self._reading:
             self._reading = False
-            self.border_title = f"{TITLE} (stale)" if self._error else TITLE
+            self.border_title = _stale_title(self._error) if self._error else TITLE
             self._paint()
 
     def show(self, standing: data.Standing) -> None:
@@ -263,30 +282,35 @@ class StandingPanel(VerticalScroll):
         self._paint()
 
     def fail(self, reason: str) -> None:
-        """Mark the panel stale, naming the cause and keeping whatever it held."""
+        """Mark the panel stale, naming the cause and keeping whatever it held.
+
+        The cause goes on the border title, not on a line of the body: the panel has
+        five rows for its five facts, so a line here pushed the fifth out of sight,
+        which is the same row the reading mark used to cost. The title is also the
+        one part of a panel a short terminal does not clip.
+        """
         self._error, self._reading = reason, False
-        self.border_title = f"{TITLE} (stale)"
+        self.border_title = _stale_title(reason)
         self._paint()
 
     def on_resize(self, _event) -> None:
         self._paint()
 
     def _paint(self) -> None:
-        """Draw the panel, saying it is reading only when it has nothing else to say.
+        """Draw the panel, using every row it has for figures.
 
-        With figures already up, the border title carries the reading mark on its
-        own. Saying it on a line as well cost a row the panel does not have: its
-        five facts fill it exactly, and the fifth was pushed into the scroll area
-        for as long as the read took.
+        Neither the reading mark nor the stale reason takes a line while there are
+        figures to show: the border title carries both, and the panel has exactly as
+        many rows as it has facts, so either one pushed the last fact out of sight.
+        With no figures yet there is nothing to push, and the body says what is
+        happening instead.
         """
         body = self.query_one("#standing-body", Static)
         width = max(self.content_size.width - 1, 12)
         blocks: list[Text] = []
-        if self._error:
-            blocks.append(_fit(Text(f"stale: {self._error}", style="dim"), width))
         if self._standing is None:
-            if not self._error:
-                blocks.append(_fit(Text("reading your standing", style="dim"), width))
+            said = f"stale: {self._error}" if self._error else "reading your standing"
+            blocks.append(_fit(Text(said, style="dim"), width))
         else:
             blocks.extend(lines(self._standing, width, not self.app.no_color))
         body.update(Text("\n", no_wrap=True, overflow="crop").join(blocks))

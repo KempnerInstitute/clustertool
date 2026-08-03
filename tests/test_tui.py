@@ -81,12 +81,18 @@ async def test_an_unknown_theme_says_so_and_opens_anyway():
         assert "no theme called chartreuse" in _painted(app)
 
 
-async def test_naming_no_theme_leaves_the_environments_choice_alone(monkeypatch):
-    """TEXTUAL_THEME is Textual's own way in, and the flag defaults to not using it."""
+async def test_naming_no_theme_leaves_the_choice_already_made_alone():
+    """TEXTUAL_THEME is Textual's own way in, and the flag defaults to not using it.
+
+    Asserting the default alone passed while apply_theme forced that same default,
+    which is the failure this names, so the app is given a theme first and the test
+    is whether it survives being mounted.
+    """
     app = _app()
+    app.theme = "nord"
     async with app.run_test(size=(100, 26)) as pilot:
         await pilot.pause()
-        assert app.theme == "textual-dark", "the default, which is what Textual starts with"
+        assert app.theme == "nord"
 
 
 def test_the_theme_flag_reaches_the_app(monkeypatch):
@@ -101,11 +107,21 @@ def test_the_theme_flag_reaches_the_app(monkeypatch):
 
 
 def test_an_interval_under_the_floor_is_refused(monkeypatch):
-    """Every tick is a query on the controller, and r already refreshes on demand."""
+    """Every tick is a query on the controller, and r already refreshes on demand.
+
+    run is stubbed as well as the terminal check: with the floor gone this tried to
+    open a real dashboard and hung rather than failing. The message is asserted to
+    name the floor itself, since matching the bare digit passed for any floor.
+    """
+    import clustertool.tui.app as app_module
+
+    started = []
+    monkeypatch.setattr(app_module, "run", lambda **kwargs: started.append(kwargs))
     monkeypatch.setattr(me_cmd, "_wants_dashboard", lambda user, plain, access: True)
     result = CliRunner().invoke(main, ["me", "-i", "0.2"])
     assert result.exit_code == 2, result.output
-    assert "2" in result.output
+    assert "x>=2" in result.output, result.output
+    assert started == []
 
 
 async def test_the_window_flag_reaches_the_standing_query(monkeypatch):
@@ -240,13 +256,34 @@ async def test_app_omits_empty_parentheses_without_a_full_name():
         await pilot.press("Q")
 
 
-def test_run_starts_the_app(monkeypatch):
+def test_run_starts_the_app_with_everything_it_was_given(monkeypatch):
+    """The one seam between the flags and the app, and nothing else covers it.
+
+    Every other app test builds MeApp itself, and the flag tests stub run, so
+    dropping all three arguments here left the whole suite green while --interval,
+    --days and --theme did nothing.
+    """
     from clustertool.tui import app as app_module
 
     started = []
     monkeypatch.setattr(app_module.MeApp, "run", lambda self: started.append(self))
-    app_module.run(identity=data.Identity("alice", "", "node01", "Example HPC"))
+    app_module.run(
+        identity=data.Identity("alice", "", "node01", "Example HPC"),
+        interval=30.0,
+        days=21,
+        theme="light",
+    )
     assert len(started) == 1
+    app = started[0]
+    assert (app._interval, app._days, app._theme) == (30.0, 21, "light")
+
+
+def test_the_days_flag_and_the_windows_own_default_agree():
+    """Two defaults for one window would disagree the first time either moved."""
+    from clustertool.commands.me import me
+
+    default = next(p.default for p in me.params if p.name == "days")
+    assert default == data.STANDING_DAYS
 
 
 ABANDONED_SLEEP_S = 2.0
@@ -885,9 +922,9 @@ def test_a_column_grows_no_wider_than_the_widest_value_it_holds():
     the 47 its value needed, because the ceilings are the widest each field runs to
     across every job on the cluster rather than across the rows on screen.
     """
-    from clustertool.tui.panels.jobs import layout
+    from clustertool.tui.panels.jobs import ceilings, layout
 
-    fitted = dict(layout(120, SAMPLE_JOBS))
+    fitted = dict(layout(120, ceilings(SAMPLE_JOBS)))
     blind = dict(layout(120))
     assert fitted["ID"] == 12, fitted
     assert blind["ID"] > fitted["ID"], (blind, fitted)
@@ -896,19 +933,19 @@ def test_a_column_grows_no_wider_than_the_widest_value_it_holds():
 
 def test_a_column_still_pays_its_minimum_when_its_values_are_shorter():
     """The minimums are the width at which a column says anything, data or no data."""
-    from clustertool.tui.panels.jobs import COLUMNS, layout
+    from clustertool.tui.panels.jobs import COLUMNS, ceilings, layout
 
     minimum = {name: low for name, low, _ in COLUMNS}
     short = [_row("1", partition="p", elapsed="0:00", nodelist="n1")]
-    for name, width in layout(120, short):
+    for name, width in layout(120, ceilings(short)):
         assert width >= minimum[name], (name, width)
 
 
 def test_width_left_over_is_unspent_rather_than_padding_the_columns_out():
     """The table ends where its content does, which is what leaves NODE its room."""
-    from clustertool.tui.panels.jobs import CELL_PADDING, layout
+    from clustertool.tui.panels.jobs import CELL_PADDING, ceilings, layout
 
-    columns = layout(200, SAMPLE_JOBS)
+    columns = layout(200, ceilings(SAMPLE_JOBS))
     taken = sum(width for _, width in columns) + CELL_PADDING * len(columns)
     assert taken < 200, columns
 
@@ -979,7 +1016,10 @@ async def test_a_long_cell_is_cut_rather_than_widening_the_table():
         await pilot.pause()
         table = app.query_one("#jobs-table")
         assert table.virtual_size.width <= table.size.width
-        assert long_reason in panel._detail_text()
+        whole = "".join(panel._detail_text().split())
+        assert "".join(long_reason.split()) in whole, panel._detail_text()
+        painted = "".join(_painted(app).split())
+        assert "holy8a[26101-26310]" in painted, "and the end of it is on the screen"
     assert elide("abcdef", 4) == "abc…"
     assert elide("abc", 4) == "abc"
     assert {name for name, _, _ in COLUMNS} == {"ID", "PART", "ST", "GPU", "ELAP", "NODE"}
@@ -1678,7 +1718,7 @@ def test_the_binding_quota_is_the_one_shown_and_sorted_on():
 
 
 def test_zero_percent_is_not_the_same_as_no_quota():
-    """or -1 collapsed the two, and fourteen of the real forty rows sit at nought."""
+    """or -1 collapsed the two, and fourteen of the real forty rows sit at zero."""
     assert _q(percent="0%").fraction == 0.0
     assert _q(percent="-").fraction is None
 
@@ -2137,53 +2177,65 @@ def test_recent_work_counts_states_and_decodes_metrics(monkeypatch):
 
 
 @pytest.mark.parametrize(
-    ("elapsed", "hours"),
+    ("raw", "hours"),
     [
-        ("00:00:00", 0.0),
-        ("00:30:00", 0.5),
-        ("2:14:00", 2 + 14 / 60),
-        ("13-04:00:00", 13 * 24 + 4),
-        ("1-00:00:00", 24.0),
+        ("0", 0.0),
+        ("1800", 0.5),
+        ("251263", 251263 / 3600),
+        ("  134  ", 134 / 3600),
+        ("2:14:00", 0.0),
+        ("13-04:00:00", 0.0),
         ("bad", 0.0),
         ("", 0.0),
-        ("1-2:3", 0.0),
-        ("x-01:00:00", 0.0),
+        ("-60", 0.0),
     ],
 )
-def test_the_elapsed_parser_follows_the_sacct_format(elapsed, hours):
-    """man sacct gives it as [days-]hours:minutes:seconds, microseconds on CPU only."""
-    assert abs(data._hours(elapsed) - hours) < 1e-9
+def test_the_window_reads_elapsed_as_the_seconds_sacct_counts(raw, hours):
+    """ElapsedRaw is a count of seconds; the printed Elapsed is [DD-[HH:]]MM:SS.
+
+    Whose clock has two parts for a short job and three for a long one, so a parser
+    of the printed form returns nothing for one of the two shapes while the job still
+    counts as measured, quietly overstating how much of the window is covered.
+    """
+    assert abs(data._hours(raw) - hours) < 1e-9
+    assert "ElapsedRaw" in data.RECENT_FIELDS and "Elapsed" not in data.RECENT_FIELDS
 
 
 def test_gpu_hours_are_weighted_by_how_long_each_job_held_them(monkeypatch):
     """The figure the median cannot give: a one-minute job and a two-day one differ.
 
-    Two jobs, one hour at full use and nine hours at none, have a median utilization
-    of 50% and leave 90% of the GPU-hours unused. The second number is the one that
-    says what the cluster lost.
+    Two GPUs for three hours at half use, and one GPU for four hours at none, is 10
+    GPU-hours held and 3 used: 70% unused where the median utilization is 25%. Every
+    number differs from every other, so neither the multiplication by the GPU count
+    nor the one by the time can be dropped without this failing. With one GPU for
+    one hour the weight is exactly 1.0 and both are unobservable.
     """
     from jobscope import blob
 
     import clustertool.process as proc
 
     monkeypatch.setattr(blob, "decode_admin_comment", lambda text: text or None)
-    monkeypatch.setattr(blob, "blob_metrics", lambda stats: (0, 0, int(stats), None))
+
+    def metric(stats):
+        return (0, 0, None if stats == "cpu" else int(stats), None)
+
+    monkeypatch.setattr(blob, "blob_metrics", metric)
     out = (
-        "1|COMPLETED|1:00:00|cpu=8,gres/gpu=1|100\n"
-        "2|COMPLETED|9:00:00|cpu=8,gres/gpu=1|0\n"
-        "3|COMPLETED|5:00:00|cpu=8,gres/gpu=4|\n"
-        "4|COMPLETED|4:00:00|cpu=8|50\n"
+        "1|COMPLETED|10800|cpu=8,gres/gpu=2|50\n"
+        "2|COMPLETED|14400|cpu=8,gres/gpu=1|0\n"
+        "3|COMPLETED|18000|cpu=8,gres/gpu=4|\n"
+        "4|COMPLETED|14400|cpu=8|cpu\n"
     )
     monkeypatch.setattr(proc, "probe", lambda cmd, **kw: (0, out, ""))
     _, metrics, hours = data.recent_work("alice", 7)
-    assert (hours.held, hours.used) == (10.0, 1.0)
-    assert hours.unused == 90
+    assert (hours.held, hours.used) == (10.0, 3.0)
+    assert hours.unused == 70
     assert (hours.covered, hours.gpu_jobs) == (2, 3), "a gpu job with no blob still ran"
-    assert data._median([entry[2] for entry in metrics if entry[2] is not None]) == 50
+    assert data._median([entry[2] for entry in metrics if entry[2] is not None]) == 25
 
 
 def test_gpu_hours_are_nothing_when_no_job_held_a_gpu(monkeypatch):
-    """A CPU-only caller gets no line rather than a nought that reads as perfect use."""
+    """A CPU-only caller gets no line rather than a zero that reads as perfect use."""
     from jobscope import blob
 
     import clustertool.process as proc
@@ -2238,7 +2290,7 @@ def test_standing_keeps_the_share_when_the_window_cannot_be_read(monkeypatch):
 
 
 def test_the_efficiency_figure_is_a_median_not_a_mean():
-    """These are bimodal: 35 of 72 jobs at nought put the gpu mean at 28 to a median of 10."""
+    """These are bimodal: 35 of 72 jobs at zero put the gpu mean at 28 to a median of 10."""
     assert data._median([0, 0, 0, 100, 100]) == 0
     assert data._median([]) is None
     assert data._median([10, 20]) == 15
@@ -3037,8 +3089,8 @@ def test_a_share_that_could_not_be_read_is_not_no_accounts():
     assert "no accounts reported" not in plain
 
 
-def test_a_gpu_count_that_could_not_be_read_is_not_nought():
-    """Nought against a cap of sixteen reads as all the room being free."""
+def test_a_gpu_count_that_could_not_be_read_is_not_zero():
+    """Zero against a cap of sixteen reads as all the room being free."""
     from clustertool.tui.panels.standing import gpu_text
 
     broken = _standing(gpus_used=0, gpu_cap=None, caps_known=False, caps_note=data.STILL_READING)
@@ -4170,6 +4222,44 @@ async def test_the_last_line_of_a_read_survives_a_wrapping_log(monkeypatch, cols
         )
 
 
+@pytest.mark.parametrize("rows", [17, 18, 24, 40])
+@pytest.mark.parametrize("cols", [30, 46, 79, 80, 120])
+async def test_the_read_survives_a_banner_that_has_spoken(monkeypatch, cols, rows):
+    """The banner's row comes out of the panels, so the floor moves once it speaks.
+
+    Fifteen rows holds while the banner is silent, which is every terminal until the
+    first action of the session; pressing y or cancelling a job gives it a line and
+    nothing takes it away again. Measured, the floor is then seventeen rows, and only
+    below eighty columns, where the panels stack and the jobs panel has a third of
+    the screen rather than all of it.
+    """
+    from clustertool.tui import actions
+
+    monkeypatch.setattr(actions, "log_tail", lambda jobid, **kw: REAL_TRACEBACK)
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(cols, rows)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("y")
+        assert await _until(pilot, lambda: "copied" in _painted(app)), "the banner speaks"
+        await pilot.press("l")
+        assert await _until(pilot, lambda: "torch.OutOfMemoryError" in _painted(app)), (cols, rows)
+
+
+async def test_an_empty_announcement_gives_the_banner_row_back():
+    """The row is one the panels need, so a banner with nothing to say takes none."""
+    app = _app()
+    async with app.run_test(size=(100, 26)) as pilot:
+        await pilot.pause()
+        banner = app.query_one("#banner")
+        assert not banner.display
+        app.announce("copied 111")
+        await pilot.pause()
+        assert banner.display
+        app.announce("")
+        await pilot.pause()
+        assert not banner.display
+
+
 @pytest.mark.parametrize("size", [(46, 18), (46, 24), (60, 20), (80, 16), (120, 40), (200, 30)])
 async def test_every_line_the_pane_holds_is_one_the_screen_paints(monkeypatch, size):
     """The pane cannot scroll, so a line it holds and does not paint is one lost.
@@ -4220,7 +4310,7 @@ def test_the_pane_budget_is_taken_from_the_stylesheets_own_numbers():
     [(2, 0), (3, 0), (4, 1), (5, 2), (8, 5), (10, 7), (11, 7), (40, 7)],
 )
 def test_the_pane_paints_no_line_when_its_whole_region_is_border(content_height, budget):
-    """Nought is a real answer, and rounding it up to one is how this went wrong.
+    """Zero is a real answer, and rounding it up to one is how this went wrong.
 
     The ceiling holds at the top of the range: the pane may not take more than its
     rule allows however tall the panel is, or the table would lose its rows.
@@ -4248,6 +4338,89 @@ async def test_a_pane_of_one_row_still_marks_that_the_read_was_cut(monkeypatch):
         shown = panel._detail_text().splitlines()
         assert len(shown) == 1, shown
         assert shown[0].startswith("…"), shown
+
+
+@pytest.mark.parametrize("size", [(46, 15), (46, 18), (60, 16), (80, 16), (120, 14), (120, 30)])
+async def test_the_answer_to_a_one_line_read_is_painted_on_a_short_terminal(monkeypatch, size):
+    """It is appended to the plain detail, which was not budgeted, so it was clipped.
+
+    At eighty columns by sixteen rows the pane has four rows for five lines, and the
+    fifth was the answer: pressing w looked like a key that did nothing. The read
+    now outranks every fact the pane holds, since it is the only one a caller asked
+    for and the only one that is not on the screen already.
+    """
+    from clustertool.tui import actions
+
+    monkeypatch.setattr(actions, "why", lambda jobid: "111 is pending because Priority")
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=size) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("w")
+        panel = app.query_one(JobsPanel)
+        assert await _until(pilot, lambda: "because Priority" in panel._detail_text())
+        frame = [
+            "".join(segment.text for segment in strip)
+            for strip in app.screen._compositor.render_strips()
+        ]
+        for line in panel._detail_text().splitlines():
+            assert any(line in row for row in frame), (line, size)
+        assert any("because Priority" in row for row in frame), size
+
+
+@pytest.mark.parametrize(
+    ("size", "cut"),
+    [
+        ((46, 15), True),
+        ((46, 18), True),
+        ((60, 16), True),
+        ((120, 14), True),
+        ((80, 16), False),
+        ((120, 30), False),
+    ],
+)
+async def test_a_pane_short_of_rows_says_that_it_dropped_a_line(monkeypatch, size, cut):
+    """Unmarked, the pane reads as everything there is to say about the job.
+
+    The mark goes at the front of the first row, because elide takes the end of a
+    line and a mark there is lost at exactly the narrow widths that need it. The two
+    sizes that lose nothing are here as well, so a mark that is always on fails too.
+    """
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=size) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        panel = app.query_one(JobsPanel)
+        shown = panel._detail_text().splitlines()
+        assert shown[0].startswith("…") is cut, shown
+        frame = [
+            "".join(segment.text for segment in strip)
+            for strip in app.screen._compositor.render_strips()
+        ]
+        assert any(shown[0] in row for row in frame), (shown[0], size)
+
+
+@pytest.mark.parametrize(
+    ("text", "width", "rows"),
+    [
+        ("short", 20, ["short"]),
+        ("", 20, [""]),
+        ("one two three", 7, ["one two", "three"]),
+        (
+            "holds: cpu=96,mem=1440G,gres/gpu=4",
+            12,
+            ["holds:", "cpu=96,mem=1", "440G,gres/gp", "u=4"],
+        ),
+        ("日本語のログ", 4, ["日本", "語の", "ログ"]),
+        ("a\tb", 12, ["a       b"]),
+    ],
+)
+def test_a_wrapped_line_is_measured_in_display_cells(text, width, rows):
+    """A row is a row whatever script it is in, and a long word is folded not hung."""
+    from rich.cells import cell_len
+
+    from clustertool.tui.panels.jobs import wrapped
+
+    assert wrapped(text, width) == rows
+    assert all(cell_len(row) <= width for row in wrapped(text, width))
 
 
 async def test_a_pane_with_one_row_for_text_spends_it_on_the_detail(monkeypatch):

@@ -107,6 +107,19 @@ def test_jobs_at_80_columns(snap_compare):
     )
 
 
+def test_jobs_at_160_columns(snap_compare):
+    """A wide terminal, where the columns hold their widest value and stop there.
+
+    ID sits at its minimum of 12 for a 9-character id rather than growing to 31, and
+    what is left over is left unspent instead of padding the table to the border.
+    """
+    assert snap_compare(
+        _app(),
+        terminal_size=(160, 40),
+        run_before=lambda pilot: _show(pilot, SAMPLE),
+    )
+
+
 def test_jobs_pending_row_selected(snap_compare):
     """The waiting line and the elided cells are only on screen for a pending job."""
 

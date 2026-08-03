@@ -123,17 +123,22 @@ def _headings_verdict(lines):
 
     Which columns fit is decided by their minimum widths and so can be predicted
     here. How wide each one grows is decided by the values on screen, which this
-    script cannot know: it drives the real dashboard against the live queue, and
-    reading the queue again to find out would race with it. So the widths are
-    checked against their bounds instead, which is what catches the failure this
-    was written for: a resize that repainted every column at its heading width,
-    narrower than any minimum.
+    script cannot predict: it drives the real dashboard against the live queue, and
+    reading the queue again to ask would race with it. So the widths are read off the
+    frame and checked against what the code says a width may be, in three ways.
+
+    Their bounds, which catches the failure this was written for: a resize that
+    repainted every column at its heading width, narrower than any minimum. That a
+    cell fits its column, which is the ellipsis doing its job. And that no column is
+    wider than the widest value painted in it, which is the one the bounds check was
+    blind to: a column grown to its static ceiling while another was cut to nine
+    cells passed a bounds check and was exactly the thing being fixed.
     """
     from clustertool.tui.panels.jobs import CELL_PADDING, COLUMNS, layout
 
     minimum = {name: low for name, low, _ in COLUMNS}
     ceiling = {name: high for name, _, high in COLUMNS}
-    for line in lines:
+    for index, line in enumerate(lines):
         edges = [n for n, char in enumerate(line) if char == "│"]
         if len(edges) < 2 or "ID" not in line:
             continue
@@ -154,8 +159,34 @@ def _headings_verdict(lines):
         ]
         if wrong:
             return f"OUT OF BOUNDS {wrong}"
+        values = _painted_cells(lines[index + 1 :], at, edges[1])
+        loose = [
+            (name, width, values[name])
+            for name, width in painted
+            if values.get(name) and width > max(values[name], minimum[name])
+        ]
+        if loose:
+            return f"WIDER THAN ITS VALUES {loose}"
         return f"ok, {len(want)} columns in {table_width}, widths {dict(painted)}"
     return "no table row found"
+
+
+def _painted_cells(rows, at, right):
+    """Return the widest value painted in each column, over the rows below the heading.
+
+    Read off the screen rather than from the queue, which is the only source this
+    script has that cannot disagree with what the app drew.
+    """
+    from clustertool.tui.panels.jobs import CELL_PADDING
+
+    ends = [start - CELL_PADDING for _, start in at[1:]] + [right]
+    widest = {}
+    for line in rows:
+        if "╍" in line or "╰" in line or "│" not in line:
+            break
+        for (name, start), end in zip(at, ends, strict=True):
+            widest[name] = max(widest.get(name, 0), len(line[start:end].rstrip()))
+    return widest
 
 
 def _steady(line):

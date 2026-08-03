@@ -13,7 +13,6 @@ Screen {
 #body.stacked #jobs {
     width: 100%;
     height: 2fr;
-    min-width: 0;
 }
 
 #body.stacked #storage {

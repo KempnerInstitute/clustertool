@@ -346,7 +346,7 @@ def _worst_first(row: QuotaRow) -> tuple:
     simply did not finish, which say nothing about the filesystem and would
     otherwise bury every real figure when one mount is slow. Ties on percentage
     break on bytes held, since a directory holding data ranks above an empty one
-    at the same nought percent.
+    at the same zero percent.
     """
     fraction = row.fraction
     if row.pending:
@@ -574,8 +574,15 @@ STANDING_DAYS = 7
 
 STANDING_TIMEOUT_S = 20
 
-RECENT_FIELDS = ("JobID", "State", "Elapsed", "AllocTRES", "AdminComment")
-"""The sacct fields the standing panel reads, in the order it asks for them."""
+RECENT_FIELDS = ("JobID", "State", "ElapsedRaw", "AllocTRES", "AdminComment")
+"""The sacct fields the standing panel reads, in the order it asks for them.
+
+ElapsedRaw rather than Elapsed: the raw field is a count of seconds, while the
+printed one is [DD-[HH:]]MM:SS, whose clock has two parts for a short job and three
+for a long one. A parser that reads the wrong shape returns nothing while the job
+still counts as measured, which quietly overstates how much of the window the
+figures cover.
+"""
 
 TERMINAL_STATES = ("COMPLETED", "CANCELLED", "FAILED", "TIMEOUT", "OUT_OF_MEMORY", "PREEMPTED")
 """Ended states worth counting separately; any other ended state groups as other."""
@@ -647,7 +654,7 @@ class Standing:
     caps_note: str = ""
     """Why the GPU counts are missing, when they are.
 
-    Kept apart from holding nothing, because nought against a cap of sixteen reads
+    Kept apart from holding nothing, because zero against a cap of sixteen reads
     as all your room being free when a query simply did not return.
     """
 
@@ -762,25 +769,13 @@ def _charged_account(user: str, mine: dict[str, int], totals: dict[str, int], pr
     return ""
 
 
-def _hours(elapsed: str) -> float:
-    """Return an sacct elapsed time in hours.
+def _hours(raw: str) -> float:
+    """Return sacct's ElapsedRaw, which counts seconds, in hours.
 
-    man sacct gives the format as [days-]hours:minutes:seconds, with microseconds
-    only on CPU fields, so the clock is always three parts and the days optional.
-    Anything else is counted as nothing rather than guessed at, since a figure in
-    GPU-hours is worth more wrong than absent.
+    Anything that is not a count is taken as nothing rather than guessed at, since a
+    figure in GPU-hours is worse wrong than absent.
     """
-    days, _, clock = elapsed.strip().partition("-")
-    if not clock:
-        days, clock = "0", days
-    parts = clock.split(":")
-    if len(parts) != 3 or not days.isdigit():
-        return 0.0
-    try:
-        hour, minute, second = (float(part) for part in parts)
-    except ValueError:
-        return 0.0
-    return int(days) * 24 + hour + minute / 60 + second / 3600
+    return int(raw) / 3600 if raw.strip().isdigit() else 0.0
 
 
 @dataclasses.dataclass(frozen=True)
@@ -819,7 +814,7 @@ def recent_work(
     """
     from jobscope import blob
 
-    from clustertool import process
+    from clustertool import process, slurm
 
     code, out, err = process.probe(
         [
@@ -839,8 +834,6 @@ def recent_work(
     )
     if code != 0:
         raise CommandError(_probe_error(code, err, "sacct"))
-    from clustertool import slurm
-
     states: dict[str, int] = {}
     metrics = []
     held = used = 0.0
@@ -867,7 +860,7 @@ def recent_work(
         if measured is None or measured[2] is None:
             continue
         covered += 1
-        hours = gpus * _hours(field["Elapsed"])
+        hours = gpus * _hours(field["ElapsedRaw"])
         held += hours
         used += hours * measured[2] / 100
     return states, metrics, GpuHours(held=held, used=used, covered=covered, gpu_jobs=gpu_jobs)

@@ -257,7 +257,8 @@ on a throwaway job of my own, submitted and canceled deliberately.
 
 ### Phase 6: polish
 
-1. `--interval` and `--plain`.
+1. `--interval` and `--plain`. Done: `--plain` was there from phase 0, and
+   `-i/--interval` is new. See item 5, which asked for the same flag.
 2. Color that works on light and dark terminals, and with `NO_COLOR`. Done: the
    emphasis colors are ANSI names, which Textual maps through a palette chosen for
    the theme's lightness, so the share warning is #fd971f on the dark theme and
@@ -269,13 +270,19 @@ on a throwaway job of my own, submitted and canceled deliberately.
    alone. Snapshots cover the light theme and `NO_COLOR`.
 3. Narrow-terminal behavior: below 100 columns the right column moves below the
    jobs panel; below 80, the panels stack. Phase 2 hides the side column below 80
-   rather than stacking it, which is the cheap half of this. Done: below 80 columns
-   the side column goes underneath instead of being hidden, so a narrow terminal
-   loses the arrangement rather than the quotas. Stacking cost the jobs panel two
-   thirds of its height, which is what exposed the detail pane's row budget being a
-   constant: it claimed five rows of a pane that had two and left two rows of a
-   pane that had seven unused. The budget is now the layout's own arithmetic and is
-   checked against the painted frame at every size.
+   rather than stacking it, which is the cheap half of this. Done, with one
+   breakpoint rather than two: below 80 columns the side column goes underneath
+   instead of being hidden, so a narrow terminal loses the arrangement rather than
+   the quotas. The 100-column step was dropped deliberately. Moving the panel at 100
+   and stacking it again at 80 changes the layout twice inside twenty columns, and
+   the panel is beside the jobs table down to 80 without either one losing a
+   heading, so there is nothing for the first move to fix.
+
+   Stacking left the jobs panel two thirds of the height it had, which is what
+   exposed the detail pane's row budget being a constant: it claimed five rows of a
+   pane that had two and left two rows of a pane that had seven unused. The budget
+   is now the layout's own arithmetic, it covers the plain detail as well as a read,
+   and it is checked against the painted frame at every size.
 4. Give a jobs column no more width than its widest value needs. Phase 2 shares
    spare width round by round against a per-column ceiling, so at 100 columns ID
    takes 18 for a 9-character id while NODE is cut to 9 from 47. Capping growth at
@@ -302,16 +309,27 @@ on a throwaway job of my own, submitted and canceled deliberately.
    room until it has something to say, which moved the floor from 20 rows to 18,
    and budgeting the pane from the height the panel actually has moved it to 15 at
    every width rather than at 80 columns and up. Below 15 rows the whole of the
-   pane's region is its border, so no budget inside it can help; the remaining cost
-   is the standing panel's own height on a terminal that short.
+   pane's region is its border, so no budget inside it can help.
+
+   The floor is 15 rows while the banner is silent and 17 once it has spoken, and
+   only below 80 columns, where the panels stack. The banner's row comes out of the
+   panels and nothing takes it back, so pressing `y` or acting on a job moves the
+   floor for the rest of the session. Both figures are measured across every width
+   from 30 to 200 and parametrized in the suite. The remaining cost is the standing
+   panel's own height on a terminal that short.
 
 Docs are deliberately not part of Phase 6. The dashboard gets a review from the
 user first, and whatever that changes would make documentation written now wrong.
 `docs/commands/me.md`, the README row and the command index come after it, as
 their own piece of work.
 
-Verification: snapshots at 80, 100 and 160 columns; a `NO_COLOR` snapshot. The
-doc audit from `CONTRIBUTING.md` step 7 belongs to the documentation work that
+Verification: snapshots at 70, 80, 100, 120, 130 and 160 columns, a light-theme
+snapshot and a `NO_COLOR` one. The read guarantee is swept over every width from 30
+to 300 against the painted frame rather than the widget's own state. The resize
+harness drives the real app through a walk of sizes and checks each column against
+the widest value painted in it, which is the property item 4 added; run against the
+old behavior it reports the over-allocation, so the check can see what it is for.
+The doc audit from `CONTRIBUTING.md` step 7 belongs to the documentation work that
 follows the user's review, not here.
 
 ## Testing strategy
