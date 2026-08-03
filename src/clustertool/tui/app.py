@@ -2,6 +2,7 @@
 
 import asyncio
 import datetime
+import threading
 from collections.abc import Callable
 
 from textual import events, work
@@ -55,6 +56,40 @@ def _reason(exc: BaseException) -> str:
     if isinstance(exc, CommandError):
         return str(exc)
     return f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
+
+
+async def detached(call: Callable):
+    """Run a blocking call on a daemon thread and await its result.
+
+    Not asyncio.to_thread, whose executor threads are joined before the
+    interpreter exits: a query still running there held quitting for as long as it
+    took, which for a hanging filesystem tool was the whole of its deadline. A
+    daemon thread is abandoned instead, so Q returns at once whatever is in
+    flight.
+    """
+    loop = asyncio.get_running_loop()
+    done = loop.create_future()
+
+    def deliver(setter, value) -> None:
+        if not done.done():
+            setter(value)
+
+    def post(setter, value) -> None:
+        try:
+            loop.call_soon_threadsafe(deliver, setter, value)
+        except RuntimeError:
+            return
+
+    def run() -> None:
+        try:
+            result = call()
+        except BaseException as exc:
+            post(done.set_exception, exc)
+        else:
+            post(done.set_result, result)
+
+    threading.Thread(target=run, daemon=True, name="clustertool-query").start()
+    return await done
 
 
 def _settle(panel, info=None, reason="") -> None:
@@ -134,7 +169,7 @@ class MeApp(App):
             return
         self._loading = True
         try:
-            rows = await asyncio.to_thread(data.jobs, self._identity.user)
+            rows = await detached(lambda: data.jobs(self._identity.user))
             self._on(JobsPanel, lambda panel: panel.show(rows))
         except Exception as exc:
             reason = _reason(exc)
@@ -178,13 +213,14 @@ class MeApp(App):
         self._loading_storage = True
         self._on(StoragePanel, lambda panel: panel.begin_read())
         try:
-            info = await asyncio.to_thread(data.storage_info, self._identity.user)
+            info = await detached(lambda: data.storage_info(self._identity.user))
             self._on(StoragePanel, lambda panel: _settle(panel, info=info))
         except Exception as exc:
             reason = _reason(exc)
             self._on(StoragePanel, lambda panel: _settle(panel, reason=reason))
         finally:
             self._loading_storage = False
+            self._on(StoragePanel, lambda panel: panel.end_read())
 
     @work(group="standing")
     async def load_standing(self) -> None:
@@ -198,13 +234,14 @@ class MeApp(App):
         self._loading_standing = True
         self._on(StandingPanel, lambda panel: panel.begin_read())
         try:
-            info = await asyncio.to_thread(data.standing, self._identity.user)
+            info = await detached(lambda: data.standing(self._identity.user))
             self._on(StandingPanel, lambda panel: _settle(panel, info=info))
         except Exception as exc:
             reason = _reason(exc)
             self._on(StandingPanel, lambda panel: _settle(panel, reason=reason))
         finally:
             self._loading_standing = False
+            self._on(StandingPanel, lambda panel: panel.end_read())
 
     def action_refresh(self) -> None:
         """Read the focused panel again now, rather than waiting for the timer."""

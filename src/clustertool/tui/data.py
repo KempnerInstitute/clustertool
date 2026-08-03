@@ -135,21 +135,48 @@ so six buys almost all of it. This is a shared login node and every viewer pays
 the concurrency, so the number stays modest rather than maximal.
 """
 
-QUOTA_TIMEOUT_S = 15
-"""How long one lookup may take.
+_QUOTA_SLOTS = threading.Semaphore(QUOTA_WORKERS)
+"""Concurrent lookups allowed across the whole process, not per fan-out.
 
-A lab directory answers in 0.01 to 0.19s, so this is ample. It used to be 45,
-which is what the CLI allows for a single lookup, but here it also bounds how
-long quitting can block: nothing cancels a lookup in flight, and the interpreter
-joins the thread running it before it exits.
+A per-fan-out count is not a cap: the deadline releases the caller while the
+abandoned workers are still in their lookups, so a second refresh reached twelve
+against a documented six. Every lookup takes a slot, so overlapping batches share
+the same six. An abandoned lookup gives its slot back when it times out, which is
+why that timeout has to be shorter than the gather deadline.
 """
 
-GATHER_DEADLINE_S = 12.0
-"""How long the whole fan-out waits before giving up on whatever is left.
+QUOTA_TIMEOUT_S = 8
+"""How long one lookup may take.
+
+A lab directory answers in 0.01 to 0.19s, so this is ample. It has to stay below
+GATHER_DEADLINE_S, or a lookup can never reach its own timeout and every slow one
+is reported as unfinished rather than as timed out.
+"""
+
+GATHER_DEADLINE_S = 10.0
+"""How long the lab fan-out waits before giving up on whatever is left.
 
 One unresponsive target held the panel for the full timeout while the other 39
-had answered in 1.3s. A straggler is reported as still reading rather than
-allowed to hold every other figure hostage.
+had answered in 1.3s. A straggler is reported as unfinished rather than allowed
+to hold every other figure hostage.
+"""
+
+STORAGE_DEADLINE_S = 14.0
+"""How long the whole gather may take, across all three of its parts.
+
+The parts run side by side under one deadline rather than one after another. In
+series, and with only the lab fan-out bounded, a stale Lustre mount still held
+quitting for the df timeout plus the fan-out deadline plus two lfs timeouts, which
+came to longer than the unbounded version it replaced.
+"""
+
+STILL_READING = "unfinished"
+"""What a lookup that has not answered by the deadline is marked with.
+
+Distinct from a lookup that failed: a failure is a fact about the filesystem and
+belongs at the top of the panel, whereas an unfinished one is a fact about this
+refresh and belongs at the bottom. Sorting the two together let a slow filesystem
+put forty unfinished rows above every real figure.
 """
 
 LUSTRE = "lustre"
@@ -198,6 +225,11 @@ class QuotaRow:
         """True when inodes, not blocks, are what this directory will run out of."""
         disk, files = self.disk_fraction, self.files_fraction
         return files is not None and (disk is None or files > disk)
+
+    @property
+    def pending(self) -> bool:
+        """True when this lookup simply did not finish in time."""
+        return self.error == STILL_READING
 
     @property
     def used_bytes(self) -> float:
@@ -272,9 +304,10 @@ def _fan_out(targets: list[tuple[str, str]]) -> list[QuotaRow]:
     queue = collections.deque(targets)
     done: dict[tuple[str, str], QuotaRow] = {}
     lock = threading.Lock()
+    stop = threading.Event()
 
     def worker() -> None:
-        while True:
+        while not stop.is_set():
             with lock:
                 if not queue:
                     return
@@ -295,10 +328,11 @@ def _fan_out(targets: list[tuple[str, str]]) -> list[QuotaRow]:
     deadline = time.monotonic() + GATHER_DEADLINE_S
     for thread in threads:
         thread.join(max(deadline - time.monotonic(), 0.0))
+    stop.set()
     with lock:
         gathered = dict(done)
     return [
-        gathered.get(target) or QuotaRow(_label(*target), "-", "-", "-", error="still reading")
+        gathered.get(target) or QuotaRow(_label(*target), "-", "-", "-", error=STILL_READING)
         for target in targets
     ]
 
@@ -308,11 +342,15 @@ def _worst_first(row: QuotaRow) -> tuple:
 
     A row that could not be read comes first: it is the one fact the panel cannot
     show any other way, and a side column shows only its first dozen rows. Then
-    the fullest, then those with no quota to be full of. Ties on percentage break
-    on bytes held, since a directory holding data ranks above an empty one at the
-    same nought percent.
+    the fullest, then those with no quota to be full of, and last the ones that
+    simply did not finish, which say nothing about the filesystem and would
+    otherwise bury every real figure when one mount is slow. Ties on percentage
+    break on bytes held, since a directory holding data ranks above an empty one
+    at the same nought percent.
     """
     fraction = row.fraction
+    if row.pending:
+        return (3, 0.0, 0.0, row.label)
     if row.error:
         return (0, 0.0, 0.0, row.label)
     if fraction is None:
@@ -326,9 +364,10 @@ def _lab_quota(target: tuple[str, str]) -> QuotaRow:
 
     path, group = target
     label = _label(path, group)
-    code, out, err = process.probe(
-        storage.quota_cmd(path, group=group or None), timeout=QUOTA_TIMEOUT_S
-    )
+    with _QUOTA_SLOTS:
+        code, out, err = process.probe(
+            storage.quota_cmd(path, group=group or None), timeout=QUOTA_TIMEOUT_S
+        )
     parsed = storage.parse_quota_row(out) if code == 0 else None
     if not parsed:
         return QuotaRow(label, "-", "-", "-", error=_probe_error(code, err or out, "quota"))
@@ -364,8 +403,43 @@ def my_lustre_quotas(user: str) -> list[QuotaRow]:
 
 
 def storage_info(user: str) -> StorageInfo:
-    """Gather every storage figure the panel shows."""
-    return StorageInfo(home=home_quota(), labs=lab_quotas(user), mine=my_lustre_quotas(user))
+    """Gather every storage figure the panel shows, under one deadline.
+
+    The three parts run side by side on daemon threads. In series each carried its
+    own timeout on a thread the interpreter joins at exit, so a stale mount held
+    quitting for their sum. Whatever has not arrived by the deadline is reported as
+    unfinished rather than waited for.
+    """
+    home: list = []
+    labs: list = []
+    mine: list = []
+    work = (
+        (home, home_quota),
+        (labs, lambda: lab_quotas(user)),
+        (mine, lambda: my_lustre_quotas(user)),
+    )
+    threads = [
+        threading.Thread(target=_collect, args=(box, call), daemon=True, name="clustertool-storage")
+        for box, call in work
+    ]
+    for thread in threads:
+        thread.start()
+    deadline = time.monotonic() + STORAGE_DEADLINE_S
+    for thread in threads:
+        thread.join(max(deadline - time.monotonic(), 0.0))
+    return StorageInfo(
+        home=home[0] if home else QuotaRow("home", "-", "-", "-", error=STILL_READING),
+        labs=labs[0] if labs else [],
+        mine=mine[0] if mine else [],
+    )
+
+
+def _collect(box: list, call) -> None:
+    """Run call and put its result in box, leaving box empty when it fails."""
+    try:
+        box.append(call())
+    except Exception:
+        return
 
 
 def _label(path: str, group: str) -> str:
@@ -406,6 +480,13 @@ The site wrapper answers an unquotaed path with a hundred-character message and 
 df table, and a row has room for neither.
 """
 
+NOT_TRACKED = "no quota on this filesystem"
+"""What a df table in place of a quota reply means.
+
+The site tool prints one, and exits zero, for a path whose filesystem it does not
+track. Quoting its header back as the error read as a parse failure.
+"""
+
 
 def _probe_error(code: int, err: str, tool: str) -> str:
     """Describe a failed lookup, naming the cause rather than the exit code."""
@@ -414,6 +495,8 @@ def _probe_error(code: int, err: str, tool: str) -> str:
     if code == 124:
         return f"{tool} timed out"
     first = err.strip().splitlines()[0].strip() if err.strip() else ""
+    if first.startswith("Filesystem") or first.startswith("command: df"):
+        return NOT_TRACKED
     if not first:
         return "no quota reported" if code == 0 else f"{tool} exited {code}"
     return " ".join(first.split()[:ERROR_WORDS])

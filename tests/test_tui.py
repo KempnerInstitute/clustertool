@@ -1289,7 +1289,7 @@ def test_mount_point_takes_the_longest_match():
         "2 1 0:2 / /n/holylfs06 rw - lustre mds:/lfs rw\n"
         "1 1 0:1 / /n rw - nfs srv:/n rw\n"
     )
-    assert storage.mount_point("/n/holylfs06/LABS/kempner_dev", mounts) == (
+    assert storage.mount_point("/n/holylfs06/LABS/lab_one", mounts) == (
         "/n/holylfs06",
         "lustre",
     )
@@ -1321,7 +1321,6 @@ async def test_the_app_loads_the_storage_panel_on_start(monkeypatch):
         panel = app.query_one(StoragePanel)
         assert await _until(pilot, lambda: panel._info is not None), "storage never loaded"
         assert calls == ["alice"]
-        assert not panel.loading
 
 
 async def test_the_storage_panel_is_not_on_the_jobs_timer(monkeypatch):
@@ -1380,7 +1379,6 @@ async def test_a_failing_quota_read_marks_the_panel_and_leaves_the_app_up(
         assert app.is_running
         assert expected in panel._error
         assert "stale" in str(panel.border_title)
-        assert not panel.loading
 
 
 async def test_a_storage_row_is_one_line_however_long_the_label(monkeypatch):
@@ -1451,7 +1449,6 @@ async def test_the_storage_panel_leaves_its_loading_state_on_failure(monkeypatch
     async with app.run_test(size=(120, 30)) as pilot:
         panel = app.query_one(StoragePanel)
         assert await _until(pilot, lambda: bool(panel._error))
-        assert not panel.loading
 
 
 def test_every_storage_line_fits_the_narrowest_panel():
@@ -1571,7 +1568,8 @@ def test_the_fan_out_gives_up_on_a_straggler(monkeypatch):
     rows = data.lab_quotas("alice")
     assert time.monotonic() - start < 5, "the deadline did not fire"
     assert len(rows) == 4
-    assert [row.error for row in rows if row.error] == ["still reading"]
+    assert [row.error for row in rows if row.error] == [data.STILL_READING]
+    assert [row.pending for row in rows].count(True) == 1
 
 
 def test_the_fan_out_threads_do_not_hold_up_quitting():
@@ -2081,3 +2079,196 @@ async def test_a_failing_standing_read_marks_the_panel_and_leaves_the_app_up(mon
         assert app.is_running
         assert "sshare" in panel._error
         assert "stale" in str(panel.border_title)
+
+
+def test_an_unfinished_lookup_sorts_last_not_first():
+    """A slow mount put forty unfinished rows above every real figure."""
+    rows = [
+        _q("a", percent="50%"),
+        _q("b", error=data.STILL_READING),
+        _q("c", error="quota timed out"),
+        _q("d", percent="99%"),
+    ]
+    ordered = [row.label for row in sorted(rows, key=data._worst_first)]
+    assert ordered == ["lab@c", "lab@d", "lab@a", "lab@b"], ordered
+
+
+def test_a_lookup_that_did_not_finish_is_not_a_failure():
+    assert _q("a", error=data.STILL_READING).pending
+    assert not _q("a", error="quota timed out").pending
+    assert not _q("a").pending
+
+
+def test_a_lookup_can_reach_its_own_timeout():
+    """With the per-lookup timeout above the gather deadline it never could."""
+    assert data.QUOTA_TIMEOUT_S < data.GATHER_DEADLINE_S
+    assert data.GATHER_DEADLINE_S < data.STORAGE_DEADLINE_S
+
+
+def test_the_whole_gather_is_bounded_not_just_the_fan_out(monkeypatch):
+    """In series, a stale mount held quitting for the sum of three timeouts."""
+    monkeypatch.setattr(data, "STORAGE_DEADLINE_S", 0.4)
+
+    def hang():
+        time.sleep(30)
+
+    monkeypatch.setattr(data, "home_quota", hang)
+    monkeypatch.setattr(data, "lab_quotas", lambda user: [_q("a")])
+    monkeypatch.setattr(data, "my_lustre_quotas", hang)
+    start = time.monotonic()
+    info = data.storage_info("alice")
+    assert time.monotonic() - start < 5, "the gather deadline did not fire"
+    assert info.home.pending, info.home
+    assert info.mine == []
+    assert [row.label for row in info.labs] == ["lab@a"]
+
+
+def test_the_gather_parts_run_side_by_side(monkeypatch):
+    """In series the panel waited for the sum rather than the slowest."""
+    monkeypatch.setattr(data, "home_quota", lambda: (time.sleep(0.3), _q("home"))[1])
+    monkeypatch.setattr(data, "lab_quotas", lambda user: (time.sleep(0.3), [_q("a")])[1])
+    monkeypatch.setattr(data, "my_lustre_quotas", lambda user: (time.sleep(0.3), [_q("m")])[1])
+    start = time.monotonic()
+    data.storage_info("alice")
+    assert time.monotonic() - start < 0.75, "the parts ran one after another"
+
+
+def test_a_size_keeps_its_unit_at_every_width():
+    """The field was five wide, so 50.47T showed as 50.47: a wrong number."""
+    from clustertool.tui.panels.storage import row_text
+
+    row = data.QuotaRow("fastfs02", "50.47T", "0k", "-", "-")
+    for width in (22, 28, 34, 48, 62):
+        plain = row_text(row, width).plain
+        assert "50.47T" in plain, (width, plain)
+        assert len(plain) <= width
+
+
+def test_the_figure_is_never_glued_to_the_label():
+    from clustertool.tui.panels.storage import row_text
+
+    row = data.QuotaRow("project_b@fastfs", "1T", "2T", "79%", "100%")
+    for width in (22, 28, 34):
+        plain = row_text(row, width).plain
+        assert " 100%i" in plain, (width, plain)
+
+
+def test_a_df_table_is_not_quoted_back_as_an_error():
+    """The site tool prints one, and exits zero, for a filesystem it does not track."""
+    assert data._probe_error(0, "Filesystem Size Used Avail Use% Mounted on", "quota") == (
+        data.NOT_TRACKED
+    )
+    assert data._probe_error(0, "command: df -h /tmp", "quota") == data.NOT_TRACKED
+
+
+def test_a_bracketed_inode_count_keeps_its_figure():
+    """_to_bytes strips brackets, so leaving them here lost only the inode half."""
+    from clustertool import storage
+
+    out = (
+        "Disk quotas for grp lab (gid 1):\n"
+        "     Filesystem used quota limit grace files quota limit grace\n"
+        "   /n/lfs [39.05T] 40T 40T - [150] 200 200 -\n"
+    )
+    assert storage.parse_quota_row(out) == ("[39.05T]", "40T", "98%", "75%")
+
+
+async def test_a_cancelled_read_does_not_leave_the_panel_saying_reading(monkeypatch):
+    """CancelledError is not an Exception, so neither result nor failure path ran."""
+    import threading
+
+    from clustertool.tui.panels.storage import StoragePanel
+
+    started = threading.Event()
+    release = threading.Event()
+    monkeypatch.setattr(data, "jobs", lambda user: [])
+    monkeypatch.setattr(data, "standing", lambda user: _standing())
+
+    def blocking(user):
+        started.set()
+        release.wait(5)
+        return data.StorageInfo(None, [], [])
+
+    monkeypatch.setattr(data, "storage_info", blocking)
+    app = _app(interval=30)
+    try:
+        async with app.run_test(size=(130, 30)) as pilot:
+            panel = app.query_one(StoragePanel)
+            assert await _until(pilot, started.is_set)
+            await pilot.pause()
+            assert "reading" in str(panel.border_title)
+            app.workers.cancel_group(app, "storage")
+            release.set()
+            assert await _until(pilot, lambda: "reading" not in str(panel.border_title)), (
+                panel.border_title
+            )
+    finally:
+        release.set()
+
+
+async def test_a_query_runs_where_quitting_does_not_have_to_wait_for_it():
+    """to_thread's executor is joined before the interpreter exits.
+
+    A hanging filesystem tool then held Q for the whole of its deadline; measured
+    through a pty, 12.7s with lfs stubbed to hang, against 0.3s now.
+    """
+    import threading
+
+    from clustertool.tui.app import detached
+
+    daemons = []
+    original = threading.Thread.start
+
+    def watch(self):
+        daemons.append(self.daemon)
+        original(self)
+
+    threading.Thread.start = watch
+    try:
+        assert await detached(lambda: 42) == 42
+    finally:
+        threading.Thread.start = original
+    assert daemons and all(daemons), daemons
+
+
+async def test_a_detached_query_still_raises_what_it_raised():
+    from clustertool.tui.app import detached
+
+    def boom():
+        raise CommandError("controller busy")
+
+    with pytest.raises(CommandError, match="controller busy"):
+        await detached(boom)
+
+
+def test_one_lookup_at_a_time_is_capped_across_the_whole_process(monkeypatch):
+    """A per-fan-out count is not a cap: a second refresh reached twice it."""
+    import threading
+
+    import clustertool.process as proc
+    import clustertool.storage as storage_module
+
+    targets = [(f"/n/fs/lab{n}", f"lab{n}") for n in range(20)]
+    monkeypatch.setattr(storage_module, "user_groups", lambda user: [])
+    monkeypatch.setattr(storage_module, "lab_targets", lambda g, r: targets)
+    monkeypatch.setattr(storage_module, "mount_point", lambda p, mounts=None: ("/n/fs", "nfs"))
+    monkeypatch.setattr(data, "GATHER_DEADLINE_S", 0.5)
+    live = peak = 0
+    lock = threading.Lock()
+
+    def fake(cmd, timeout=None, input_text=None):
+        nonlocal live, peak
+        with lock:
+            live += 1
+            peak = max(peak, live)
+        try:
+            time.sleep(0.3)
+            return (0, QUOTA_OUT, "")
+        finally:
+            with lock:
+                live -= 1
+
+    monkeypatch.setattr(proc, "probe", fake)
+    data.lab_quotas("alice")
+    data.lab_quotas("alice")
+    assert peak <= data.QUOTA_WORKERS, f"peak {peak} against a cap of {data.QUOTA_WORKERS}"

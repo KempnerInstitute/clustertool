@@ -82,9 +82,12 @@ def _count(text: str) -> float | None:
     reads as unknown rather than as zero usage. lfs stars the used cell of the
     inode group as well as the block group, per man lfs-quota, so the star is
     stripped: an over-quota inode count is the one case the column exists for.
+    Brackets are stripped for the same reason _to_bytes strips them, so a reply
+    with an unreachable OST does not silently lose its inode figure while keeping
+    its block one.
     """
     try:
-        return float(text.rstrip("*"))
+        return float(text.strip("[]").rstrip("*"))
     except ValueError:
         return None
 

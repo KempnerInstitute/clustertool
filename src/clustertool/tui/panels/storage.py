@@ -12,6 +12,15 @@ BAR_WIDTH = 6
 
 PERCENT_WIDTH = 5
 
+FIGURE_WIDTH = 7
+"""Widest figure a row can lead with.
+
+A percentage needs four and an inode-bound one five, but a row with no quota set
+leads with what it holds instead, and a size on this cluster runs to seven. The
+field was five, so 50.47T was cut to 50.47 at eighty and a hundred columns: a
+wrong number, where the dashes it replaced were at least honest.
+"""
+
 WARN_AT = 0.75
 FULL_AT = 0.90
 """Where a bar turns.
@@ -54,7 +63,7 @@ def style_for(fraction: float | None) -> str:
     return ""
 
 
-BAR_NEEDS = 30
+BAR_NEEDS = 30 + FIGURE_WIDTH - PERCENT_WIDTH
 """Narrowest row that still has room for a bar after a readable label.
 
 Below it the bar is dropped rather than the percentage or the label. The bar only
@@ -84,12 +93,14 @@ def row_text(row: data.QuotaRow, width: int) -> Text:
         text.truncate(width, overflow="crop")
         return text
     with_bar = width >= BAR_NEEDS
-    tail = PERCENT_WIDTH + (BAR_WIDTH + 1 if with_bar else 0)
+    figure = _figure(row)
+    shown = max(len(figure), PERCENT_WIDTH)
+    tail = shown + 1 + (BAR_WIDTH + 1 if with_bar else 0)
     room = max(width - tail, 1)
     fraction = row.fraction
-    shown = min(PERCENT_WIDTH, max(width - room, 1))
     text.append(_cut(row.label, room).ljust(room))
-    text.append(f"{_figure(row):>{shown}}", style=style_for(fraction))
+    text.append(" ")
+    text.append(f"{_cut(figure, shown):>{shown}}", style=style_for(fraction))
     if with_bar:
         text.append(" ")
         text.append(bar(fraction), style=style_for(fraction))
@@ -183,6 +194,18 @@ class StoragePanel(VerticalScroll):
         self._reading = True
         self.border_title = f"{TITLE} (reading)"
         self._paint()
+
+    def end_read(self) -> None:
+        """Clear the reading mark if it is still set, whatever ended the read.
+
+        A worker cancelled at teardown raises CancelledError, which is not an
+        Exception, so neither the result nor the failure path ran and the title
+        stayed on "reading" for good.
+        """
+        if self._reading:
+            self._reading = False
+            self.border_title = f"{TITLE} (stale)" if self._error else TITLE
+            self._paint()
 
     def show(self, info: data.StorageInfo) -> None:
         """Replace the panel with these figures."""

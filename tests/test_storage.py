@@ -120,10 +120,10 @@ def test_user_groups_raises_when_the_directory_service_is_down(monkeypatch):
 def test_parse_quota_row_takes_the_record_with_the_most_usage():
     """The tool prints a block per record; the unused one must not win by order."""
     out = (
-        "Disk quotas for grp mallet_lab (gid 402716):\n"
+        "Disk quotas for grp nayar_lab (gid 402716):\n"
         "Filesystem\tused\tquota\tfiles\tquota\n"
         "/n/holylabs\t0.0B\t4.0Ti\t3\t10000000\n"
-        "Disk quotas for grp mallet_lab (gid 402716):\n"
+        "Disk quotas for grp nayar_lab (gid 402716):\n"
         "Filesystem\tused\tquota\tfiles\tquota\n"
         "/n/holylabs\t42.0Ti\t100.0Ti\t3225130\t100000000\n"
     )

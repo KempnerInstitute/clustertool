@@ -166,6 +166,13 @@ class StandingPanel(VerticalScroll):
         self.border_title = f"{TITLE} (reading)"
         self._paint()
 
+    def end_read(self) -> None:
+        """Clear the reading mark if it is still set, whatever ended the read."""
+        if self._reading:
+            self._reading = False
+            self.border_title = f"{TITLE} (stale)" if self._error else TITLE
+            self._paint()
+
     def show(self, standing: data.Standing) -> None:
         """Replace the panel with these figures."""
         self._standing, self._error, self._reading = standing, "", False
