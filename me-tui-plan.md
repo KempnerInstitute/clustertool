@@ -344,7 +344,7 @@ badge we just published. Three layers keep that from repeating.
    be the bulk of the lines.
 2. **Behavior, Textual Pilot.** `async with app.run_test() as pilot` drives real
    keypresses and asserts on widget state: selection moves, the modal opens,
-   cancelling does not call the command, refresh restarts the worker.
+   canceling does not call the command, refresh restarts the worker.
 3. **Appearance, snapshots.** `pytest-textual-snapshot` stores an SVG per state.
    A diff is a review artifact rather than a guess, which is the closest thing to
    visual inspection that CI can hold.

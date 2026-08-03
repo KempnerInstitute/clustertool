@@ -2747,7 +2747,7 @@ def test_a_bracketed_inode_count_keeps_its_figure():
     assert storage.parse_quota_row(out) == ("[39.05T]", "40T", "98%", "75%")
 
 
-async def test_a_cancelled_read_does_not_leave_the_panel_saying_reading(monkeypatch):
+async def test_a_canceled_read_does_not_leave_the_panel_saying_reading(monkeypatch):
     """CancelledError is not an Exception, so neither result nor failure path ran."""
     import threading
 
@@ -3030,7 +3030,7 @@ async def test_repeated_standing_refreshes_do_not_stack(monkeypatch):
         assert probe.peak == 1, f"{probe.calls} reads ran, {probe.peak} at once"
 
 
-async def test_a_cancelled_standing_read_clears_the_reading_mark(monkeypatch):
+async def test_a_canceled_standing_read_clears_the_reading_mark(monkeypatch):
     import threading
 
     from clustertool.tui.panels.standing import StandingPanel
@@ -4138,7 +4138,7 @@ async def test_a_read_still_names_its_job(monkeypatch):
 
 
 def test_a_folded_range_naming_no_real_element_is_refused(monkeypatch):
-    """scancel answers such a range by exiting cleanly having cancelled nothing."""
+    """scancel answers such a range by exiting cleanly having canceled nothing."""
     from clustertool import jobaction, slurm
 
     monkeypatch.setattr(slurm, "job_exists", lambda jobid: True)
@@ -4284,7 +4284,7 @@ async def test_the_read_survives_a_banner_that_has_spoken(monkeypatch, cols, row
     """The banner's row comes out of the panels, so the floor moves once it speaks.
 
     Fifteen rows holds while the banner is silent, which is every terminal until the
-    first action of the session; pressing y or cancelling a job gives it a line and
+    first action of the session; pressing y or canceling a job gives it a line and
     nothing takes it away again. Measured, the floor is then seventeen rows, and only
     below eighty columns, where the panels stack and the jobs panel has a third of
     the screen rather than all of it.

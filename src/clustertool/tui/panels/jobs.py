@@ -17,14 +17,17 @@ COLUMNS = (
 )
 """Each column as (heading, narrowest useful width, widest worth growing to).
 
-A cell wider than its column is cut with an ellipsis, and the full value is shown
-in the detail pane, which wraps.
+The minimum is the width at which a column still says something; the ceiling is the
+widest value the field takes across every job on the cluster, so ELAP's 11 covers
+DD-HH:MM:SS to 99 days. A cell wider than its column is cut with an ellipsis, and
+the full value is shown in the detail pane, which wraps.
 """
 
 DROP_ORDER = ("NODE", "PART", "ELAP", "GPU")
 """Which column to give up first when even the narrow widths do not fit.
 
-ID and ST are never dropped.
+ID and ST are absent because which job it is, and whether it is running, are the two
+things the panel exists to say.
 """
 
 CELL_PADDING = 2
