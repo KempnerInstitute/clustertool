@@ -93,14 +93,18 @@ READING = (
 MENU = MUTATING + READING
 """Every action the menu offers, in the order it offers them.
 
-The one table the menu, the help overlay and the app's bindings all read, so an
-action cannot be offered in one place and missing from another. The mutating four
-come first because the menu opens on cancel.
+The menu, the help overlay and the app's key bindings are all built from this, so an
+action cannot be offered in one place and missing from another.
 """
 
-BY_KEY = {action.key: action for action in MENU}
-
 BY_NAME = {action.name: action for action in MENU}
+
+SUBJECT_NODES = 40
+"""Longest node list a modal names before it is cut short.
+
+A wide allocation writes a hostlist several hundred characters long, which wraps
+the line onto row after row of a box sized for one or two.
+"""
 
 
 def describe(row: data.JobRow) -> str:
@@ -109,8 +113,10 @@ def describe(row: data.JobRow) -> str:
     Names the job, where it runs and how long it has been going, since a
     confirmation that does not identify its target is not one.
     """
-    where = row.nodelist if row.assigned else row.state
-    return f"{row.jobid}  {row.state}  on {row.partition}  {where}  after {row.elapsed}"
+    from clustertool.tui.panels.jobs import elide
+
+    where = f"  {elide(row.nodelist, SUBJECT_NODES)}" if row.assigned else ""
+    return f"{row.jobid}  {row.state}  on {row.partition}{where}  after {row.elapsed}"
 
 
 def run(name: str, jobid: str) -> str:

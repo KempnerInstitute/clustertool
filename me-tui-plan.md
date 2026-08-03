@@ -348,13 +348,16 @@ The keys stay. This adds a way in for anyone who does not know them yet.
    reader wondering where it went.
 4. The menu acts on the job it named, not on whatever the cursor is on when it
    closes, which is the same rule the confirmation follows.
-5. The menu, the help overlay and the bindings come from one table, so an action
-   cannot appear in one and go missing from the others.
+5. The menu, the help overlay and the key bindings are all built from one table, and
+   choosing an action goes through one dispatch whichever way it was chosen, so an
+   action cannot appear in one place and go missing from the others.
 
 Verification: Pilot tests for the default selection, for up and down, for escape
 running nothing, and for Yes running once with the right id; a test that moving the
-cursor while the menu is open does not change its target; a test that the three
-lists agree; snapshots at 100x30 and 46x18.
+cursor while the menu is open does not change its target; a test that every entry in
+the table has both a key and a dispatch; and, for the layout, a test that the
+highlighted entry is on screen at nine terminal sizes from 30x8 up, for a job on one
+node and a job on forty. Snapshots at 100x30 and 46x18.
 
 ## Testing strategy
 

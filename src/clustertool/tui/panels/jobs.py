@@ -298,6 +298,11 @@ class JobsPanel(Vertical):
         self._refresh_detail()
 
     @property
+    def rows(self) -> list[data.JobRow]:
+        """The jobs on show, in the order the table lists them."""
+        return list(self._rows)
+
+    @property
     def selected(self) -> data.JobRow | None:
         """The row under the cursor, or None when the table is empty."""
         table = self.query_one("#jobs-table", DataTable)

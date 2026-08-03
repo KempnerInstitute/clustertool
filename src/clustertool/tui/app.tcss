@@ -91,12 +91,19 @@ Screen {
 }
 
 #help-body {
-    width: auto;
+    width: 52;
     max-width: 90%;
     height: auto;
+    max-height: 90%;
     border: round $accent;
     background: $surface;
     padding: 1 2;
+    scrollbar-size-vertical: 1;
+}
+
+#help-text {
+    width: 1fr;
+    height: auto;
 }
 
 #banner {
@@ -121,6 +128,7 @@ Screen {
 
 #menu-subject {
     width: 1fr;
+    max-height: 3;
     color: $text-muted;
     padding: 0 0 1 0;
 }
@@ -128,7 +136,6 @@ Screen {
 #menu-options {
     width: 1fr;
     height: 1fr;
-    min-height: 3;
     border: none;
     background: $surface;
     scrollbar-size-vertical: 1;

@@ -8,7 +8,7 @@ from collections.abc import Callable
 
 from textual import events, work
 from textual.app import App, ComposeResult
-from textual.containers import Horizontal, Vertical
+from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.css.query import NoMatches
 from textual.screen import ModalScreen
 from textual.widgets import Button, DataTable, OptionList, Static
@@ -16,7 +16,7 @@ from textual.widgets.option_list import Option
 
 from clustertool.process import CommandError
 from clustertool.tui import actions, data
-from clustertool.tui.panels.jobs import JobsPanel
+from clustertool.tui.panels.jobs import JobsPanel, elide, wrapped
 from clustertool.tui.panels.standing import StandingPanel
 from clustertool.tui.panels.status import StatusBar
 from clustertool.tui.panels.storage import StoragePanel
@@ -44,18 +44,39 @@ themes instead use the terminal's own sixteen colors.
 KEY_COLUMN = 13
 """Where a description starts in the help overlay, which lists shift+tab."""
 
-MENU_CHROME = 7
-"""Rows the menu spends on anything but an action: its border, padding and subject."""
+MENU_BOX = 4
+"""Rows the menu's border and padding take."""
 
-MENU_FLOOR = 8
-"""Shortest the menu is drawn, so its list keeps rows to scroll even on a tiny screen."""
+MENU_SUBJECT_ROWS = 2
+"""Rows of text the line naming the job may wrap onto."""
+
+MENU_SUBJECT = MENU_SUBJECT_ROWS + 1
+"""Rows that line costs in all, the padding under it included.
+
+It is also the line's max-height in app.tcss, since a widget's padding is inside its
+height there.
+"""
+
+MENU_WIDTH = 62
+"""The menu's width in app.tcss, which it is never wider than."""
+
+MENU_SIDES = 6
+"""Columns the menu's border and padding take."""
+
+MENU_SUBJECT_FLOOR = 16
+"""Narrowest the line naming the job is wrapped to, however narrow the terminal."""
+
+MENU_CHROME = MENU_BOX + MENU_SUBJECT
+"""Rows the menu spends on anything but an action."""
 
 MENU_KEY_COLUMN = 8
 """Where a description starts in the menu, whose longest key is ctrl+r.
 
-Narrower than the help's column, so a row still fits a menu on a terminal of
-forty-six columns without wrapping onto a second line.
+Narrower than the help overlay's column, which has to fit shift+tab.
 """
+
+MENU_OPENS_ON = [action.name for action in actions.MENU].index("cancel")
+"""Which entry the menu highlights, found by name so reordering cannot move it."""
 
 
 def _keys(offered: tuple[actions.Action, ...]) -> str:
@@ -214,6 +235,7 @@ class ActionMenu(ModalScreen[str | None]):
     def __init__(self, subject: str) -> None:
         super().__init__()
         self._subject = subject
+        self._answered = False
 
     def compose(self) -> ComposeResult:
         with Vertical(id="menu"), Vertical(id="menu-body"):
@@ -230,38 +252,75 @@ class ActionMenu(ModalScreen[str | None]):
     def on_mount(self) -> None:
         options = self.query_one("#menu-options", OptionList)
         options.focus()
-        options.highlighted = 0
+        options.highlighted = MENU_OPENS_ON
         self._fit()
 
     def on_resize(self, _event) -> None:
         self._fit()
 
     def _fit(self) -> None:
-        """Give the menu a definite height, so the list scrolls rather than being clipped.
+        """Set a definite height, which is what lets the list scroll rather than clip.
 
-        Left to size itself the list is laid out at its full height inside a container
-        that shows fewer rows, so it believes every option is visible and the last ones
-        are unreachable.
+        Never taller than the screen, so the box is not drawn past an edge, and the
+        line naming the job gives way when the box is too short to hold both it and an
+        entry to choose.
         """
         body = self.query_one("#menu-body")
         wanted = len(actions.MENU) + MENU_CHROME
-        body.styles.height = min(wanted, max(self.size.height - 2, MENU_FLOOR))
+        height = min(wanted, max(self.size.height - 2, 1))
+        body.styles.height = height
+        subject = self.query_one("#menu-subject", Static)
+        subject.display = height - MENU_BOX > MENU_SUBJECT
+        subject.update(self._named())
+
+    def _named(self) -> str:
+        """Return the line naming the job, wrapped to the rows it has and marked if cut.
+
+        Wrapped here rather than by the renderer, which would silently clip whatever did
+        not fit the two rows the line is allowed. The width comes from the screen, since
+        the widget does not know its own until after this has run.
+        """
+        room = min(MENU_WIDTH, max(self.size.width * 9 // 10, 1))
+        width = max(room - MENU_SIDES, MENU_SUBJECT_FLOOR)
+        rows = wrapped(self._subject, width)
+        if len(rows) > MENU_SUBJECT_ROWS:
+            rows = rows[:MENU_SUBJECT_ROWS]
+            rows[-1] = elide(rows[-1] + "…", width)
+        return "\n".join(rows)
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        """Answer with the chosen action, once.
+
+        Two selection events can arrive together when input outruns the message pump,
+        and a second dismiss pops a screen this one no longer owns.
+        """
+        if self._answered:
+            return
+        self._answered = True
         self.dismiss(event.option.id)
 
     def action_close(self) -> None:
+        if self._answered:
+            return
+        self._answered = True
         self.dismiss(None)
 
 
 class HelpScreen(ModalScreen):
-    """The key reference, shown over the dashboard."""
+    """The key reference, shown over the dashboard.
+
+    It scrolls, since the list is longer than a terminal of twenty-four rows can hold
+    and a key nobody can see is the thing this screen exists to prevent.
+    """
 
     BINDINGS = [("escape,question_mark,Q", "dismiss", "close")]
 
     def compose(self) -> ComposeResult:
-        with Vertical(id="help"):
-            yield Static(HELP, id="help-body")
+        with Vertical(id="help"), VerticalScroll(id="help-body"):
+            yield Static(HELP, id="help-text")
+
+    def on_mount(self) -> None:
+        self.query_one("#help-body", VerticalScroll).focus()
 
 
 class MeApp(App):
@@ -270,12 +329,7 @@ class MeApp(App):
     TITLE = "clustertool me"
     CSS_PATH = "app.tcss"
     BINDINGS = [
-        *((action.key, f"act('{action.name}')", action.name) for action in actions.MUTATING),
-        ("l", "look('log')", "log"),
-        ("f", "follow", "follow"),
-        ("w", "look('why')", "why"),
-        ("s", "look('scope')", "scope"),
-        ("y", "copy_id", "copy id"),
+        *((action.key, f"choose('{action.name}')", action.name) for action in actions.MENU),
         ("Q", "quit", "quit"),
         ("ctrl+c", "quit", "quit"),
         ("question_mark", "help", "help"),
@@ -454,11 +508,18 @@ class MeApp(App):
         self.load_standing()
         self.load_storage()
 
-    def action_act(self, name: str) -> None:
-        """Ask before doing something to the selected job, then do it."""
+    def action_choose(self, name: str) -> None:
+        """Do an action to the selected job, which is what each of its keys does.
+
+        Follow is the one that toggles: pressing its key again stops it, so the key
+        that starts a follow can also end it.
+        """
+        if name == "follow" and self._following is not None:
+            self.stop_following("stopped following")
+            return
         row = self._chosen()
         if row is not None:
-            self.confirm_act(name, row)
+            self.chose(name, row)
 
     def _chosen(self) -> data.JobRow | None:
         """Return the selected row, or say there is none to act on."""
@@ -482,8 +543,15 @@ class MeApp(App):
         )
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-        """Open the menu on the job under the cursor, which is what enter does."""
-        row = self._chosen()
+        """Open the menu on the job enter was pressed on, which is what enter does.
+
+        The job comes from the event rather than from the cursor, which the refresh
+        timer can move between the keypress and this handler. Ignored while a modal is
+        up, since a burst of keypresses would otherwise stack one menu per press.
+        """
+        if self.screen is not self.screen_stack[0]:
+            return
+        row = self._row_of(event)
         if row is None:
             return
         self.push_screen(
@@ -491,16 +559,27 @@ class MeApp(App):
             lambda name: self.chose(name, row) if name else None,
         )
 
+    def _row_of(self, event: DataTable.RowSelected) -> data.JobRow | None:
+        """Return the job the event names, or say there is none."""
+        panel = self.query_one(JobsPanel)
+        row = next((item for item in panel.rows if item.jobid == event.row_key.value), None)
+        if row is None:
+            self.announce("that job is no longer in the table")
+        return row
+
     def chose(self, name: str, row: data.JobRow) -> None:
-        """Do what the menu was asked for, on the job the menu named."""
+        """Do what was chosen, on the job it was chosen for."""
         if actions.BY_NAME[name].mutating:
             self.confirm_act(name, row)
-        elif name == "copy":
-            self.copy_id(row)
-        elif name == "follow":
-            self.follow(row)
-        else:
-            self.fetch_look(name, row.jobid)
+            return
+        reader = {
+            "copy": self.copy_id,
+            "follow": self.follow,
+            "log": lambda job: self.fetch_look("log", job.jobid),
+            "why": lambda job: self.fetch_look("why", job.jobid),
+            "scope": lambda job: self.fetch_look("scope", job.jobid),
+        }[name]
+        reader(row)
 
     @work(group="act")
     async def do_act(self, name: str, jobid: str) -> None:
@@ -529,12 +608,6 @@ class MeApp(App):
         except NoMatches:
             return
 
-    def action_look(self, what: str) -> None:
-        """Read something about the selected job and show it under the detail."""
-        row = self._chosen()
-        if row is not None:
-            self.fetch_look(what, row.jobid)
-
     @work(group="look")
     async def fetch_look(self, what: str, jobid: str) -> None:
         """Do the read off the interface thread, since both shell out."""
@@ -546,21 +619,15 @@ class MeApp(App):
             return
         self._on(JobsPanel, lambda panel: panel.show_text(said, jobid))
 
-    def action_follow(self) -> None:
-        """Keep rereading the selected job's log until escape stops it.
-
-        A second press stops it too, so the key that starts it can also end it
-        without the reader having to remember which one does.
-        """
-        if self._following is not None:
-            self.stop_following("stopped following")
-            return
-        row = self._chosen()
-        if row is not None:
-            self.follow(row)
-
     def follow(self, row: data.JobRow) -> None:
-        """Start rereading this job's log on a timer."""
+        """Keep rereading this job's log until escape stops it.
+
+        Any follow already running is stopped first. Two timers cannot be stopped by
+        one escape, and the one left behind goes on reading a file nobody asked about.
+        """
+        if self._follow_timer is not None:
+            self._follow_timer.stop()
+            self._follow_timer = None
         self._following = row.jobid
         self.announce(f"following {row.jobid}, escape to stop")
         self.fetch_look("log", row.jobid)
@@ -580,12 +647,6 @@ class MeApp(App):
             self._follow_timer = None
         self._following = None
         self.announce(said)
-
-    def action_copy_id(self) -> None:
-        """Put the selected job id on the clipboard, so it can be pasted elsewhere."""
-        row = self._chosen()
-        if row is not None:
-            self.copy_id(row)
 
     def copy_id(self, row: data.JobRow) -> None:
         """Put this job's id on the clipboard."""

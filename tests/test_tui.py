@@ -350,10 +350,32 @@ async def test_help_opens_and_closes():
     async with app.run_test(size=(100, 24)) as pilot:
         await pilot.press("question_mark")
         await pilot.pause()
-        assert "tab" in str(app.screen.query_one("#help-body").render())
+        assert "next panel" in _painted(app)
         await pilot.press("escape")
         await pilot.pause()
-        assert not app.screen.query("#help-body")
+        assert not list(app.screen.query("#help-body"))
+
+
+@pytest.mark.parametrize("size", [(80, 24), (100, 24), (46, 18), (120, 40)])
+async def test_the_help_overlay_reaches_every_action(size):
+    """A key nobody can see is what this screen exists to prevent.
+
+    The list is longer than a terminal of twenty-four rows holds, so the overlay
+    scrolls and the entries below the fold are reached with the down key.
+    """
+    from clustertool.tui import actions
+
+    app = _app()
+    async with app.run_test(size=size) as pilot:
+        await pilot.press("question_mark")
+        await pilot.pause()
+        seen = _flat(app)
+        for _ in range(30):
+            await pilot.press("down")
+            await pilot.pause()
+            seen += _flat(app)
+        for action in actions.MENU:
+            assert "".join(action.label.split()) in seen, (action.label, size)
 
 
 async def test_the_status_bar_survives_a_short_terminal():
@@ -2016,6 +2038,20 @@ async def test_the_app_says_it_is_reading_while_the_fan_out_is_in_flight(monkeyp
             assert "reading" not in str(panel.border_title)
     finally:
         release.set()
+
+
+BOX = "│╭╮╰╯─╍▁▂▃▄▅▆▇█░▏▎▍▌▋▊▉ "
+"""Glyphs that are the frame rather than its text: borders, rules and scrollbars."""
+
+
+def _flat(app) -> str:
+    """Return the painted text with the frame and every space taken out.
+
+    For asserting that something is on screen when it may have wrapped: a wrapped
+    line has a border glyph between its halves, so neither half alone matches and the
+    whole never does.
+    """
+    return "".join(char for char in _painted(app) if char not in BOX)
 
 
 def _painted(app):
@@ -4259,31 +4295,203 @@ async def test_enter_on_an_empty_table_opens_nothing(monkeypatch):
         assert "No jobs of yours are queued or running." in _painted(app)
 
 
-@pytest.mark.parametrize("size", [(46, 15), (46, 18), (60, 20), (100, 30), (160, 40)])
-async def test_every_menu_entry_can_be_reached_at_any_size(monkeypatch, size):
-    """A list sized to its content is clipped by the modal while believing it is whole.
+WIDE_NODES = "holygpu8a[" + ",".join(str(node) for node in range(11101, 11141)) + "]"
+"""A hostlist for a forty-node job, which a modal has to cut rather than wrap.
 
-    Its own height then equals its virtual height, so it never scrolls and the last
-    entries cannot be reached at all. The menu is given a definite height instead.
+Left whole it wrapped the line naming the job over row after row of a box sized for
+two, and the menu then painted no entries at all on an ordinary terminal.
+"""
+
+
+@pytest.mark.parametrize(
+    "size",
+    [(30, 8), (40, 8), (34, 10), (30, 12), (46, 15), (46, 18), (60, 20), (100, 30), (250, 60)],
+)
+@pytest.mark.parametrize("nodes", ["gpu8a[15-16]", WIDE_NODES])
+async def test_every_menu_entry_can_be_reached_at_any_size(monkeypatch, size, nodes):
+    """The entry the highlight is on has to be on screen, at every size and job.
+
+    A list sized to its own content is clipped by the modal while believing it is
+    whole, so it never scrolls and the last entries cannot be reached; a job on forty
+    nodes pushed every entry out of a box that had room for nine.
     """
     from textual.widgets import OptionList
 
     from clustertool.tui import actions
 
-    app = _act_app(monkeypatch)
+    app = _act_app(monkeypatch, rows=[_row("999", nodelist=nodes, nnodes=40)])
     async with app.run_test(size=size) as pilot:
         assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
         await pilot.press("enter")
         await pilot.pause()
         options = app.screen.query_one("#menu-options", OptionList)
-        last = actions.MENU[-1]
         for _ in range(len(actions.MENU) - 1):
             await pilot.press("down")
         await pilot.pause()
         assert options.highlighted == len(actions.MENU) - 1
-        assert last.label in _painted(app), (last.label, size)
+        highlighted = actions.MENU[options.highlighted]
+        assert "".join(highlighted.label.split()) in _flat(app), (
+            highlighted.label,
+            size,
+            len(nodes),
+        )
         clipped = options.virtual_size.height > options.size.height
         assert options.show_vertical_scrollbar is clipped, "a clipped list says so"
+        widest = max(
+            len("".join(x.text for x in strip).rstrip())
+            for strip in app.screen._compositor.render_strips()
+        )
+        assert widest <= size[0], "and the box is not drawn past an edge"
+
+
+async def test_following_twice_leaves_one_timer(monkeypatch):
+    """Two timers cannot be stopped by one escape, and the orphan reads on forever."""
+    from clustertool.tui import actions
+
+    reads = []
+    monkeypatch.setattr(actions, "log_tail", lambda jobid, **kw: reads.append(jobid) or "log")
+    monkeypatch.setattr(actions, "FOLLOW_INTERVAL_S", 0.05)
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(100, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        row = app.query_one(JobsPanel).selected
+        app.chose("follow", row)
+        await pilot.pause()
+        app.chose("follow", row)
+        await pilot.pause(0.12)
+        await pilot.press("escape")
+        await pilot.pause()
+        settled = len(reads)
+        await pilot.pause(0.3)
+        assert app._following is None and app._follow_timer is None
+        assert len(reads) == settled, f"{len(reads) - settled} reads arrived after escape"
+
+
+async def test_a_second_choice_from_the_same_menu_does_not_pop_the_screen_twice(monkeypatch):
+    """Two selections can arrive together when input outruns the message pump."""
+    from textual.widgets import OptionList
+
+    calls = _stub_run(monkeypatch)
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(100, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("enter")
+        await pilot.pause()
+        options = app.screen.query_one("#menu-options", OptionList)
+        chosen = options.get_option_at_index(0)
+        for _ in range(2):
+            options.post_message(OptionList.OptionSelected(options, chosen, 0))
+        await pilot.pause()
+        await pilot.pause()
+        assert app.is_running, "the extra selection must not pop a screen it does not own"
+        assert calls == []
+
+
+async def test_a_burst_of_enters_opens_one_menu(monkeypatch):
+    """One menu per press would need one escape per press to get back."""
+    from textual.widgets import DataTable
+
+    from clustertool.tui.app import ActionMenu
+
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(100, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        table = app.query_one("#jobs-table", DataTable)
+        for _ in range(6):
+            table.post_message(
+                DataTable.RowSelected(table, 0, table.coordinate_to_cell_key((0, 0)).row_key)
+            )
+        await pilot.pause()
+        await pilot.pause()
+        assert isinstance(app.screen, ActionMenu)
+        await pilot.press("escape")
+        await pilot.pause()
+        assert not isinstance(app.screen, ActionMenu), "one escape is enough"
+
+
+async def test_the_menu_opens_on_the_job_the_key_was_pressed_on(monkeypatch):
+    """The refresh timer can drop that job between the keypress and the handler."""
+    from textual.widgets import DataTable
+
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(100, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        table = app.query_one("#jobs-table", DataTable)
+        pressed = table.coordinate_to_cell_key((0, 0)).row_key
+        panel = app.query_one(JobsPanel)
+        panel.show([row for row in SAMPLE_JOBS if row.jobid != "111"])
+        await pilot.pause()
+        assert panel.selected.jobid == "222", "111 has left the table"
+        table.post_message(DataTable.RowSelected(table, 0, pressed))
+        await pilot.pause()
+        await pilot.pause()
+        assert not list(app.screen.query("#menu-options")), "no menu for a job that is gone"
+        assert "no longer in the table" in _painted(app)
+
+
+def test_a_long_node_list_is_cut_before_it_reaches_a_modal():
+    """Whole, it wraps the line naming the job over row after row of a small box."""
+    from clustertool.tui import actions
+
+    said = actions.describe(_row("999", nodelist=WIDE_NODES, nnodes=40))
+    assert len(said) < len(WIDE_NODES), said
+    assert "…" in said
+    assert said.startswith("999  RUNNING  on p")
+
+
+def test_an_unassigned_job_is_not_described_by_its_state_twice():
+    from clustertool.tui import actions
+
+    said = actions.describe(_row("222", code="PD", state="PENDING", nodelist=""))
+    assert said.count("PENDING") == 1, said
+
+
+def test_the_menus_own_numbers_match_the_stylesheet():
+    """The arithmetic that fits the menu counts rows and columns the rules declare."""
+    import re
+    from pathlib import Path
+
+    from clustertool.tui import app as app_module
+
+    sheet = (Path(app_module.__file__).parent / "app.tcss").read_text()
+    body = re.search(r"#menu-body \{(.*?)\}", sheet, re.S).group(1)
+    subject = re.search(r"#menu-subject \{(.*?)\}", sheet, re.S).group(1)
+    assert re.search(r"width: (\d+)", body).group(1) == str(app_module.MENU_WIDTH)
+    assert re.search(r"max-height: (\d+)", subject).group(1) == str(app_module.MENU_SUBJECT)
+    assert "padding: 1 2" in body, "which is what MENU_BOX and MENU_SIDES count"
+    assert app_module.MENU_BOX == 4 and app_module.MENU_SIDES == 6
+
+
+def test_every_action_in_the_table_has_a_key():
+    from clustertool.tui import actions
+    from clustertool.tui.app import MeApp
+
+    bound = {binding[0]: binding[1] for binding in MeApp.BINDINGS}
+    for action in actions.MENU:
+        assert bound.get(action.key) == f"choose('{action.name}')", action.name
+
+
+async def test_every_action_in_the_table_has_something_to_do(monkeypatch):
+    """An entry with no dispatch would raise the moment anyone chose it."""
+    from clustertool.tui import actions
+
+    monkeypatch.setattr(actions, "log_tail", lambda jobid, **kw: "log")
+    monkeypatch.setattr(actions, "why", lambda jobid: "why")
+    monkeypatch.setattr(actions, "scope", lambda jobid: "scope")
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(100, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        row = app.query_one(JobsPanel).selected
+        for action in actions.READING:
+            app.chose(action.name, row)
+            await pilot.pause()
+        app.stop_following("")
+        for action in actions.MUTATING:
+            app.chose(action.name, row)
+            await pilot.pause()
+            assert list(app.screen.query("#confirm-no")), action.name
+            await pilot.press("escape")
+            await pilot.pause()
 
 
 def test_the_menu_the_help_and_the_bindings_come_from_one_table():
