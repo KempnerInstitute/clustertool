@@ -57,8 +57,7 @@ def _reason(exc: BaseException) -> str:
 
 
 def _settle(panel, info=None, reason="") -> None:
-    """Take the panel out of its loading state and show the result or the failure."""
-    panel.loading = False
+    """Show the result, or the failure when there is one."""
     if reason:
         panel.fail(reason)
     else:
@@ -177,7 +176,7 @@ class MeApp(App):
         if self._loading_storage:
             return
         self._loading_storage = True
-        self._on(StoragePanel, lambda panel: setattr(panel, "loading", True))
+        self._on(StoragePanel, lambda panel: panel.begin_read())
         try:
             info = await asyncio.to_thread(data.storage_info, self._identity.user)
             self._on(StoragePanel, lambda panel: _settle(panel, info=info))
@@ -205,9 +204,14 @@ class MeApp(App):
         return None
 
     def action_refresh_all(self) -> None:
-        """Read every panel again, whichever one has focus."""
+        """Read every panel again, whichever one has focus.
+
+        A hidden side column is skipped: on a narrow terminal it is not on screen,
+        and its fan-out is forty lookups nobody would see the result of.
+        """
         self.load_jobs()
-        self.load_storage()
+        if self.query_one("#storage").display:
+            self.load_storage()
 
     def action_help(self) -> None:
         """Open the key reference, which is the only discovery route for the bindings."""

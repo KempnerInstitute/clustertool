@@ -54,12 +54,14 @@ def style_for(fraction: float | None) -> str:
     return ""
 
 
-BAR_NEEDS = PERCENT_WIDTH + BAR_WIDTH + 6
+BAR_NEEDS = 30
 """Narrowest row that still has room for a bar after a readable label.
 
-Below it the bar is dropped rather than the percentage, which is the figure the
-bar only illustrates. The panel's own width floor keeps rows at 22 or wider, so
-this is a backstop against a future layout rather than a width the app reaches.
+Below it the bar is dropped rather than the percentage or the label. The bar only
+illustrates the percentage, which is printed beside it and colored, whereas the
+label is the only thing naming which directory a row is about, and at eighty
+columns the seven cells the bar costs took forty labs down to fourteen
+distinguishable names.
 """
 
 
@@ -87,12 +89,26 @@ def row_text(row: data.QuotaRow, width: int) -> Text:
     fraction = row.fraction
     shown = min(PERCENT_WIDTH, max(width - room, 1))
     text.append(_cut(row.label, room).ljust(room))
-    text.append(f"{row.percent:>{shown}}", style=style_for(fraction))
+    text.append(f"{_figure(row):>{shown}}", style=style_for(fraction))
     if with_bar:
         text.append(" ")
         text.append(bar(fraction), style=style_for(fraction))
     text.truncate(width, overflow="crop")
     return text
+
+
+def _figure(row: data.QuotaRow) -> str:
+    """Return the number a row leads with.
+
+    The usage rather than a dash when no quota is set: the per-user rows on Lustre
+    carry no quota on this cluster, so a panel that only ever prints a percentage
+    turned fifty terabytes of the caller's own data into two dashes. An i marks a
+    directory whose inode quota, not its block quota, is the one nearly reached.
+    """
+    if row.fraction is None:
+        return row.used if row.used not in ("", "-") else "-"
+    percent = row.files if row.files_bound else row.percent
+    return f"{percent}i" if row.files_bound else percent
 
 
 def lines(info: data.StorageInfo, width: int) -> list[Text]:
@@ -105,7 +121,7 @@ def lines(info: data.StorageInfo, width: int) -> list[Text]:
     if info.home is not None:
         out.append(row_text(info.home, width))
         out.append(Text(""))
-    out.append(Text(_cut(f"labs ({len(info.labs)}), fullest first", width), style="dim"))
+    out.append(Text(_cut(_labs_heading(info.labs), width), style="dim"))
     if info.labs:
         out.extend(row_text(row, width) for row in info.labs)
     else:
@@ -115,6 +131,18 @@ def lines(info: data.StorageInfo, width: int) -> list[Text]:
         out.append(Text(_cut("you, on lustre", width), style="dim"))
         out.extend(row_text(row, width) for row in info.mine)
     return out
+
+
+def _labs_heading(labs: list[data.QuotaRow]) -> str:
+    """Name the lab section, counting the rows that could not be read.
+
+    A failure sorts to the top of the list, but a side column shows only its first
+    dozen rows and the count is how the rest are accounted for.
+    """
+    failed = sum(1 for row in labs if row.error)
+    if failed:
+        return f"labs ({len(labs)}, {failed} unread), fullest first"
+    return f"labs ({len(labs)}), fullest first"
 
 
 def _cut(text: str, width: int) -> str:
@@ -136,6 +164,7 @@ class StoragePanel(VerticalScroll):
         super().__init__(id="storage", classes="panel")
         self._info: data.StorageInfo | None = None
         self._error = ""
+        self._reading = False
 
     def compose(self):
         yield Static("", id="storage-body")
@@ -144,15 +173,26 @@ class StoragePanel(VerticalScroll):
         self.border_title = TITLE
         self.can_focus = True
 
+    def begin_read(self) -> None:
+        """Say that a read is under way, keeping the border and the last figures.
+
+        Textual's own loading flag replaces the whole widget, border and title
+        included, which left an unbordered hole in the layout for the two to six
+        seconds the fan-out takes, and forty-five if one target hung.
+        """
+        self._reading = True
+        self.border_title = f"{TITLE} (reading)"
+        self._paint()
+
     def show(self, info: data.StorageInfo) -> None:
         """Replace the panel with these figures."""
-        self._info, self._error = info, ""
+        self._info, self._error, self._reading = info, "", False
         self.border_title = TITLE
         self._paint()
 
     def fail(self, reason: str) -> None:
         """Mark the panel stale, naming the cause and keeping whatever it held."""
-        self._error = reason
+        self._error, self._reading = reason, False
         self.border_title = f"{TITLE} (stale)"
         self._paint()
 
@@ -180,5 +220,7 @@ class StoragePanel(VerticalScroll):
             if not self._error:
                 blocks.append(Text(_cut("reading quotas", width), style="dim"))
         else:
+            if self._reading:
+                blocks.append(Text(_cut("reading quotas", width), style="dim"))
             blocks.extend(lines(self._info, width))
         body.update(Text("\n", no_wrap=True, overflow="crop").join(blocks))

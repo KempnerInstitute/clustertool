@@ -4,11 +4,13 @@ Each function returns a plain dataclass so it can be tested without starting an
 app, which is where the parsing and failure handling are covered.
 """
 
-import concurrent.futures
+import collections
 import dataclasses
 import os
 import pwd
 import socket
+import threading
+import time
 
 from clustertool import site
 from clustertool.process import CommandError
@@ -132,7 +134,22 @@ so six buys almost all of it. This is a shared login node and every viewer pays
 the concurrency, so the number stays modest rather than maximal.
 """
 
-QUOTA_TIMEOUT_S = 45
+QUOTA_TIMEOUT_S = 15
+"""How long one lookup may take.
+
+A lab directory answers in 0.01 to 0.19s, so this is ample. It used to be 45,
+which is what the CLI allows for a single lookup, but here it also bounds how
+long quitting can block: nothing cancels a lookup in flight, and the interpreter
+joins the thread running it before it exits.
+"""
+
+GATHER_DEADLINE_S = 12.0
+"""How long the whole fan-out waits before giving up on whatever is left.
+
+One unresponsive target held the panel for the full timeout while the other 39
+had answered in 1.3s. A straggler is reported as still reading rather than
+allowed to hold every other figure hostage.
+"""
 
 LUSTRE = "lustre"
 """The only filesystem type with a per-user query worth making.
@@ -151,15 +168,50 @@ class QuotaRow:
     used: str
     quota: str
     percent: str
+    files: str = "-"
     error: str = ""
 
     @property
+    def disk_fraction(self) -> float | None:
+        """Block usage as a fraction of the block quota, None when none is set."""
+        return _fraction(self.percent)
+
+    @property
+    def files_fraction(self) -> float | None:
+        """Inode usage as a fraction of the inode quota, None when none is set."""
+        return _fraction(self.files)
+
+    @property
     def fraction(self) -> float | None:
-        """Usage as a fraction of the quota, or None when no quota is set."""
+        """Whichever of the two quotas is closer to being reached.
+
+        A directory stops being writable when it runs out of either blocks or
+        inodes, so the binding one is the one worth a bar and a sort position. One
+        real lab sat at 99% of its inode quota and 79% of its block quota.
+        """
+        both = [value for value in (self.disk_fraction, self.files_fraction) if value is not None]
+        return max(both) if both else None
+
+    @property
+    def files_bound(self) -> bool:
+        """True when inodes, not blocks, are what this directory will run out of."""
+        disk, files = self.disk_fraction, self.files_fraction
+        return files is not None and (disk is None or files > disk)
+
+    @property
+    def used_bytes(self) -> float:
+        """The rendered usage as bytes, for ordering rows whose percentages tie."""
         from clustertool import storage
 
-        value = storage.percent_value(self.percent)
-        return None if value < 0 else value / 100.0
+        return storage.used_bytes(self.used)
+
+
+def _fraction(percent: str) -> float | None:
+    """Return a percentage string as a fraction, or None when it says nothing."""
+    from clustertool import storage
+
+    value = storage.percent_value(percent)
+    return None if value < 0 else value / 100.0
 
 
 @dataclasses.dataclass(frozen=True)
@@ -172,10 +224,15 @@ class StorageInfo:
 
 
 def home_quota() -> QuotaRow:
-    """Return home usage from df, which is what the storage home command reads."""
+    """Return home usage from df, which is what the storage home command reads.
+
+    The home directory comes from the passwd entry rather than from HOME, which
+    the caller can point anywhere, exactly as identity() reads the user from the
+    uid rather than from the environment.
+    """
     from clustertool import process
 
-    home = os.path.expanduser("~")
+    home = pwd.getpwuid(os.getuid()).pw_dir
     code, out, err = process.probe(["df", "-h", home], timeout=QUOTA_TIMEOUT_S)
     if code != 0:
         return QuotaRow("home", "-", "-", "-", error=_probe_error(code, err, "df"))
@@ -198,10 +255,68 @@ def lab_quotas(user: str) -> list[QuotaRow]:
     from clustertool import site, storage
 
     targets = storage.lab_targets(storage.user_groups(user), site.storage_lab_roots())
-    with concurrent.futures.ThreadPoolExecutor(max_workers=QUOTA_WORKERS) as pool:
-        rows = list(pool.map(_lab_quota, targets))
-    rows.sort(key=lambda row: (-(row.fraction or -1), row.label))
+    rows = _fan_out(targets)
+    rows.sort(key=_worst_first)
     return rows
+
+
+def _fan_out(targets: list[tuple[str, str]]) -> list[QuotaRow]:
+    """Look up every target on at most QUOTA_WORKERS threads, and stop waiting.
+
+    Daemon threads rather than a thread pool: a pool joins its workers before the
+    interpreter exits, so one unresponsive target made quitting the dashboard wait
+    the lookup out. A target that has not answered by the deadline is reported as
+    still reading rather than holding the other thirty-nine figures back.
+    """
+    queue = collections.deque(targets)
+    done: dict[tuple[str, str], QuotaRow] = {}
+    lock = threading.Lock()
+
+    def worker() -> None:
+        while True:
+            with lock:
+                if not queue:
+                    return
+                target = queue.popleft()
+            try:
+                row = _lab_quota(target)
+            except Exception as exc:
+                row = QuotaRow(_label(*target), "-", "-", "-", error=f"{type(exc).__name__}")
+            with lock:
+                done[target] = row
+
+    threads = [
+        threading.Thread(target=worker, daemon=True, name="clustertool-quota")
+        for _ in range(min(QUOTA_WORKERS, len(targets)))
+    ]
+    for thread in threads:
+        thread.start()
+    deadline = time.monotonic() + GATHER_DEADLINE_S
+    for thread in threads:
+        thread.join(max(deadline - time.monotonic(), 0.0))
+    with lock:
+        gathered = dict(done)
+    return [
+        gathered.get(target) or QuotaRow(_label(*target), "-", "-", "-", error="still reading")
+        for target in targets
+    ]
+
+
+def _worst_first(row: QuotaRow) -> tuple:
+    """Order rows by how much they need looking at.
+
+    A row that could not be read comes first: it is the one fact the panel cannot
+    show any other way, and a side column shows only its first dozen rows. Then
+    the fullest, then those with no quota to be full of. Ties on percentage break
+    on bytes held, since a directory holding data ranks above an empty one at the
+    same nought percent.
+    """
+    fraction = row.fraction
+    if row.error:
+        return (0, 0.0, 0.0, row.label)
+    if fraction is None:
+        return (2, 0.0, -row.used_bytes, row.label)
+    return (1, -fraction, -row.used_bytes, row.label)
 
 
 def _lab_quota(target: tuple[str, str]) -> QuotaRow:
@@ -216,8 +331,8 @@ def _lab_quota(target: tuple[str, str]) -> QuotaRow:
     parsed = storage.parse_quota_row(out) if code == 0 else None
     if not parsed:
         return QuotaRow(label, "-", "-", "-", error=_probe_error(code, err or out, "quota"))
-    used, quota, disk, _files = parsed
-    return QuotaRow(label, used, quota, disk)
+    used, quota, disk, files = parsed
+    return QuotaRow(label, used, quota, disk, files)
 
 
 def my_lustre_quotas(user: str) -> list[QuotaRow]:
@@ -242,8 +357,8 @@ def my_lustre_quotas(user: str) -> list[QuotaRow]:
         if not parsed:
             rows.append(QuotaRow(label, "-", "-", "-", error=_probe_error(code, err or out, "lfs")))
             continue
-        used, quota, disk, _files = parsed
-        rows.append(QuotaRow(label, used, quota, disk))
+        used, quota, disk, files = parsed
+        rows.append(QuotaRow(label, used, quota, disk, files))
     return rows
 
 
@@ -253,16 +368,42 @@ def storage_info(user: str) -> StorageInfo:
 
 
 def _label(path: str, group: str) -> str:
-    """Name a lab directory by its filesystem and its group.
+    """Name a lab directory by its group and then its filesystem.
 
     Both are needed: a user can belong to twenty labs across four filesystems, so
-    either half alone names several rows.
+    either half alone names several rows. The group comes first because the label
+    is cut from the tail in a side column, and with the filesystem first forty
+    directories rendered as three distinct labels at eighty columns. Which lab is
+    full is the actionable half.
     """
     from clustertool import storage
 
     mount, _ = storage.mount_point(path)
-    filesystem = os.path.basename(mount.rstrip("/")) if mount else ""
-    return f"{filesystem}/{group}" if filesystem and group else group or path
+    filesystem = os.path.basename(mount.rstrip("/")) if mount else _filesystem_of(path)
+    return f"{group}@{filesystem}" if filesystem and group else group or path
+
+
+def _filesystem_of(path: str) -> str:
+    """Name the filesystem from the path when the mount table cannot be read.
+
+    Without this the label falls back to the group alone, and every one of a lab's
+    directories then carries the same name with a different percentage. The site
+    path prefix is dropped first, since every root here begins with it and the
+    component after it is the one that names the filesystem.
+    """
+    prefix = site.path_prefix().strip("/")
+    parts = [part for part in path.strip("/").split("/") if part]
+    if prefix and parts and parts[0] == prefix:
+        parts = parts[1:]
+    return parts[0] if parts else ""
+
+
+ERROR_WORDS = 6
+"""How much of a tool's complaint is kept.
+
+The site wrapper answers an unquotaed path with a hundred-character message and a
+df table, and a row has room for neither.
+"""
 
 
 def _probe_error(code: int, err: str, tool: str) -> str:
@@ -271,7 +412,10 @@ def _probe_error(code: int, err: str, tool: str) -> str:
         return f"'{tool}' not found on this host"
     if code == 124:
         return f"{tool} timed out"
-    return err.strip().splitlines()[0] if err.strip() else f"{tool} exited {code}"
+    first = err.strip().splitlines()[0].strip() if err.strip() else ""
+    if not first:
+        return "no quota reported" if code == 0 else f"{tool} exited {code}"
+    return " ".join(first.split()[:ERROR_WORDS])
 
 
 def _count(text: str) -> int:

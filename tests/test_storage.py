@@ -1,5 +1,7 @@
 """Tests for storage command construction."""
 
+import pytest
+
 from clustertool import storage
 
 
@@ -101,8 +103,18 @@ def test_fleet_targets(tmp_path):
 def test_user_groups(monkeypatch):
     from clustertool import process
 
-    monkeypatch.setattr(process, "run", lambda cmd: "kempner_dev kempner_shared\n")
+    monkeypatch.setattr(process, "probe", lambda cmd, **kw: (0, "kempner_dev kempner_shared\n", ""))
     assert storage.user_groups("alice") == ["kempner_dev", "kempner_shared"]
+
+
+def test_user_groups_raises_when_the_directory_service_is_down(monkeypatch):
+    """Returning nothing would report a user in twenty labs as belonging to none."""
+    from clustertool import process
+    from clustertool.process import CommandError
+
+    monkeypatch.setattr(process, "probe", lambda cmd, **kw: (1, "", "id: cannot resolve"))
+    with pytest.raises(CommandError, match="could not read your groups"):
+        storage.user_groups("alice")
 
 
 def test_parse_quota_row_takes_the_record_with_the_most_usage():

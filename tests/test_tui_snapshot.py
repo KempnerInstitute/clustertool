@@ -137,16 +137,17 @@ def test_jobs_stale_after_a_failed_refresh(snap_compare):
 
 
 STORAGE = StorageInfo(
-    home=QuotaRow("home", "76G", "95G", "80%"),
+    home=QuotaRow("home", "76G", "95G", "80%", "12%"),
     labs=[
-        QuotaRow("holylabs/sham_lab", "4.0Ti", "4.0Ti", "100%"),
-        QuotaRow("holylfs06/sham_lab", "39.05T", "40T", "98%"),
-        QuotaRow("netscratch/kempner_dev", "18T", "20T", "90%"),
-        QuotaRow("holylfs06/kempner_dev", "45.51T", "75T", "61%"),
-        QuotaRow("holylabs/kempner_a_very_long_lab_name", "1.0Ti", "4.0Ti", "25%"),
-        QuotaRow("netscratch/kempner_project_a", "-", "-", "-", error="quota timed out"),
+        QuotaRow("nayar_lab@fastfs", "-", "-", "-", error="quota timed out"),
+        QuotaRow("nayar_lab@labstore", "4.0Ti", "4.0Ti", "100%", "30%"),
+        QuotaRow("nayar_lab@fastfs02", "39.05T", "40T", "98%", "40%"),
+        QuotaRow("rivera_lab@scratch", "18T", "20T", "90%", "12%"),
+        QuotaRow("okonkwo_project_beta@fastfs02", "45.51T", "75T", "79%", "99%"),
+        QuotaRow("a_lab_with_a_very_long_name@labstore", "1.0Ti", "4.0Ti", "25%", "5%"),
+        QuotaRow("tanaka_lab@scratch", "212.6G", "-", "-", "-"),
     ],
-    mine=[QuotaRow("holylfs06", "50.43T", "0k", "-")],
+    mine=[QuotaRow("fastfs02", "50.43T", "0k", "-", "-")],
 )
 
 
@@ -200,3 +201,21 @@ def test_storage_at_80_columns(snap_compare):
         terminal_size=(80, 24),
         run_before=lambda pilot: _storage(pilot, STORAGE),
     )
+
+
+def test_storage_while_reading(snap_compare):
+    """The frame during a load, which is what the panel shows for two to six seconds.
+
+    Entered through begin_read rather than left to a stub, because every other
+    snapshot builds the app with the timer off, so no worker ever runs and this
+    frame went unrendered while a Textual loading flag was deleting the border.
+    """
+
+    async def reading(pilot):
+        panel = pilot.app.query_one(StoragePanel)
+        panel.show(STORAGE)
+        await pilot.pause()
+        panel.begin_read()
+        await pilot.pause()
+
+    assert snap_compare(_app(), terminal_size=(120, 30), run_before=reading)
