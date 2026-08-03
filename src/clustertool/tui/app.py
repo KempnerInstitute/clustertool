@@ -14,6 +14,7 @@ from textual.widgets import DataTable, Static
 from clustertool.process import CommandError
 from clustertool.tui import data
 from clustertool.tui.panels.jobs import JobsPanel
+from clustertool.tui.panels.standing import StandingPanel
 from clustertool.tui.panels.status import StatusBar
 from clustertool.tui.panels.storage import StoragePanel
 
@@ -101,22 +102,21 @@ class MeApp(App):
         self._interval = interval
         self._loading = False
         self._loading_storage = False
+        self._loading_standing = False
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="body"):
             yield JobsPanel()
             yield StoragePanel()
-        yield Static("", id="standing", classes="panel")
+        yield StandingPanel()
         yield StatusBar(self._identity, clock=self._clock)
 
     def on_mount(self) -> None:
-        standing = self.query_one("#standing")
-        standing.border_title = "Standing"
-        standing.can_focus = True
         self.query_one("#jobs-table", DataTable).focus()
         if self._interval > 0:
             self.load_jobs()
             self.load_storage()
+            self.load_standing()
             self.set_interval(self._interval, self.load_jobs)
 
     @work(group="jobs")
@@ -186,10 +186,34 @@ class MeApp(App):
         finally:
             self._loading_storage = False
 
+    @work(group="standing")
+    async def load_standing(self) -> None:
+        """Read fairshare, the cap and the recent window without blocking the interface.
+
+        Not on the timer: a fairshare score moves on the decay half-life, which is
+        three days here, and the window is a week wide.
+        """
+        if self._loading_standing:
+            return
+        self._loading_standing = True
+        self._on(StandingPanel, lambda panel: panel.begin_read())
+        try:
+            info = await asyncio.to_thread(data.standing, self._identity.user)
+            self._on(StandingPanel, lambda panel: _settle(panel, info=info))
+        except Exception as exc:
+            reason = _reason(exc)
+            self._on(StandingPanel, lambda panel: _settle(panel, reason=reason))
+        finally:
+            self._loading_standing = False
+
     def action_refresh(self) -> None:
         """Read the focused panel again now, rather than waiting for the timer."""
-        if self._focused_panel() is StoragePanel:
+        focused = self._focused_panel()
+        if focused is StoragePanel:
             self.load_storage()
+            return
+        if focused is StandingPanel:
+            self.load_standing()
             return
         self.load_jobs()
 
@@ -199,7 +223,7 @@ class MeApp(App):
         if focused is None:
             return None
         for widget in focused.ancestors_with_self:
-            if isinstance(widget, StoragePanel | JobsPanel):
+            if isinstance(widget, StoragePanel | JobsPanel | StandingPanel):
                 return type(widget)
         return None
 
@@ -210,6 +234,7 @@ class MeApp(App):
         and its fan-out is forty lookups nobody would see the result of.
         """
         self.load_jobs()
+        self.load_standing()
         if self.query_one("#storage").display:
             self.load_storage()
 

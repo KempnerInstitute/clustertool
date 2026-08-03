@@ -5,11 +5,13 @@ a missing border and an invisible focus ring both shipped green. These compare
 the painted screen, so a layout regression shows up as a diff.
 """
 
+import dataclasses
 import datetime
 
 from clustertool.tui.app import MeApp
-from clustertool.tui.data import Identity, JobRow, QuotaRow, StorageInfo
+from clustertool.tui.data import Identity, JobRow, QuotaRow, Standing, StorageInfo
 from clustertool.tui.panels.jobs import JobsPanel
+from clustertool.tui.panels.standing import StandingPanel
 from clustertool.tui.panels.storage import StoragePanel
 
 FIXED_CLOCK = datetime.datetime(2026, 8, 2, 14, 32)
@@ -219,3 +221,70 @@ def test_storage_while_reading(snap_compare):
         await pilot.pause()
 
     assert snap_compare(_app(), terminal_size=(120, 30), run_before=reading)
+
+
+STANDING = Standing(
+    fairshare=[("nayar_lab", "0.999367"), ("rivera_grads", "0.412"), ("okonkwo_lab", "0.0006")],
+    gpus_used=88,
+    gpu_cap=96,
+    days=7,
+    states={"COMPLETED": 90, "CANCELLED": 51, "FAILED": 7, "TIMEOUT": 4},
+    measured=72,
+    cpu=38,
+    mem=22,
+    gpu=71,
+    gpu_jobs=20,
+)
+
+
+async def _standing_shown(pilot, info):
+    pilot.app.query_one(StandingPanel).show(info)
+    await pilot.pause()
+
+
+def test_standing_loaded(snap_compare):
+    assert snap_compare(
+        _app(),
+        terminal_size=(130, 30),
+        run_before=lambda pilot: _standing_shown(pilot, STANDING),
+    )
+
+
+def test_standing_degraded_to_the_share_alone(snap_compare):
+    """What the panel shows when accounting is unavailable but sshare answered."""
+    degraded = dataclasses.replace(
+        STANDING,
+        states={},
+        measured=0,
+        cpu=None,
+        mem=None,
+        gpu=None,
+        gpu_jobs=0,
+        note="sacct timed out",
+    )
+    assert snap_compare(
+        _app(),
+        terminal_size=(130, 30),
+        run_before=lambda pilot: _standing_shown(pilot, degraded),
+    )
+
+
+def test_standing_at_the_gpu_cap(snap_compare):
+    """The line turns red at the cap, which is when new jobs stop starting."""
+    at_cap = dataclasses.replace(STANDING, gpus_used=96)
+    assert snap_compare(
+        _app(),
+        terminal_size=(130, 30),
+        run_before=lambda pilot: _standing_shown(pilot, at_cap),
+    )
+
+
+def test_standing_while_reading(snap_compare):
+    async def reading(pilot):
+        panel = pilot.app.query_one(StandingPanel)
+        panel.show(STANDING)
+        await pilot.pause()
+        panel.begin_read()
+        await pilot.pause()
+
+    assert snap_compare(_app(), terminal_size=(130, 30), run_before=reading)

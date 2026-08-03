@@ -9,6 +9,7 @@ import dataclasses
 import os
 import pwd
 import socket
+import statistics
 import threading
 import time
 
@@ -467,3 +468,163 @@ def jobs(user: str) -> list[JobRow]:
             )
         )
     return rows
+
+
+STANDING_DAYS = 7
+"""How far back the standing panel looks, in days."""
+
+STANDING_TIMEOUT_S = 30
+
+RECENT_FIELDS = ("JobID", "State", "Elapsed", "AllocTRES", "AdminComment")
+"""The sacct fields the standing panel reads, in the order it asks for them."""
+
+TERMINAL_STATES = ("COMPLETED", "CANCELLED", "FAILED", "TIMEOUT", "OUT_OF_MEMORY", "PREEMPTED")
+"""States worth counting separately; anything else is grouped as other."""
+
+
+@dataclasses.dataclass(frozen=True)
+class Standing:
+    """Where the caller stands: share, GPU cap, and how recent work went."""
+
+    fairshare: list[tuple[str, str]]
+    gpus_used: int
+    gpu_cap: int | None
+    days: int
+    states: dict[str, int]
+    measured: int
+    cpu: int | None
+    mem: int | None
+    gpu: int | None
+    gpu_jobs: int
+    note: str = ""
+    """Why the efficiency half is missing, when it is."""
+
+    @property
+    def total(self) -> int:
+        """How many jobs ended in the window, whether or not they carry metrics."""
+        return sum(self.states.values())
+
+
+def fairshare_rows(user: str) -> list[tuple[str, str]]:
+    """Return the caller's fairshare per account, highest share first."""
+    from clustertool import slurm
+
+    rows = slurm.user_fairshare(user)
+    return sorted(rows, key=lambda row: -_share(row[1]))
+
+
+def _share(text: str) -> float:
+    """Read a fairshare score, treating an unreadable one as the lowest."""
+    try:
+        return float(text)
+    except ValueError:
+        return -1.0
+
+
+def gpu_standing(user: str) -> tuple[int, int | None]:
+    """Return (GPUs the caller holds, the per-account cap or None)."""
+    from clustertool import slurm
+
+    used = slurm.user_gpu_count(user)
+    try:
+        cap = slurm.account_cap()
+    except CommandError:
+        cap = None
+    return used, cap
+
+
+def recent_work(user: str, days: int = STANDING_DAYS) -> tuple[dict[str, int], list[tuple]]:
+    """Return (state counts, per-job metrics) for the caller's jobs in the window.
+
+    One sacct call over a window rather than jobscope's select-then-fetch, which
+    resolves a window to explicit job ids and asks sacct for them by id: that took
+    over sixty seconds for this caller's 558 ids where the window query takes
+    0.05s. The metric blobs are still decoded by jobscope, which owns that format.
+    """
+    from jobscope import blob
+
+    from clustertool import process
+
+    code, out, err = process.probe(
+        [
+            "sacct",
+            "-u",
+            user,
+            "-S",
+            f"now-{days}days",
+            "-X",
+            "-P",
+            "-n",
+            "--units=G",
+            "-o",
+            ",".join(RECENT_FIELDS),
+        ],
+        timeout=STANDING_TIMEOUT_S,
+    )
+    if code != 0:
+        raise CommandError(_probe_error(code, err, "sacct"))
+    states: dict[str, int] = {}
+    metrics = []
+    for line in out.splitlines():
+        parts = line.split("|")
+        if len(parts) < len(RECENT_FIELDS):
+            continue
+        field = dict(zip(RECENT_FIELDS, (p.strip() for p in parts), strict=False))
+        head = field["State"].split()[0] if field["State"].split() else ""
+        if not head:
+            continue
+        states[head if head in TERMINAL_STATES else "OTHER"] = (
+            states.get(head if head in TERMINAL_STATES else "OTHER", 0) + 1
+        )
+        stats = blob.decode_admin_comment(field["AdminComment"]) if field["AdminComment"] else None
+        measured = blob.blob_metrics(stats) if stats else None
+        if measured is not None:
+            metrics.append(measured)
+    return states, metrics
+
+
+def standing(user: str, days: int = STANDING_DAYS) -> Standing:
+    """Gather everything the standing panel shows.
+
+    Fairshare and the GPU cap come from Slurm and are cheap. The efficiency half
+    degrades on its own: a window that cannot be read leaves the share and the cap
+    on the panel with a note, since those are the figures a user checks most.
+    """
+    rows = fairshare_rows(user)
+    used, cap = gpu_standing(user)
+    try:
+        states, metrics = recent_work(user, days)
+        note = ""
+    except Exception as exc:
+        states, metrics, note = {}, [], _short_reason(exc)
+    gpu_values = [entry[2] for entry in metrics if entry[2] is not None]
+    return Standing(
+        fairshare=rows,
+        gpus_used=used,
+        gpu_cap=cap,
+        days=days,
+        states=states,
+        measured=len(metrics),
+        cpu=_median([entry[0] for entry in metrics]),
+        mem=_median([entry[1] for entry in metrics]),
+        gpu=_median(gpu_values),
+        gpu_jobs=len(gpu_values),
+        note=note,
+    )
+
+
+def _median(values: list[int]) -> int | None:
+    """Return the rounded median, or None when there is nothing to take one of.
+
+    The median rather than the mean. These distributions are bimodal: of this
+    caller's 72 measured jobs, 35 used no CPU at all while a handful of GPU jobs
+    ran near 100%, which put the GPU mean at 28% against a median of 10%. The
+    median describes the typical job, and the panel says which it is showing.
+    """
+    return round(statistics.median(values)) if values else None
+
+
+def _short_reason(exc: BaseException) -> str:
+    """Name a failure in a few words, for a panel with one line to spare."""
+    text = str(exc).strip().splitlines()[0] if str(exc).strip() else type(exc).__name__
+    return " ".join(text.split()[:ERROR_WORDS])

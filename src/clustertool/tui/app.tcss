@@ -24,7 +24,8 @@ Screen {
     scrollbar-size-vertical: 1;
 }
 
-#storage-body {
+#storage-body,
+#standing-body {
     height: auto;
     width: 100%;
 }
@@ -32,6 +33,7 @@ Screen {
 #standing {
     height: 7;
     max-height: 40%;
+    scrollbar-size-vertical: 1;
     border: round $panel-lighten-2;
     border-title-align: left;
     padding: 0 1;

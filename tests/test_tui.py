@@ -1813,3 +1813,271 @@ def _painted(app):
     return "".join(
         segment.text for strip in app.screen._compositor.render_strips() for segment in strip
     )
+
+
+SACCT_ROW = "1|COMPLETED|00:10:00|cpu=8,gres/gpu=2|{blob}"
+
+
+def _standing(**kwargs):
+    fields = dict(
+        fairshare=[("lab_one", "0.9")],
+        gpus_used=4,
+        gpu_cap=96,
+        days=7,
+        states={"COMPLETED": 9, "FAILED": 1},
+        measured=8,
+        cpu=40,
+        mem=22,
+        gpu=71,
+        gpu_jobs=5,
+    )
+    return data.Standing(**{**fields, **kwargs})
+
+
+def test_fairshare_puts_the_most_share_first(monkeypatch):
+    """The account whose jobs will start soonest is the one worth reading first."""
+    rows = [("a", "0.10"), ("b", "0.99"), ("c", "bad"), ("d", "0.50")]
+    monkeypatch.setattr(slurm, "user_fairshare", lambda user: rows)
+    assert [row[0] for row in data.fairshare_rows("alice")] == ["b", "d", "a", "c"]
+
+
+def test_a_missing_gpu_cap_is_not_a_failure(monkeypatch):
+    """A site with no cap on its base QoS still has a GPU count worth showing."""
+    monkeypatch.setattr(slurm, "user_gpu_count", lambda user: 3)
+
+    def boom():
+        raise CommandError("sacctmgr not found")
+
+    monkeypatch.setattr(slurm, "account_cap", boom)
+    assert data.gpu_standing("alice") == (3, None)
+
+
+def test_recent_work_counts_states_and_decodes_metrics(monkeypatch):
+    from jobscope import blob
+
+    import clustertool.process as proc
+
+    stats = {"gpus": {"0": {"util": 80, "mem": 50}}, "nodes": {}}
+    monkeypatch.setattr(blob, "decode_admin_comment", lambda text: stats if text else None)
+    monkeypatch.setattr(blob, "blob_metrics", lambda s: (40, 22, 71, 30))
+    out = (
+        "1|COMPLETED|00:10:00|cpu=8|blob\n"
+        "2|CANCELLED by 123|00:01:00|cpu=8|\n"
+        "3|NODE_FAIL|00:01:00|cpu=8|blob\n"
+        "4|short|row\n"
+    )
+    monkeypatch.setattr(proc, "probe", lambda cmd, **kw: (0, out, ""))
+    states, metrics = data.recent_work("alice", 7)
+    assert states == {"COMPLETED": 1, "CANCELLED": 1, "OTHER": 1}
+    assert len(metrics) == 2, "a job with no blob has no metrics"
+
+
+def test_recent_work_asks_for_a_window_not_a_list_of_ids(monkeypatch):
+    """Resolving a window to ids and asking sacct by id took over 60s for 558 jobs."""
+    import clustertool.process as proc
+
+    seen = []
+    monkeypatch.setattr(proc, "probe", lambda cmd, **kw: (seen.append(cmd), (0, "", ""))[1])
+    data.recent_work("alice", 3)
+    assert seen[0][0] == "sacct"
+    assert "-S" in seen[0] and "now-3days" in seen[0]
+    assert "-j" not in seen[0]
+    assert "AdminComment" in " ".join(seen[0])
+
+
+def test_recent_work_raises_when_sacct_fails(monkeypatch):
+    import clustertool.process as proc
+
+    monkeypatch.setattr(proc, "probe", lambda cmd, **kw: (1, "", "slurmdbd down"))
+    with pytest.raises(CommandError, match="slurmdbd"):
+        data.recent_work("alice", 7)
+
+
+def test_standing_keeps_the_share_when_the_window_cannot_be_read(monkeypatch):
+    """Fairshare and the cap are cheap, and are what a user checks most."""
+    monkeypatch.setattr(data, "fairshare_rows", lambda user: [("lab_one", "0.9")])
+    monkeypatch.setattr(data, "gpu_standing", lambda user: (4, 96))
+
+    def boom(user, days=7):
+        raise CommandError("accounting is not answering just now")
+
+    monkeypatch.setattr(data, "recent_work", boom)
+    result = data.standing("alice")
+    assert result.fairshare == [("lab_one", "0.9")]
+    assert result.gpu_cap == 96
+    assert result.states == {}
+    assert result.note.startswith("accounting is not answering")
+    assert result.cpu is None
+
+
+def test_the_efficiency_figure_is_a_median_not_a_mean():
+    """These are bimodal: 35 of 72 jobs at nought put the gpu mean at 28 to a median of 10."""
+    assert data._median([0, 0, 0, 100, 100]) == 0
+    assert data._median([]) is None
+    assert data._median([10, 20]) == 15
+
+
+def test_standing_totals_the_states():
+    assert _standing().total == 10
+    assert _standing(states={}).total == 0
+
+
+def test_the_efficiency_line_says_how_many_jobs_it_covers():
+    """Fewer than half of a real caller's jobs carry metrics at all."""
+    from clustertool.tui.panels.standing import efficiency_text
+
+    plain = efficiency_text(_standing(), 120).plain
+    assert "cpu 40%" in plain and "mem 22%" in plain and "gpu 71%" in plain
+    assert "over 8 of 10" in plain
+    assert "(5 gpu)" in plain
+
+
+def test_the_efficiency_line_says_why_it_is_missing():
+    from clustertool.tui.panels.standing import efficiency_text
+
+    plain = efficiency_text(_standing(note="slurmdbd is not answering", states={}), 120).plain
+    assert "unavailable" in plain
+    assert "slurmdbd" in plain
+
+
+def test_the_efficiency_line_when_no_job_carried_data():
+    from clustertool.tui.panels.standing import efficiency_text
+
+    plain = efficiency_text(_standing(measured=0, cpu=None, mem=None, gpu=None), 120).plain
+    assert "no job carried" in plain
+
+
+def test_a_cpu_only_window_shows_no_gpu_figure():
+    from clustertool.tui.panels.standing import efficiency_text
+
+    plain = efficiency_text(_standing(gpu=None, gpu_jobs=0), 120).plain
+    assert "gpu" not in plain
+    assert "cpu 40%" in plain
+
+
+@pytest.mark.parametrize(
+    ("used", "cap", "expected"),
+    [(0, 96, ""), (71, 96, ""), (72, 96, "yellow"), (96, 96, "bold red"), (4, None, "dim")],
+)
+def test_the_gpu_line_turns_as_the_cap_is_reached(used, cap, expected):
+    from clustertool.tui.panels.standing import cap_style
+
+    assert cap_style(used, cap) == expected
+
+
+@pytest.mark.parametrize(
+    ("score", "expected"), [("0.9", ""), ("0.5", ""), ("0.49", "yellow"), ("bad", "dim")]
+)
+def test_a_share_below_a_half_is_marked(score, expected):
+    from clustertool.tui.panels.standing import share_style
+
+    assert share_style(score) == expected
+
+
+def test_the_share_line_counts_the_accounts_it_does_not_name():
+    """A user can belong to twenty and the panel has one line for this."""
+    from clustertool.tui.panels.standing import ACCOUNTS_SHOWN, share_text
+
+    many = [(f"lab_{n}", "0.5") for n in range(ACCOUNTS_SHOWN + 4)]
+    plain = share_text(_standing(fairshare=many), 200).plain
+    assert "+4 more" in plain
+    assert plain.count("lab_") == ACCOUNTS_SHOWN
+
+
+def test_the_share_line_says_so_with_no_accounts():
+    from clustertool.tui.panels.standing import share_text
+
+    assert "no accounts" in share_text(_standing(fairshare=[]), 120).plain
+
+
+def test_a_bracket_in_an_account_name_is_not_read_as_markup():
+    """Account names come from sshare, so they are not trusted."""
+    from clustertool.tui.panels.standing import share_text
+
+    text = share_text(_standing(fairshare=[("[bold red]lab", "0.9")]), 120)
+    assert "[bold red]lab" in text.plain
+
+
+def test_every_standing_line_fits_the_width_it_is_given():
+    from clustertool.tui.panels.standing import lines
+
+    big = _standing(
+        fairshare=[(f"a_long_account_name_{n}", "0.123456") for n in range(6)],
+        states={s: 9 for s in data.TERMINAL_STATES},
+    )
+    for width in range(10, 140):
+        for line in lines(big, width):
+            assert len(line.plain) <= width, (width, line.plain)
+
+
+async def test_the_app_loads_the_standing_panel_on_start(monkeypatch):
+    from clustertool.tui.panels.standing import StandingPanel
+
+    monkeypatch.setattr(data, "jobs", lambda user: [])
+    monkeypatch.setattr(data, "storage_info", lambda user: data.StorageInfo(None, [], []))
+    calls = []
+    monkeypatch.setattr(data, "standing", lambda user: (calls.append(user), _standing())[1])
+    app = _app(interval=30)
+    async with app.run_test(size=(130, 30)) as pilot:
+        panel = app.query_one(StandingPanel)
+        assert await _until(pilot, lambda: panel._standing is not None), "never loaded"
+        assert calls == ["alice"]
+
+
+async def test_the_standing_panel_is_not_on_the_jobs_timer(monkeypatch):
+    """A fairshare score moves on a three-day half-life here."""
+    monkeypatch.setattr(data, "jobs", lambda user: [])
+    monkeypatch.setattr(data, "storage_info", lambda user: data.StorageInfo(None, [], []))
+    calls = []
+    monkeypatch.setattr(data, "standing", lambda user: (calls.append(user), _standing())[1])
+    app = _app(interval=0.05)
+    async with app.run_test(size=(130, 30)) as pilot:
+        await pilot.pause(0.5)
+        assert len(calls) == 1, f"standing was read {len(calls)} times on a 0.05s tick"
+
+
+async def test_r_refreshes_the_standing_panel_when_it_has_focus(monkeypatch):
+    from clustertool.tui.panels.standing import StandingPanel
+
+    monkeypatch.setattr(data, "jobs", lambda user: [])
+    monkeypatch.setattr(data, "storage_info", lambda user: data.StorageInfo(None, [], []))
+    calls = []
+    monkeypatch.setattr(data, "standing", lambda user: (calls.append(user), _standing())[1])
+    app = _app(interval=0)
+    async with app.run_test(size=(130, 30)) as pilot:
+        await pilot.pause()
+        app.query_one(StandingPanel).focus()
+        await pilot.pause()
+        await pilot.press("r")
+        assert await _until(pilot, lambda: len(calls) == 1), "r did not refresh standing"
+
+
+async def test_refresh_all_reads_the_standing_panel_too(monkeypatch):
+    monkeypatch.setattr(data, "jobs", lambda user: [])
+    monkeypatch.setattr(data, "storage_info", lambda user: data.StorageInfo(None, [], []))
+    calls = []
+    monkeypatch.setattr(data, "standing", lambda user: (calls.append(user), _standing())[1])
+    app = _app(interval=0)
+    async with app.run_test(size=(130, 30)) as pilot:
+        await pilot.pause()
+        await pilot.press("R")
+        assert await _until(pilot, lambda: len(calls) == 1)
+
+
+async def test_a_failing_standing_read_marks_the_panel_and_leaves_the_app_up(monkeypatch):
+    from clustertool.tui.panels.standing import StandingPanel
+
+    monkeypatch.setattr(data, "jobs", lambda user: [])
+    monkeypatch.setattr(data, "storage_info", lambda user: data.StorageInfo(None, [], []))
+
+    def boom(user):
+        raise CommandError("sshare is not answering")
+
+    monkeypatch.setattr(data, "standing", boom)
+    app = _app(interval=30)
+    async with app.run_test(size=(130, 30)) as pilot:
+        panel = app.query_one(StandingPanel)
+        assert await _until(pilot, lambda: bool(panel._error))
+        assert app.is_running
+        assert "sshare" in panel._error
+        assert "stale" in str(panel.border_title)
