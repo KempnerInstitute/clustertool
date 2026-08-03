@@ -367,11 +367,19 @@ async def test_the_status_bar_survives_a_short_terminal():
 
 
 def test_help_lists_only_keys_that_are_bound():
-    """Help that advertises a key doing nothing is worse than no help."""
+    """Help that advertises a key doing nothing is worse than no help.
+
+    The keys the table binds itself count as bound, and are checked against its own
+    binding list rather than taken on trust.
+    """
+    from textual.widgets import DataTable
+
     from clustertool.tui.app import HELP, MeApp
 
     aliases = {"?": "question_mark"}
-    from_widgets = {"up", "down"}
+    from_widgets = {"up", "down", "enter"}
+    table_keys = {key for binding in DataTable.BINDINGS for key in binding.key.split(",")}
+    assert from_widgets <= table_keys, from_widgets - table_keys
     bound = {binding[0] for binding in MeApp.BINDINGS} | from_widgets
     listed = {
         line.split()[0]
@@ -3606,7 +3614,7 @@ def test_the_modal_names_the_job_and_what_it_costs():
 
     row = SAMPLE_JOBS[0]
     for action in actions.MUTATING:
-        subject = actions.describe(action, row)
+        subject = actions.describe(row)
         assert row.jobid in subject
         assert row.partition in subject
         assert row.elapsed in subject
@@ -4092,6 +4100,209 @@ async def test_the_action_uses_the_job_the_modal_named(monkeypatch):
         app.screen.query_one("#confirm-yes").press()
         assert await _until(pilot, lambda: calls != [])
         assert calls == [("cancel", "111")], calls
+
+
+async def test_enter_opens_a_menu_naming_the_job_and_offering_every_action(monkeypatch):
+    """The keys stay; the menu is the way in for a reader who does not know them."""
+    from clustertool.tui import actions
+    from clustertool.tui.app import ActionMenu
+
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(100, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("enter")
+        await pilot.pause()
+        assert isinstance(app.screen, ActionMenu)
+        painted = _painted(app)
+        assert "111  RUNNING  on kempner_h100" in painted, "it says which job"
+        for action in actions.MENU:
+            assert action.label in painted, action.label
+            assert action.key in painted, action.key
+
+
+async def test_the_menu_opens_on_cancel_and_moves_with_up_and_down(monkeypatch):
+    """Cancel is what most callers come for, and the confirmation still guards it."""
+    from textual.widgets import OptionList
+
+    from clustertool.tui import actions
+
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(100, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("enter")
+        await pilot.pause()
+        options = app.screen.query_one("#menu-options", OptionList)
+        assert options.highlighted == 0
+        assert options.get_option_at_index(0).id == "cancel"
+        assert app.screen.focused is options, "up and down have to reach it"
+        await pilot.press("down")
+        await pilot.pause()
+        assert options.highlighted == 1
+        await pilot.press("up", "up")
+        await pilot.pause()
+        assert options.get_option_at_index(options.highlighted).id in {
+            "cancel",
+            actions.MENU[-1].name,
+        }, "wrapping or stopping, but never off the end"
+
+
+async def test_choosing_a_mutating_entry_still_asks_first(monkeypatch):
+    """Three presses of enter land on No rather than canceling a job."""
+    calls = _stub_run(monkeypatch)
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(100, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("enter")
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.screen.query("#confirm-yes"), "the confirmation opened"
+        assert app.screen.focused.id == "confirm-no"
+        await pilot.press("enter")
+        await pilot.pause(0.1)
+        assert calls == [], "and the third press answered No"
+
+
+async def test_choosing_yes_from_the_menu_runs_the_action_once(monkeypatch):
+    calls = _stub_run(monkeypatch)
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(100, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("enter")
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+        app.screen.query_one("#confirm-yes").press()
+        assert await _until(pilot, lambda: calls != [])
+        assert calls == [("cancel", "111")], calls
+
+
+async def test_escape_closes_the_menu_having_done_nothing(monkeypatch):
+    calls = _stub_run(monkeypatch)
+    reads = []
+    from clustertool.tui import actions
+
+    monkeypatch.setattr(actions, "why", lambda jobid: reads.append(jobid) or "because Priority")
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(100, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("enter")
+        await pilot.pause()
+        await pilot.press("escape")
+        await pilot.pause(0.1)
+        assert not list(app.screen.query("#menu-options")), "the menu closed"
+        assert calls == [] and reads == []
+
+
+@pytest.mark.parametrize(
+    ("choice", "expected"),
+    [("log", "the log says"), ("why", "because Priority"), ("scope", "cpu 40%")],
+)
+async def test_a_read_only_choice_runs_at_once(monkeypatch, choice, expected):
+    """There is nothing to confirm, so the answer lands in the pane directly."""
+    from clustertool.tui import actions
+
+    monkeypatch.setattr(actions, "log_tail", lambda jobid, **kw: "the log says")
+    monkeypatch.setattr(actions, "why", lambda jobid: "because Priority")
+    monkeypatch.setattr(actions, "scope", lambda jobid: "cpu 40%")
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(100, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        row = app.query_one(JobsPanel).selected
+        app.chose(choice, row)
+        panel = app.query_one(JobsPanel)
+        assert await _until(pilot, lambda: expected in panel._detail_text()), panel._detail_text()
+
+
+async def test_copying_from_the_menu_takes_the_job_the_menu_named(monkeypatch):
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(100, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        row = app.query_one(JobsPanel).selected
+        app.chose("copy", row)
+        await pilot.pause()
+        assert "copied 111" in _painted(app)
+
+
+async def test_the_menu_acts_on_the_job_it_named(monkeypatch):
+    """Not on whatever the cursor is on when it closes, which the timer can change."""
+    calls = _stub_run(monkeypatch)
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(120, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("enter")
+        await pilot.pause()
+        app.query_one("#jobs-table").move_cursor(row=1)
+        await pilot.pause()
+        assert app.query_one(JobsPanel).selected.jobid == "222", "the cursor really moved"
+        await pilot.press("enter")
+        await pilot.pause()
+        app.screen.query_one("#confirm-yes").press()
+        assert await _until(pilot, lambda: calls != [])
+        assert calls == [("cancel", "111")], calls
+
+
+async def test_enter_on_an_empty_table_opens_nothing(monkeypatch):
+    """A table with no rows reports no selection, so there is nothing to open a menu on.
+
+    Silent rather than saying no job is selected, as the other keys do, because the
+    pane below the table already says there are none.
+    """
+    app = _act_app(monkeypatch, rows=[])
+    async with app.run_test(size=(100, 30)) as pilot:
+        await pilot.pause()
+        app.query_one("#jobs-table").focus()
+        await pilot.press("enter")
+        await pilot.pause()
+        assert not list(app.screen.query("#menu-options")), "no job, so no menu"
+        assert app.is_running
+        assert "No jobs of yours are queued or running." in _painted(app)
+
+
+@pytest.mark.parametrize("size", [(46, 15), (46, 18), (60, 20), (100, 30), (160, 40)])
+async def test_every_menu_entry_can_be_reached_at_any_size(monkeypatch, size):
+    """A list sized to its content is clipped by the modal while believing it is whole.
+
+    Its own height then equals its virtual height, so it never scrolls and the last
+    entries cannot be reached at all. The menu is given a definite height instead.
+    """
+    from textual.widgets import OptionList
+
+    from clustertool.tui import actions
+
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=size) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("enter")
+        await pilot.pause()
+        options = app.screen.query_one("#menu-options", OptionList)
+        last = actions.MENU[-1]
+        for _ in range(len(actions.MENU) - 1):
+            await pilot.press("down")
+        await pilot.pause()
+        assert options.highlighted == len(actions.MENU) - 1
+        assert last.label in _painted(app), (last.label, size)
+        clipped = options.virtual_size.height > options.size.height
+        assert options.show_vertical_scrollbar is clipped, "a clipped list says so"
+
+
+def test_the_menu_the_help_and_the_bindings_come_from_one_table():
+    """An action offered in one place and missing from another is the failure here."""
+    from clustertool.tui import actions
+    from clustertool.tui.app import HELP, MeApp
+
+    bound = {binding[0] for binding in MeApp.BINDINGS}
+    for action in actions.MENU:
+        assert action.key in bound, f"{action.name} has no key binding"
+        assert action.label in HELP, f"{action.name} is missing from the help"
+    assert [action.name for action in actions.MENU[:4]] == [
+        "cancel",
+        "hold",
+        "release",
+        "requeue",
+    ], "the menu opens on cancel, so the mutating four come first"
+    assert all(action.mutating for action in actions.MUTATING)
+    assert not any(action.mutating for action in actions.READING)
 
 
 def test_the_planner_refuses_what_it_promises_to():

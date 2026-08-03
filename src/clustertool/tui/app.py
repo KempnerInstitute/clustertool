@@ -11,7 +11,8 @@ from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.css.query import NoMatches
 from textual.screen import ModalScreen
-from textual.widgets import Button, DataTable, Static
+from textual.widgets import Button, DataTable, OptionList, Static
+from textual.widgets.option_list import Option
 
 from clustertool.process import CommandError
 from clustertool.tui import actions, data
@@ -40,32 +41,50 @@ so the theme rather than the terminal decides whether the screen is light; the a
 themes instead use the terminal's own sixteen colors.
 """
 
-HELP = """\
+KEY_COLUMN = 13
+"""Where a description starts in the help overlay, which lists shift+tab."""
+
+MENU_CHROME = 7
+"""Rows the menu spends on anything but an action: its border, padding and subject."""
+
+MENU_FLOOR = 8
+"""Shortest the menu is drawn, so its list keeps rows to scroll even on a tiny screen."""
+
+MENU_KEY_COLUMN = 8
+"""Where a description starts in the menu, whose longest key is ctrl+r.
+
+Narrower than the help's column, so a row still fits a menu on a terminal of
+forty-six columns without wrapping onto a second line.
+"""
+
+
+def _keys(offered: tuple[actions.Action, ...]) -> str:
+    """List actions as key and description, one per line."""
+    return "\n".join(f"  {action.key:<{KEY_COLUMN}}{action.label}" for action in offered)
+
+
+HELP = f"""\
 Keys
 
-  up down      move between jobs
-  tab          next panel
-  shift+tab    previous panel
-  r            refresh the focused panel
-  R            refresh every panel
-  ?            this help
-  Q            quit
+  {"up down":<{KEY_COLUMN}}move between jobs
+  {"enter":<{KEY_COLUMN}}menu for the selected job
+  {"tab":<{KEY_COLUMN}}next panel
+  {"shift+tab":<{KEY_COLUMN}}previous panel
+  {"r":<{KEY_COLUMN}}refresh the focused panel
+  {"R":<{KEY_COLUMN}}refresh every panel
+  {"escape":<{KEY_COLUMN}}stop following
+  {"?":<{KEY_COLUMN}}this help
+  {"Q":<{KEY_COLUMN}}quit
 
 On the selected job, each asking first
 
-  c            cancel it
-  h            hold it
-  H            release it
-  ctrl+r       requeue it, discarding the work so far
+{_keys(actions.MUTATING)}
 
 Read-only, on the selected job
 
-  l            the tail of its output
-  f            follow its output, escape or f to stop
-  w            why it is not running
-  s            how well it used what it asked for
-  y            copy its id
+{_keys(actions.READING)}
 """
+"""The key reference, built from the same table the menu and the bindings read."""
 
 
 def _reason(exc: BaseException) -> str:
@@ -180,6 +199,59 @@ class ConfirmScreen(ModalScreen[bool]):
 
     def action_refuse(self) -> None:
         self.dismiss(False)
+
+
+class ActionMenu(ModalScreen[str | None]):
+    """Everything the keys do to one job, offered as a list.
+
+    Opens on cancel, since that is what most callers come here for, and every
+    mutating choice still asks before it runs. Each row shows its key, so the menu
+    teaches the shortcut rather than replacing it.
+    """
+
+    BINDINGS = [("escape", "close", "close")]
+
+    def __init__(self, subject: str) -> None:
+        super().__init__()
+        self._subject = subject
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="menu"), Vertical(id="menu-body"):
+            yield Static(self._subject, id="menu-subject", markup=False)
+            yield OptionList(
+                *(
+                    Option(f"{action.key:<{MENU_KEY_COLUMN}}{action.label}", id=action.name)
+                    for action in actions.MENU
+                ),
+                id="menu-options",
+                markup=False,
+            )
+
+    def on_mount(self) -> None:
+        options = self.query_one("#menu-options", OptionList)
+        options.focus()
+        options.highlighted = 0
+        self._fit()
+
+    def on_resize(self, _event) -> None:
+        self._fit()
+
+    def _fit(self) -> None:
+        """Give the menu a definite height, so the list scrolls rather than being clipped.
+
+        Left to size itself the list is laid out at its full height inside a container
+        that shows fewer rows, so it believes every option is visible and the last ones
+        are unreachable.
+        """
+        body = self.query_one("#menu-body")
+        wanted = len(actions.MENU) + MENU_CHROME
+        body.styles.height = min(wanted, max(self.size.height - 2, MENU_FLOOR))
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        self.dismiss(event.option.id)
+
+    def action_close(self) -> None:
+        self.dismiss(None)
 
 
 class HelpScreen(ModalScreen):
@@ -383,21 +455,52 @@ class MeApp(App):
         self.load_storage()
 
     def action_act(self, name: str) -> None:
-        """Ask before doing something to the selected job, then do it.
+        """Ask before doing something to the selected job, then do it."""
+        row = self._chosen()
+        if row is not None:
+            self.confirm_act(name, row)
 
-        Nothing happens without an answer, and the answer is not remembered: a
-        confirmation that only appears once is a confirmation for the first job.
-        """
-        panel = self.query_one(JobsPanel)
-        row = panel.selected
+    def _chosen(self) -> data.JobRow | None:
+        """Return the selected row, or say there is none to act on."""
+        row = self.query_one(JobsPanel).selected
         if row is None:
             self.announce("no job is selected")
-            return
-        action = next(item for item in actions.MUTATING if item.name == name)
+        return row
+
+    def confirm_act(self, name: str, row: data.JobRow) -> None:
+        """Ask about this job, then act on it.
+
+        Nothing happens without an answer, and the answer is not remembered: a
+        confirmation that only appears once is a confirmation for the first job. The
+        job is captured here rather than read again when the answer lands, since the
+        table refreshes on its own while the question is up.
+        """
+        action = actions.BY_NAME[name]
         self.push_screen(
-            ConfirmScreen(action, actions.describe(action, row)),
+            ConfirmScreen(action, actions.describe(row)),
             lambda yes: self.do_act(name, row.jobid) if yes else self.announce(f"{name} canceled"),
         )
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        """Open the menu on the job under the cursor, which is what enter does."""
+        row = self._chosen()
+        if row is None:
+            return
+        self.push_screen(
+            ActionMenu(actions.describe(row)),
+            lambda name: self.chose(name, row) if name else None,
+        )
+
+    def chose(self, name: str, row: data.JobRow) -> None:
+        """Do what the menu was asked for, on the job the menu named."""
+        if actions.BY_NAME[name].mutating:
+            self.confirm_act(name, row)
+        elif name == "copy":
+            self.copy_id(row)
+        elif name == "follow":
+            self.follow(row)
+        else:
+            self.fetch_look(name, row.jobid)
 
     @work(group="act")
     async def do_act(self, name: str, jobid: str) -> None:
@@ -428,11 +531,9 @@ class MeApp(App):
 
     def action_look(self, what: str) -> None:
         """Read something about the selected job and show it under the detail."""
-        row = self.query_one(JobsPanel).selected
-        if row is None:
-            self.announce("no job is selected")
-            return
-        self.fetch_look(what, row.jobid)
+        row = self._chosen()
+        if row is not None:
+            self.fetch_look(what, row.jobid)
 
     @work(group="look")
     async def fetch_look(self, what: str, jobid: str) -> None:
@@ -454,10 +555,12 @@ class MeApp(App):
         if self._following is not None:
             self.stop_following("stopped following")
             return
-        row = self.query_one(JobsPanel).selected
-        if row is None:
-            self.announce("no job is selected")
-            return
+        row = self._chosen()
+        if row is not None:
+            self.follow(row)
+
+    def follow(self, row: data.JobRow) -> None:
+        """Start rereading this job's log on a timer."""
         self._following = row.jobid
         self.announce(f"following {row.jobid}, escape to stop")
         self.fetch_look("log", row.jobid)
@@ -480,10 +583,12 @@ class MeApp(App):
 
     def action_copy_id(self) -> None:
         """Put the selected job id on the clipboard, so it can be pasted elsewhere."""
-        row = self.query_one(JobsPanel).selected
-        if row is None:
-            self.announce("no job is selected")
-            return
+        row = self._chosen()
+        if row is not None:
+            self.copy_id(row)
+
+    def copy_id(self, row: data.JobRow) -> None:
+        """Put this job's id on the clipboard."""
         self.copy_to_clipboard(row.jobid)
         self.announce(f"copied {row.jobid}")
 

@@ -33,21 +33,44 @@ def printable(text: str) -> str:
 
 @dataclasses.dataclass(frozen=True)
 class Action:
-    """One mutating key: what it is called, and what it costs to get wrong."""
+    """One key that acts on the selected job, and how it is offered.
+
+    label is what the menu and the help overlay call it. question and caution are
+    what the confirmation asks, and are empty for an action that changes nothing.
+    """
 
     key: str
     name: str
-    question: str
+    label: str
+    question: str = ""
     caution: str = ""
+
+    @property
+    def mutating(self) -> bool:
+        """Whether doing this needs an answer first."""
+        return bool(self.question)
 
 
 MUTATING = (
-    Action("c", "cancel", "Cancel this job?", "It stops now and cannot be resumed."),
-    Action("h", "hold", "Hold this job?", "It stays queued but will not be scheduled."),
-    Action("H", "release", "Release this job?", "It becomes eligible to start again."),
+    Action("c", "cancel", "cancel it", "Cancel this job?", "It stops now and cannot be resumed."),
+    Action(
+        "h",
+        "hold",
+        "hold it",
+        "Hold this job?",
+        "It stays queued but will not be scheduled.",
+    ),
+    Action(
+        "H",
+        "release",
+        "release it",
+        "Release this job?",
+        "It becomes eligible to start again.",
+    ),
     Action(
         "ctrl+r",
         "requeue",
+        "requeue it, losing its work",
         "Requeue this job?",
         "It restarts from the beginning and the work so far is discarded.",
     ),
@@ -58,13 +81,32 @@ Requeue is on ctrl+r rather than q, which is one shift key away from quit, and r
 already refresh.
 """
 
-BY_KEY = {action.key: action for action in MUTATING}
+READING = (
+    Action("l", "log", "the tail of its output"),
+    Action("f", "follow", "follow its output"),
+    Action("w", "why", "why it is not running"),
+    Action("s", "scope", "how well it used its request"),
+    Action("y", "copy", "copy its id"),
+)
+"""The keys that only read, and so are done as soon as they are chosen."""
+
+MENU = MUTATING + READING
+"""Every action the menu offers, in the order it offers them.
+
+The one table the menu, the help overlay and the app's bindings all read, so an
+action cannot be offered in one place and missing from another. The mutating four
+come first because the menu opens on cancel.
+"""
+
+BY_KEY = {action.key: action for action in MENU}
+
+BY_NAME = {action.name: action for action in MENU}
 
 
-def describe(action: Action, row: data.JobRow) -> str:
-    """Return what the modal says about the job this action would act on.
+def describe(row: data.JobRow) -> str:
+    """Return the line a modal shows to say which job it is about.
 
-    Names the job, where it runs and how long it has been going, because a
+    Names the job, where it runs and how long it has been going, since a
     confirmation that does not identify its target is not one.
     """
     where = row.nodelist if row.assigned else row.state

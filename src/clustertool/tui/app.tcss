@@ -107,6 +107,33 @@ Screen {
     background: $panel-darken-1;
 }
 
+#menu {
+    align: center middle;
+}
+
+#menu-body {
+    width: 62;
+    max-width: 90%;
+    border: round $accent;
+    background: $surface;
+    padding: 1 2;
+}
+
+#menu-subject {
+    width: 1fr;
+    color: $text-muted;
+    padding: 0 0 1 0;
+}
+
+#menu-options {
+    width: 1fr;
+    height: 1fr;
+    min-height: 3;
+    border: none;
+    background: $surface;
+    scrollbar-size-vertical: 1;
+}
+
 #confirm {
     align: center middle;
 }

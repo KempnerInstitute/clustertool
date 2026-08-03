@@ -356,6 +356,24 @@ def test_confirm_requeue(snap_compare):
     assert snap_compare(_app(), terminal_size=(120, 30), run_before=lambda p: _confirm(p, "ctrl+r"))
 
 
+async def _menu(pilot):
+    pilot.app.query_one(JobsPanel).show(SAMPLE)
+    await pilot.pause()
+    pilot.app.query_one("#jobs-table").focus()
+    await pilot.press("enter")
+    await pilot.pause()
+
+
+def test_menu_on_the_selected_job(snap_compare):
+    """What enter opens: every action, its key, and the job it would act on."""
+    assert snap_compare(_app(), terminal_size=(100, 30), run_before=_menu)
+
+
+def test_menu_on_a_small_terminal(snap_compare):
+    """The menu is a modal, so it has to fit where the panels themselves barely do."""
+    assert snap_compare(_app(), terminal_size=(46, 18), run_before=_menu)
+
+
 def test_banner_after_an_action(snap_compare):
     async def acted(pilot):
         pilot.app.query_one(JobsPanel).show(SAMPLE)

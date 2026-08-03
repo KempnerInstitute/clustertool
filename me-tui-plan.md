@@ -332,6 +332,30 @@ old behavior it reports the over-allocation, so the check can see what it is for
 The doc audit from `CONTRIBUTING.md` step 7 belongs to the documentation work that
 follows the user's review, not here.
 
+### Phase 7: a menu on the selected job
+
+The keys stay. This adds a way in for anyone who does not know them yet.
+
+1. Enter on a row opens a modal menu of everything the keys do to that job, with
+   cancel selected. Up and down move, Enter chooses, escape closes. Each row shows
+   its key, so the menu teaches the shortcut rather than replacing it.
+2. The mutating four keep their confirmation, so choosing cancel asks first and the
+   answer still defaults to No. Three presses of Enter therefore land on No rather
+   than canceling a job. The read-only entries run at once, having nothing to
+   confirm.
+3. Every entry is offered whatever the job's state. Slurm refuses what does not
+   apply, and the planner already says why in words; hiding an entry would leave a
+   reader wondering where it went.
+4. The menu acts on the job it named, not on whatever the cursor is on when it
+   closes, which is the same rule the confirmation follows.
+5. The menu, the help overlay and the bindings come from one table, so an action
+   cannot appear in one and go missing from the others.
+
+Verification: Pilot tests for the default selection, for up and down, for escape
+running nothing, and for Yes running once with the right id; a test that moving the
+cursor while the menu is open does not change its target; a test that the three
+lists agree; snapshots at 100x30 and 46x18.
+
 ## Testing strategy
 
 The honest risk here is that a TUI becomes a large untested surface. `monitor.py`
