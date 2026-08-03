@@ -384,13 +384,19 @@ def array_elements(base: str) -> set[str]:
     """Return the array element ids the controller currently holds for a base job.
 
     -r asks squeue to print one row per element rather than folding a pending range,
-    which is what makes an element-level membership check possible.
+    which is what makes an element-level membership check possible. -t all is not
+    what unfolds: a throttled array still prints its pending remainder folded
+    without -r.
+
+    Raises when the query fails, as job_exists does, so a controller that cannot be
+    reached is not reported as an array holding no elements, which a caller would
+    read as an id naming nothing.
     """
-    code, out, _ = process.probe(
+    code, out, err = process.probe(
         ["squeue", "-r", "-h", "-t", "all", "-j", base, "-O", "JobArrayID:64"]
     )
     if code != 0:
-        return set()
+        raise CommandError(f"could not check array {base}: {err.strip() or code}")
     return {line.strip() for line in out.splitlines() if line.strip()}
 
 

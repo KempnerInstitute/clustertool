@@ -45,13 +45,17 @@ TITLE = "Jobs"
 
 EMPTY = "No jobs of yours are queued or running."
 
-READ_LINES = 4
-"""How many lines of a read the pane shows, keeping the last of them.
+PANE_ROWS = 5
+"""How many lines of text the detail pane actually shows, measured, not declared.
 
-Four because the pane measures six rows on the terminals this was checked at, and
-a head line and a dropped-lines note take two of them. Its own rule allows eight,
-but the panel does not have eight to give once the table keeps its minimum; that
-over-commitment is a layout matter recorded against phase 6.
+Its own rule allows eight rows. The panel does not have eight to give once the table
+keeps its minimum, and of what it does give one row is the pane's top padding, which
+is why this is five rather than the six the pane reports as its height. Verified by
+sweeping every width from 40 to 204 at 20, 24, 30 and 40 rows. That the pane cannot
+have its declared height is a layout over-commitment recorded against phase 6.
+
+Everything the pane shows is budgeted against this, because the pane cannot scroll
+and a row past its edge is one nobody can read.
 
 The pane cannot scroll: it takes no focus and the arrow keys belong to the table,
 so whatever does not fit is clipped from the bottom and unreachable. Three attempts
@@ -271,16 +275,28 @@ class JobsPanel(Vertical):
         the TRES and the nodes to show a single sentence. A longer one does take the
         pane, because the two together are more lines than there is room for, and
         then one line names the job so the read cannot be mistaken for another's.
+
+        Every row the pane will spend is counted, and every line it shows is cut to
+        the pane's width so that one line is one row, the stale mark included.
+        Counting logical lines instead lost the last one three times over: to the
+        stale mark being a row at all, to a traceback line naming an absolute path
+        wrapping onto two, and to the stale message itself wrapping at 46 and 80
+        columns once everything else had been cut.
         """
         lines = [line for line in self._extra.splitlines() if line.strip()]
         if len(lines) <= 1:
             return ""
-        kept = lines[-READ_LINES:]
-        dropped = len(lines) - len(kept)
+        width = max(self.query_one("#jobs-detail", Static).content_size.width, 8)
+        stale = [elide(f"stale: {self._error}", width)] if self._error else []
         head = f"{row.jobid}  {row.state}  on {row.partition}"
-        stale = [f"stale: {self._error}"] if self._error else []
-        note = [f"...{dropped} earlier lines not shown"] if dropped else []
-        return "\n".join([*stale, head, *note, *kept])
+        budget = max(PANE_ROWS - len(stale) - 1, 1)
+        if len(lines) <= budget:
+            kept, note = lines, []
+        else:
+            kept = lines[-(budget - 1) :] if budget > 1 else lines[-1:]
+            note = [f"...{len(lines) - len(kept)} earlier lines not shown"]
+        shown = [elide(line, width) for line in kept]
+        return "\n".join([*stale, elide(head, width), *note, *shown])
 
 
 def _nodes(row: data.JobRow) -> str:

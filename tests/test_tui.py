@@ -3770,3 +3770,69 @@ async def test_a_stale_mark_survives_a_read(monkeypatch):
         await pilot.press("l")
         assert await _until(pilot, lambda: "c" in panel._detail_text())
         assert "stale: controller busy" in panel._detail_text()
+
+
+REAL_TRACEBACK = "\n".join(
+    [
+        "Traceback (most recent call last):",
+        '  File "/n/example/LABS/a_lab/user/project/run.py", line 88, in <module>',
+        "    train(model, loader, optimizer, scheduler, cfg)",
+        '  File "/n/example/LABS/a_lab/user/project/train.py", line 41, in train',
+        "    loss.backward()",
+        "torch.OutOfMemoryError: CUDA out of memory. GPU 0 has a total capacity of 79.15 GiB",
+    ]
+)
+"""A traceback whose frames name absolute paths, so its lines wrap.
+
+The earlier fixture was step 0 to step 59, which never wraps, so the guarantee held
+for the fixture rather than for anything a job really writes.
+"""
+
+
+@pytest.mark.parametrize("rows", [20, 22, 24, 30, 40])
+@pytest.mark.parametrize("cols", [46, 80, 100, 120, 160])
+@pytest.mark.parametrize("stale", [False, True])
+async def test_the_last_line_of_a_read_survives_a_wrapping_log(monkeypatch, cols, rows, stale):
+    """Counting logical lines lost it three ways: to the stale mark, and to two wraps.
+
+    Twenty rows is the floor: below it the panel is drawn over by the widgets beneath
+    and no budget inside the pane can help, which is recorded against phase 6.
+    """
+    from clustertool.tui import actions
+
+    monkeypatch.setattr(actions, "log_tail", lambda jobid, **kw: REAL_TRACEBACK)
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(cols, rows)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        if stale:
+            app.query_one(JobsPanel).fail("squeue timed out; the controller is not answering")
+        await pilot.press("l")
+        assert await _until(pilot, lambda: "torch.OutOfMemoryError" in _painted(app)), (
+            cols,
+            rows,
+            stale,
+        )
+
+
+def test_an_array_check_that_could_not_run_is_not_an_empty_array(monkeypatch):
+    """job_exists raises so an outage is not read as a job that does not exist."""
+    import clustertool.process as proc
+    from clustertool import slurm
+
+    monkeypatch.setattr(proc, "probe", lambda cmd, **kw: (127, "", ""))
+    with pytest.raises(CommandError, match="could not check array"):
+        slurm.array_elements("123")
+
+
+def test_the_array_check_asks_squeue_to_unfold_the_range(monkeypatch):
+    """-t all is not what unfolds a throttled array; -r is."""
+    import clustertool.process as proc
+    from clustertool import slurm
+
+    seen = []
+    monkeypatch.setattr(
+        proc, "probe", lambda cmd, **kw: (seen.append(cmd), (0, "9_1\n9_2\n", ""))[1]
+    )
+    assert slurm.array_elements("9") == {"9_1", "9_2"}
+    assert "-r" in seen[0]
+    assert "all" in seen[0]
