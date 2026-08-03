@@ -2,7 +2,7 @@
 
 import click
 
-from clustertool import completion, process
+from clustertool import completion, jobaction, process
 from clustertool.grouping import keywords
 
 
@@ -34,7 +34,5 @@ def release(jobids: tuple[str, ...]) -> None:
     """
     if any(not jobid.strip() for jobid in jobids):
         raise click.UsageError("JOBID may not be empty.")
-    process.passthrough(
-        ["scontrol", "release", ",".join(jobids)],
-        f"could not release one or more of {', '.join(jobids)}; see the messages above for which",
-    )
+    planned = jobaction.plan("release", list(jobids))
+    process.passthrough(planned.cmd, planned.failure)

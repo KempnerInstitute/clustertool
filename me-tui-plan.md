@@ -253,7 +253,7 @@ the command function uncalled, and that Yes calls it exactly once with the right
 job id. Every mutating test uses a stubbed command function. One live end to end
 on a throwaway job of my own, submitted and canceled deliberately.
 
-### Phase 6: polish and docs
+### Phase 6: polish
 
 1. `--interval` and `--plain`.
 2. Color that works on light and dark terminals, and with `NO_COLOR`.
@@ -271,10 +271,15 @@ on a throwaway job of my own, submitted and canceled deliberately.
    utilization, which is honest but not the figure that changes behavior: over the
    caller's last week, 88% of the GPU-hours they held were idle. Elapsed and
    AllocTRES are already read and discarded, so this needs no new query.
-7. `docs/commands/me.md`, the README row, and the command index.
 
-Verification: snapshots at 80, 100 and 160 columns; a `NO_COLOR` snapshot; the
-doc audit from `CONTRIBUTING.md` step 7.
+Docs are deliberately not part of Phase 6. The dashboard gets a review from the
+user first, and whatever that changes would make documentation written now wrong.
+`docs/commands/me.md`, the README row and the command index come after it, as
+their own piece of work.
+
+Verification: snapshots at 80, 100 and 160 columns; a `NO_COLOR` snapshot. The
+doc audit from `CONTRIBUTING.md` step 7 belongs to the documentation work that
+follows the user's review, not here.
 
 ## Testing strategy
 

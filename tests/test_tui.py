@@ -17,6 +17,7 @@ from clustertool.cli import main
 from clustertool.commands import me as me_cmd
 from clustertool.process import CommandError
 from clustertool.tui import data
+from clustertool.tui.panels.jobs import JobsPanel
 
 
 def test_me_does_not_import_textual_at_module_scope():
@@ -168,6 +169,15 @@ def test_run_starts_the_app(monkeypatch):
     app_module.run(identity=data.Identity("alice", "", "node01", "Example HPC"))
     assert len(started) == 1
 
+
+ABANDONED_SLEEP_S = 2.0
+"""How long a stub that is meant to miss its deadline blocks for.
+
+Only just longer than the deadlines these tests set, because the thread running it
+is abandoned rather than joined and goes on to call whatever process.probe points
+at next. At thirty seconds one such thread reached a later test's stub and broke
+its count.
+"""
 
 FIXED_CLOCK = datetime.datetime(2026, 8, 2, 14, 32)
 
@@ -1560,7 +1570,7 @@ def test_the_fan_out_gives_up_on_a_straggler(monkeypatch):
 
     def fake(cmd, timeout=None, input_text=None):
         if cmd[-1].endswith("lab2"):
-            time.sleep(30)
+            time.sleep(ABANDONED_SLEEP_S)
         return (0, QUOTA_OUT, "")
 
     monkeypatch.setattr(proc, "probe", fake)
@@ -2223,7 +2233,7 @@ def test_the_whole_gather_is_bounded_not_just_the_fan_out(monkeypatch):
     monkeypatch.setattr(data, "STORAGE_DEADLINE_S", 0.4)
 
     def hang(*args):
-        time.sleep(30)
+        time.sleep(ABANDONED_SLEEP_S)
 
     monkeypatch.setattr(data, "home_quota", hang)
     monkeypatch.setattr(data, "lab_quotas", lambda user: [_q("a")])
@@ -2519,7 +2529,7 @@ def test_the_standing_gather_is_bounded(monkeypatch):
     monkeypatch.setattr(data, "STANDING_DEADLINE_S", 0.4)
 
     def hang(*args, **kwargs):
-        time.sleep(30)
+        time.sleep(ABANDONED_SLEEP_S)
 
     monkeypatch.setattr(data, "fairshare_rows", hang)
     monkeypatch.setattr(data, "gpu_standing", hang)
@@ -2702,7 +2712,7 @@ def test_the_standing_gather_reports_a_part_it_abandoned(monkeypatch):
     monkeypatch.setattr(data, "STANDING_DEADLINE_S", 0.3)
 
     def hang(*args, **kwargs):
-        time.sleep(30)
+        time.sleep(ABANDONED_SLEEP_S)
 
     monkeypatch.setattr(data, "fairshare_rows", hang)
     monkeypatch.setattr(data, "gpu_standing", hang)
@@ -2778,7 +2788,7 @@ def test_the_idle_lab_fallback_only_names_an_account_that_may_run_there(monkeypa
     monkeypatch.setattr(slurm, "default_account", lambda user: "kempner_dev")
     assert data.gpu_standing("alice").account == "kempner_dev"
 
-    monkeypatch.setattr(slurm, "default_account", lambda user: "aizenberg_lab")
+    monkeypatch.setattr(slurm, "default_account", lambda user: "unrelated_lab")
     assert data.gpu_standing("alice").account == ""
 
     monkeypatch.setattr(slurm, "default_account", lambda user: "root")
@@ -2918,3 +2928,444 @@ def test_the_bar_cuts_its_last_resort_by_cells_too():
     for width in range(1, 22):
         line = fit(who, "週一 2026-08-03 00:52", width)
         assert cell_len(line) <= width, (width, line)
+
+
+def _act_app(monkeypatch, rows=None):
+    """An app with the jobs panel populated and every query stubbed."""
+    monkeypatch.setattr(data, "jobs", lambda user: list(rows if rows is not None else SAMPLE_JOBS))
+    monkeypatch.setattr(data, "storage_info", lambda user: data.StorageInfo(None, [], []))
+    monkeypatch.setattr(data, "standing", lambda user: _standing())
+    return _app(interval=30)
+
+
+def _stub_run(monkeypatch, result="cancel 111: done", error=None):
+    from clustertool.tui import actions
+
+    calls = []
+
+    def fake(name, jobid):
+        calls.append((name, jobid))
+        if error is not None:
+            raise error
+        return result
+
+    monkeypatch.setattr(actions, "run", fake)
+    return calls
+
+
+async def test_a_mutating_key_asks_before_it_acts(monkeypatch):
+    from clustertool.tui.app import ConfirmScreen
+
+    calls = _stub_run(monkeypatch)
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(120, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("c")
+        await pilot.pause()
+        assert isinstance(app.screen, ConfirmScreen)
+        assert calls == [], "the action ran before it was confirmed"
+        painted = _painted(app)
+        assert "Cancel this job?" in painted
+        assert "111" in painted, "the confirmation must name its target"
+        assert app.focused.id == "confirm-no", "No has to be the default"
+
+
+@pytest.mark.parametrize("refuse", ["escape", "enter"])
+async def test_refusing_leaves_the_job_alone(monkeypatch, refuse):
+    """Escape and the focused No must both mean no."""
+    calls = _stub_run(monkeypatch)
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(120, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("c")
+        await pilot.pause()
+        await pilot.press(refuse)
+        await pilot.pause()
+        assert calls == [], f"{refuse} ran the action"
+        assert "canceled" in str(app.query_one("#banner").render())
+
+
+async def test_confirming_runs_the_action_once_on_the_selected_job(monkeypatch):
+    calls = _stub_run(monkeypatch, result="cancel 222: done")
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(120, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("down")
+        await pilot.pause()
+        assert app.query_one(JobsPanel).selected.jobid == "222"
+        await pilot.press("c")
+        await pilot.pause()
+        app.screen.query_one("#confirm-yes").press()
+        assert await _until(pilot, lambda: calls != [])
+        assert calls == [("cancel", "222")], calls
+        assert "done" in str(app.query_one("#banner").render())
+
+
+@pytest.mark.parametrize(
+    ("key", "name"), [("c", "cancel"), ("h", "hold"), ("H", "release"), ("ctrl+r", "requeue")]
+)
+async def test_each_key_runs_its_own_action(monkeypatch, key, name):
+    calls = _stub_run(monkeypatch, result=f"{name} 111: done")
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(120, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press(key)
+        await pilot.pause()
+        app.screen.query_one("#confirm-yes").press()
+        assert await _until(pilot, lambda: calls != [])
+        assert calls == [(name, "111")], calls
+
+
+async def test_requeue_is_not_one_shift_key_from_quit():
+    """q would put discarding a running job's work beside leaving the app."""
+    from clustertool.tui import actions
+
+    keys = {action.key for action in actions.MUTATING}
+    assert "q" not in keys
+    assert "Q" not in keys
+
+
+async def test_each_job_is_confirmed_separately(monkeypatch):
+    """A confirmation remembered is a confirmation for the first job only."""
+    from clustertool.tui.app import ConfirmScreen
+
+    calls = _stub_run(monkeypatch)
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(120, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("c")
+        await pilot.pause()
+        app.screen.query_one("#confirm-yes").press()
+        assert await _until(pilot, lambda: calls != [])
+        await pilot.press("down")
+        await pilot.pause()
+        await pilot.press("c")
+        await pilot.pause()
+        assert isinstance(app.screen, ConfirmScreen), "the second job was not confirmed"
+        assert len(calls) == 1
+
+
+async def test_a_key_with_nothing_selected_says_so(monkeypatch):
+    calls = _stub_run(monkeypatch)
+    app = _act_app(monkeypatch, rows=[])
+    async with app.run_test(size=(120, 30)) as pilot:
+        await pilot.pause()
+        await pilot.press("c")
+        await pilot.pause()
+        assert calls == []
+        assert "no job is selected" in str(app.query_one("#banner").render())
+
+
+async def test_a_refused_action_puts_its_reason_on_the_banner(monkeypatch):
+    """The wording is the planner's, so the dashboard and the CLI say the same thing."""
+    _stub_run(monkeypatch, error=CommandError("these jobs belong to another user: 9 (bob)"))
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(120, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("c")
+        await pilot.pause()
+        app.screen.query_one("#confirm-yes").press()
+        assert await _until(pilot, lambda: "belong" in str(app.query_one("#banner").render()))
+        assert app.is_running
+
+
+async def test_an_unexpected_failure_does_not_tear_the_app_down(monkeypatch):
+    _stub_run(monkeypatch, error=ValueError("bad"))
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(120, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("c")
+        await pilot.pause()
+        app.screen.query_one("#confirm-yes").press()
+        assert await _until(pilot, lambda: "ValueError" in str(app.query_one("#banner").render()))
+        assert app.is_running
+
+
+async def test_a_completed_action_rereads_the_jobs(monkeypatch):
+    """The table would otherwise still show the job as it was before the action."""
+    _stub_run(monkeypatch)
+    reads = []
+    monkeypatch.setattr(data, "jobs", lambda user: (reads.append(user), list(SAMPLE_JOBS))[1])
+    monkeypatch.setattr(data, "storage_info", lambda user: data.StorageInfo(None, [], []))
+    monkeypatch.setattr(data, "standing", lambda user: _standing())
+    app = _app(interval=30)
+    async with app.run_test(size=(120, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        before = len(reads)
+        await pilot.press("c")
+        await pilot.pause()
+        app.screen.query_one("#confirm-yes").press()
+        assert await _until(pilot, lambda: len(reads) > before), "the jobs were not reread"
+
+
+def test_the_dashboard_and_the_cli_share_one_planner():
+    """Duplicating the checks is how the two would come to refuse different jobs."""
+    import pathlib
+
+    import clustertool
+
+    root = pathlib.Path(clustertool.__file__).parent / "commands" / "jobs"
+    for name in ("cancel", "hold", "release", "requeue"):
+        source = (root / f"{name}.py").read_text()
+        assert "jobaction.plan" in source, name
+    tui = (pathlib.Path(clustertool.__file__).parent / "tui" / "actions.py").read_text()
+    assert "jobaction.plan" in tui
+
+
+def test_an_action_is_run_captured_not_through_the_terminal(monkeypatch):
+    """passthrough inherits stdio, which would write over the screen being drawn."""
+    import clustertool.process as proc
+    from clustertool import jobaction
+    from clustertool.tui import actions
+
+    def refuse(*args, **kwargs):
+        raise AssertionError("passthrough must not be used from the dashboard")
+
+    monkeypatch.setattr(proc, "passthrough", refuse)
+    monkeypatch.setattr(jobaction, "plan", lambda name, ids: jobaction.Planned(["true"], "failed"))
+    monkeypatch.setattr(proc, "probe", lambda cmd, **kw: (0, "", ""))
+    assert actions.run("cancel", "111") == "cancel 111: done"
+
+
+def test_an_action_that_fails_reports_what_slurm_said(monkeypatch):
+    import clustertool.process as proc
+    from clustertool import jobaction
+    from clustertool.tui import actions
+
+    monkeypatch.setattr(
+        jobaction, "plan", lambda name, ids: jobaction.Planned(["false"], "the fallback")
+    )
+    monkeypatch.setattr(
+        proc, "probe", lambda cmd, **kw: (1, "", "scancel: error: Kill job error on job id 9\n")
+    )
+    with pytest.raises(CommandError, match="Kill job error"):
+        actions.run("cancel", "9")
+
+
+def test_the_modal_names_the_job_and_what_it_costs():
+    from clustertool.tui import actions
+
+    row = SAMPLE_JOBS[0]
+    for action in actions.MUTATING:
+        subject = actions.describe(action, row)
+        assert row.jobid in subject
+        assert row.partition in subject
+        assert row.elapsed in subject
+        assert action.question.endswith("?")
+        assert action.caution
+
+
+async def test_the_log_key_shows_the_tail_under_the_detail(monkeypatch):
+    from clustertool.tui import actions
+
+    monkeypatch.setattr(actions, "log_tail", lambda jobid, **kw: f"tail of {jobid}\nsecond line")
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(120, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("l")
+        panel = app.query_one(JobsPanel)
+        assert await _until(pilot, lambda: "tail of 111" in panel._detail_text())
+        assert "second line" in panel._detail_text()
+        assert "holds:" in panel._detail_text(), "the detail itself must survive"
+
+
+async def test_the_why_key_shows_the_reason(monkeypatch):
+    from clustertool.tui import actions
+
+    monkeypatch.setattr(actions, "why", lambda jobid: f"{jobid} is pending because Priority")
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(120, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("w")
+        panel = app.query_one(JobsPanel)
+        assert await _until(pilot, lambda: "because Priority" in panel._detail_text())
+
+
+async def test_moving_the_cursor_clears_what_was_read(monkeypatch):
+    """A log tail left behind would be read as belonging to the newly selected job."""
+    from clustertool.tui import actions
+
+    monkeypatch.setattr(actions, "why", lambda jobid: f"about {jobid}")
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(120, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("w")
+        panel = app.query_one(JobsPanel)
+        assert await _until(pilot, lambda: "about 111" in panel._detail_text())
+        await pilot.press("down")
+        await pilot.pause()
+        assert "about 111" not in panel._detail_text()
+
+
+async def test_a_read_key_survives_a_refresh_of_the_rows(monkeypatch):
+    """The five-second timer must not wipe a tail the reader is still reading."""
+    from clustertool.tui import actions
+
+    monkeypatch.setattr(actions, "why", lambda jobid: f"about {jobid}")
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(120, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("w")
+        panel = app.query_one(JobsPanel)
+        assert await _until(pilot, lambda: "about 111" in panel._detail_text())
+        panel.show(SAMPLE_JOBS)
+        await pilot.pause()
+        assert "about 111" in panel._detail_text()
+
+
+async def test_the_copy_key_puts_the_id_on_the_clipboard(monkeypatch):
+    app = _act_app(monkeypatch)
+    copied = []
+    async with app.run_test(size=(120, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        monkeypatch.setattr(app, "copy_to_clipboard", lambda text: copied.append(text))
+        await pilot.press("y")
+        await pilot.pause()
+        assert copied == ["111"]
+        assert "copied 111" in str(app.query_one("#banner").render())
+
+
+@pytest.mark.parametrize("key", ["l", "w", "y"])
+async def test_a_read_key_with_nothing_selected_says_so(monkeypatch, key):
+    app = _act_app(monkeypatch, rows=[])
+    async with app.run_test(size=(120, 30)) as pilot:
+        await pilot.pause()
+        await pilot.press(key)
+        await pilot.pause()
+        assert "no job is selected" in str(app.query_one("#banner").render())
+
+
+def test_a_job_the_controller_has_dropped_reads_plainly(monkeypatch):
+    """squeue exits nonzero for an unknown id, and a finished job becomes unknown."""
+    import clustertool.process as proc
+    from clustertool.tui import actions
+
+    monkeypatch.setattr(
+        proc, "probe", lambda cmd, **kw: (1, "", "slurm_load_jobs error: Invalid job id specified")
+    )
+    assert actions.why("9") == "9 is no longer in the queue"
+
+
+def test_an_interactive_job_has_no_output_file_to_show(monkeypatch):
+    """salloc and srun write to the terminal, so there is no file, which is not an error."""
+    from clustertool import slurm
+    from clustertool.tui import actions
+
+    monkeypatch.setattr(slurm, "job_output_paths", lambda jobid: ("", ""))
+    assert actions.log_tail("9") == "no output file recorded for 9"
+
+
+def test_the_help_lists_every_action_key():
+    """A key that acts on a job and is not listed is a key nobody will find."""
+    from clustertool.tui import actions
+    from clustertool.tui.app import HELP
+
+    for action in actions.MUTATING:
+        assert action.key in HELP, action.key
+    for key in ("l", "w", "y"):
+        assert f"  {key} " in HELP, key
+
+
+def test_the_scope_key_reads_the_job_s_own_figures(monkeypatch):
+    """jobstats writes them into AdminComment, so no extra service is asked."""
+    from jobscope import blob
+
+    import clustertool.process as proc
+    from clustertool.tui import actions
+
+    monkeypatch.setattr(proc, "probe", lambda cmd, **kw: (0, "COMPLETED|00:10:00|blob\n", ""))
+    monkeypatch.setattr(blob, "decode_admin_comment", lambda text: {"x": 1})
+    monkeypatch.setattr(blob, "blob_metrics", lambda stats: (40, 22, 71, 30))
+    said = actions.scope("9")
+    assert "cpu 40%" in said and "mem 22%" in said and "gpu 71%" in said
+    assert "00:10:00" in said
+
+
+def test_a_job_too_short_to_be_sampled_says_so(monkeypatch):
+    import clustertool.process as proc
+    from clustertool.tui import actions
+
+    monkeypatch.setattr(proc, "probe", lambda cmd, **kw: (0, "COMPLETED|00:00:03|\n", ""))
+    said = actions.scope("9")
+    assert "no utilization recorded" in said
+    assert "00:00:03" in said
+
+
+def test_a_cpu_only_job_reports_no_gpu_figure(monkeypatch):
+    from jobscope import blob
+
+    import clustertool.process as proc
+    from clustertool.tui import actions
+
+    monkeypatch.setattr(proc, "probe", lambda cmd, **kw: (0, "COMPLETED|1:00|blob\n", ""))
+    monkeypatch.setattr(blob, "decode_admin_comment", lambda text: {"x": 1})
+    monkeypatch.setattr(blob, "blob_metrics", lambda stats: (40, 22, None, None))
+    said = actions.scope("9")
+    assert "gpu" not in said
+    assert "cpu 40%" in said
+
+
+async def test_follow_starts_and_stops(monkeypatch):
+    from clustertool.tui import actions
+
+    reads = []
+    monkeypatch.setattr(
+        actions, "log_tail", lambda jobid, **kw: (reads.append(jobid), f"tail {len(reads)}")[1]
+    )
+    monkeypatch.setattr(actions, "FOLLOW_INTERVAL_S", 0.05)
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(120, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("f")
+        assert await _until(pilot, lambda: len(reads) >= 3), reads
+        assert "following 111" in str(app.query_one("#banner").render())
+        seen = len(reads)
+        await pilot.press("escape")
+        await pilot.pause(0.3)
+        assert len(reads) <= seen + 1, "escape did not stop the follow"
+        assert "stopped following" in str(app.query_one("#banner").render())
+
+
+async def test_a_second_f_stops_following_too(monkeypatch):
+    from clustertool.tui import actions
+
+    reads = []
+    monkeypatch.setattr(actions, "log_tail", lambda jobid, **kw: (reads.append(jobid), "tail")[1])
+    monkeypatch.setattr(actions, "FOLLOW_INTERVAL_S", 0.05)
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(120, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("f")
+        assert await _until(pilot, lambda: len(reads) >= 2)
+        await pilot.press("f")
+        await pilot.pause()
+        assert "stopped following" in str(app.query_one("#banner").render())
+        seen = len(reads)
+        await pilot.pause(0.3)
+        assert len(reads) <= seen + 1
+
+
+async def test_escape_says_nothing_when_nothing_is_being_followed(monkeypatch):
+    app = _act_app(monkeypatch)
+    async with app.run_test(size=(120, 30)) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("escape")
+        await pilot.pause()
+        assert str(app.query_one("#banner").render()) == ""
+
+
+async def test_the_banner_is_not_hidden_under_the_status_bar():
+    """Two widgets docked to the bottom take the same row, and the later one wins.
+
+    Asserted on the painted frame, since the banner reported a size and a position
+    and rendered its text while being drawn over.
+    """
+    app = _app()
+    async with app.run_test(size=(120, 30)) as pilot:
+        await pilot.pause()
+        app.announce("cancel 111: done")
+        await pilot.pause()
+        banner = app.query_one("#banner")
+        status = app.query_one("#status")
+        assert banner.region.y != status.region.y, (banner.region, status.region)
+        assert "cancel 111: done" in _painted(app)

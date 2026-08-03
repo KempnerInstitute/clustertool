@@ -79,3 +79,40 @@ Screen {
     background: $surface;
     padding: 1 2;
 }
+
+#banner {
+    height: auto;
+    max-height: 2;
+    padding: 0 1;
+    color: $text;
+    background: $panel-darken-1;
+}
+
+#confirm {
+    align: center middle;
+}
+
+#confirm-body {
+    width: auto;
+    max-width: 90%;
+    height: auto;
+    border: round $error;
+    background: $surface;
+    padding: 1 2;
+}
+
+#confirm-question,
+#confirm-subject,
+#confirm-caution {
+    width: auto;
+}
+
+#confirm-caution {
+    color: $text-muted;
+}
+
+#confirm-buttons {
+    width: auto;
+    height: auto;
+    padding: 1 2 0 2;
+}

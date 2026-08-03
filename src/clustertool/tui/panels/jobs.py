@@ -111,6 +111,8 @@ class JobsPanel(Vertical):
         super().__init__(id="jobs", classes="panel")
         self._rows: list[data.JobRow] = []
         self._error = ""
+        self._extra = ""
+        self._extra_for = ""
         self._columns: list[tuple[str, int]] = []
 
     def compose(self) -> ComposeResult:
@@ -180,6 +182,18 @@ class JobsPanel(Vertical):
             "NODE": row.where,
         }
 
+    def show_text(self, text: str) -> None:
+        """Add something read off the cluster below the detail.
+
+        Remembered against the job it describes, so it survives a refresh of the
+        rows and goes only when the cursor moves to a different job. Clearing it on
+        any highlight event wiped a log tail every five seconds, which is to say
+        before it could be read.
+        """
+        self._extra = text
+        self._extra_for = self.selected.jobid if self.selected else ""
+        self._refresh_detail()
+
     def fail(self, reason: str) -> None:
         """Mark the panel stale, naming the cause and keeping whatever it held."""
         self._error = reason
@@ -197,6 +211,9 @@ class JobsPanel(Vertical):
         return self._rows[table.cursor_row]
 
     def on_data_table_row_highlighted(self, _event: DataTable.RowHighlighted) -> None:
+        row = self.selected
+        if row is None or row.jobid != self._extra_for:
+            self._extra, self._extra_for = "", ""
         self._refresh_detail()
 
     def _refresh_detail(self) -> None:
@@ -216,6 +233,8 @@ class JobsPanel(Vertical):
             parts.append(f"elapsed: {row.elapsed}")
             parts.append(f"holds: {row.tres or 'nothing recorded'}")
             parts.append(f"nodes: {_nodes(row)}")
+        if self._extra:
+            parts.append(self._extra)
         return "\n".join(p for p in parts if p)
 
 

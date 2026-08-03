@@ -293,3 +293,51 @@ def test_standing_while_reading(snap_compare):
         await pilot.pause()
 
     assert snap_compare(_app(), terminal_size=(130, 30), run_before=reading)
+
+
+async def _confirm(pilot, key):
+    pilot.app.query_one(JobsPanel).show(SAMPLE)
+    await pilot.pause()
+    await pilot.press(key)
+    await pilot.pause()
+
+
+def test_confirm_cancel(snap_compare):
+    """The modal names the job and says what the action costs, with No focused."""
+    assert snap_compare(_app(), terminal_size=(120, 30), run_before=lambda p: _confirm(p, "c"))
+
+
+def test_confirm_requeue(snap_compare):
+    """The heaviest action, whose caution is the reason the modal exists."""
+    assert snap_compare(_app(), terminal_size=(120, 30), run_before=lambda p: _confirm(p, "ctrl+r"))
+
+
+def test_banner_after_an_action(snap_compare):
+    async def acted(pilot):
+        pilot.app.query_one(JobsPanel).show(SAMPLE)
+        await pilot.pause()
+        pilot.app.announce("cancel 111: done")
+        await pilot.pause()
+
+    assert snap_compare(_app(), terminal_size=(120, 30), run_before=acted)
+
+
+def test_banner_shows_a_refusal(snap_compare):
+    async def refused(pilot):
+        pilot.app.query_one(JobsPanel).show(SAMPLE)
+        await pilot.pause()
+        pilot.app.announce("these jobs belong to another user: 111 (someone). Cancel only your own")
+        await pilot.pause()
+
+    assert snap_compare(_app(), terminal_size=(120, 30), run_before=refused)
+
+
+def test_detail_with_a_log_tail(snap_compare):
+    async def looked(pilot):
+        panel = pilot.app.query_one(JobsPanel)
+        panel.show(SAMPLE)
+        await pilot.pause()
+        panel.show_text("Epoch 3/10  loss 0.214\nEpoch 4/10  loss 0.198\nsaving checkpoint")
+        await pilot.pause()
+
+    assert snap_compare(_app(), terminal_size=(120, 30), run_before=looked)

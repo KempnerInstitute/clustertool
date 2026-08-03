@@ -10,10 +10,10 @@ from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.css.query import NoMatches
 from textual.screen import ModalScreen
-from textual.widgets import DataTable, Static
+from textual.widgets import Button, DataTable, Static
 
 from clustertool.process import CommandError
-from clustertool.tui import data
+from clustertool.tui import actions, data
 from clustertool.tui.panels.jobs import JobsPanel
 from clustertool.tui.panels.standing import StandingPanel
 from clustertool.tui.panels.status import StatusBar
@@ -44,6 +44,21 @@ Keys
   R            refresh every panel
   ?            this help
   Q            quit
+
+On the selected job, each asking first
+
+  c            cancel it
+  h            hold it
+  H            release it
+  ctrl+r       requeue it, discarding the work so far
+
+Read-only, on the selected job
+
+  l            the tail of its output
+  f            follow its output, escape or f to stop
+  w            why it is not running
+  s            how well it used what it asked for
+  y            copy its id
 """
 
 
@@ -100,6 +115,41 @@ def _settle(panel, info=None, reason="") -> None:
         panel.show(info)
 
 
+class ConfirmScreen(ModalScreen[bool]):
+    """Ask before changing a job, defaulting to No.
+
+    No is focused on open and escape dismisses, so the safe answer is both the
+    default and the one a stray keypress gives. The job is named in full, since a
+    confirmation that does not identify its target only trains people to accept it.
+    """
+
+    BINDINGS = [("escape", "refuse", "no")]
+
+    def __init__(self, action: actions.Action, subject: str) -> None:
+        super().__init__()
+        self._action = action
+        self._subject = subject
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="confirm"), Vertical(id="confirm-body"):
+            yield Static(self._action.question, id="confirm-question", markup=False)
+            yield Static(self._subject, id="confirm-subject", markup=False)
+            if self._action.caution:
+                yield Static(self._action.caution, id="confirm-caution", markup=False)
+            with Horizontal(id="confirm-buttons"):
+                yield Button("No", variant="primary", id="confirm-no")
+                yield Button(f"Yes, {self._action.name}", variant="error", id="confirm-yes")
+
+    def on_mount(self) -> None:
+        self.query_one("#confirm-no", Button).focus()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(event.button.id == "confirm-yes")
+
+    def action_refuse(self) -> None:
+        self.dismiss(False)
+
+
 class HelpScreen(ModalScreen):
     """The key reference, shown over the dashboard."""
 
@@ -116,11 +166,18 @@ class MeApp(App):
     TITLE = "clustertool me"
     CSS_PATH = "app.tcss"
     BINDINGS = [
+        *((action.key, f"act('{action.name}')", action.name) for action in actions.MUTATING),
+        ("l", "look('log')", "log"),
+        ("f", "follow", "follow"),
+        ("w", "look('why')", "why"),
+        ("s", "look('scope')", "scope"),
+        ("y", "copy_id", "copy id"),
         ("Q", "quit", "quit"),
         ("ctrl+c", "quit", "quit"),
         ("question_mark", "help", "help"),
         ("r", "refresh", "refresh"),
         ("R", "refresh_all", "refresh all"),
+        ("escape", "stop_following", "stop following"),
         ("tab", "focus_next", "next panel"),
         ("shift+tab", "focus_previous", "previous panel"),
     ]
@@ -138,12 +195,15 @@ class MeApp(App):
         self._loading = False
         self._loading_storage = False
         self._loading_standing = False
+        self._following: str | None = None
+        self._follow_timer = None
 
     def compose(self) -> ComposeResult:
         with Horizontal(id="body"):
             yield JobsPanel()
             yield StoragePanel()
         yield StandingPanel()
+        yield Static("", id="banner", markup=False)
         yield StatusBar(self._identity, clock=self._clock)
 
     def on_mount(self) -> None:
@@ -274,6 +334,102 @@ class MeApp(App):
         self.load_standing()
         if self.query_one("#storage").display:
             self.load_storage()
+
+    def action_act(self, name: str) -> None:
+        """Ask before doing something to the selected job, then do it.
+
+        Nothing happens without an answer, and the answer is not remembered: a
+        confirmation that only appears once is a confirmation for the first job.
+        """
+        panel = self.query_one(JobsPanel)
+        row = panel.selected
+        if row is None:
+            self.announce("no job is selected")
+            return
+        action = next(item for item in actions.MUTATING if item.name == name)
+        self.push_screen(
+            ConfirmScreen(action, actions.describe(action, row)),
+            lambda yes: self.do_act(name, row.jobid) if yes else self.announce(f"{name} canceled"),
+        )
+
+    @work(group="act")
+    async def do_act(self, name: str, jobid: str) -> None:
+        """Run a confirmed action off the interface thread, then reread the jobs."""
+        try:
+            said = await detached(lambda: actions.run(name, jobid))
+        except Exception as exc:
+            self.announce(_reason(exc))
+            return
+        self.announce(said)
+        self.load_jobs()
+
+    def announce(self, said: str) -> None:
+        """Put a line on the banner, which is where an action reports itself."""
+        try:
+            self.query_one("#banner", Static).update(said)
+        except NoMatches:
+            return
+
+    def action_look(self, what: str) -> None:
+        """Read something about the selected job and show it under the detail."""
+        row = self.query_one(JobsPanel).selected
+        if row is None:
+            self.announce("no job is selected")
+            return
+        self.fetch_look(what, row.jobid)
+
+    @work(group="look")
+    async def fetch_look(self, what: str, jobid: str) -> None:
+        """Do the read off the interface thread, since both shell out."""
+        reader = {"log": actions.log_tail, "why": actions.why, "scope": actions.scope}[what]
+        try:
+            said = await detached(lambda: reader(jobid))
+        except Exception as exc:
+            self.announce(_reason(exc))
+            return
+        self._on(JobsPanel, lambda panel: panel.show_text(said))
+
+    def action_follow(self) -> None:
+        """Keep rereading the selected job's log until escape stops it.
+
+        A second press stops it too, so the key that starts it can also end it
+        without the reader having to remember which one does.
+        """
+        if self._following is not None:
+            self.stop_following("stopped following")
+            return
+        row = self.query_one(JobsPanel).selected
+        if row is None:
+            self.announce("no job is selected")
+            return
+        self._following = row.jobid
+        self.announce(f"following {row.jobid}, escape to stop")
+        self.fetch_look("log", row.jobid)
+        self._follow_timer = self.set_interval(
+            actions.FOLLOW_INTERVAL_S, lambda: self.fetch_look("log", row.jobid)
+        )
+
+    def action_stop_following(self) -> None:
+        """Stop following, and say nothing if nothing was being followed."""
+        if self._following is not None:
+            self.stop_following("stopped following")
+
+    def stop_following(self, said: str) -> None:
+        """Cancel the follow timer and report it once."""
+        if self._follow_timer is not None:
+            self._follow_timer.stop()
+            self._follow_timer = None
+        self._following = None
+        self.announce(said)
+
+    def action_copy_id(self) -> None:
+        """Put the selected job id on the clipboard, so it can be pasted elsewhere."""
+        row = self.query_one(JobsPanel).selected
+        if row is None:
+            self.announce("no job is selected")
+            return
+        self.copy_to_clipboard(row.jobid)
+        self.announce(f"copied {row.jobid}")
 
     def action_help(self) -> None:
         """Open the key reference, which is the only discovery route for the bindings."""
