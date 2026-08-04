@@ -1,8 +1,25 @@
 """Shared fixtures."""
 
+import signal
+
 import pytest
 
 from clustertool import site
+
+
+@pytest.fixture(autouse=True)
+def keep_sigpipe_ignored():
+    """Leave SIGPIPE as pytest set it, whatever a test does to it.
+
+    The CLI entry point restores the default disposition on purpose, so that piping
+    a command into head exits quietly the way squeue does. A test that runs the entry
+    point leaves that disposition behind for the whole session, and pytest is then
+    killed with 141 rather than raising when its own output pipe breaks, which
+    reports as a failure with no failing test.
+    """
+    original = signal.getsignal(signal.SIGPIPE)
+    yield
+    signal.signal(signal.SIGPIPE, original)
 
 
 @pytest.fixture(autouse=True)
