@@ -241,6 +241,7 @@ class StandingPanel(VerticalScroll):
     def on_mount(self) -> None:
         self.border_title = TITLE
         self.can_focus = True
+        self._paint()
 
     def begin_read(self) -> None:
         """Say that a read is under way, keeping the border and the last figures."""
@@ -274,6 +275,15 @@ class StandingPanel(VerticalScroll):
     def on_resize(self, _event) -> None:
         self._paint()
 
+    @property
+    def ready(self) -> bool:
+        """Whether this panel's own widgets exist yet.
+
+        A query can land before Textual has mounted them, and looking one up then
+        raises inside the worker whose job is to report failures.
+        """
+        return bool(self.query("#standing-body"))
+
     def _paint(self) -> None:
         """Draw the panel, using every row it has for figures.
 
@@ -281,6 +291,8 @@ class StandingPanel(VerticalScroll):
         figures to show, since the border title carries both. With no figures yet the
         body says what is happening instead.
         """
+        if not self.ready:
+            return
         body = self.query_one("#standing-body", Static)
         width = max(self.content_size.width - 1, 12)
         blocks: list[Text] = []

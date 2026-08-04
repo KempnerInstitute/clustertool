@@ -232,6 +232,16 @@ class JobsPanel(Vertical):
 
     def on_mount(self) -> None:
         self.border_title = TITLE
+        self._paint()
+
+    @property
+    def ready(self) -> bool:
+        """Whether this panel's own widgets exist yet.
+
+        A query can land before Textual has mounted them, and looking one up then
+        raises inside the worker whose job is to report failures.
+        """
+        return bool(self.query("#jobs-table"))
 
     def on_resize(self, _event) -> None:
         """Lay the columns out again, since how many fit depends on the width.
@@ -260,9 +270,12 @@ class JobsPanel(Vertical):
         Each column is given its width outright: an automatic width is recomputed on
         a later refresh, which leaves cells chopped to the heading width.
         """
-        table = self.query_one("#jobs-table", DataTable)
         if rows is None:
             rows, previous = self._rows, self.selected.jobid if self.selected else None
+        self._rows = rows
+        if not self.ready:
+            return
+        table = self.query_one("#jobs-table", DataTable)
         self._grown = ceilings(rows)
         columns = layout(table.size.width or 80, self._grown)
         self._columns = columns
@@ -272,7 +285,6 @@ class JobsPanel(Vertical):
         for row in rows:
             value = cells(row)
             table.add_row(*(elide(value[name], width) for name, width in columns), key=row.jobid)
-        self._rows = rows
         if previous is not None:
             for index, row in enumerate(rows):
                 if row.jobid == previous:
@@ -304,7 +316,9 @@ class JobsPanel(Vertical):
 
     @property
     def selected(self) -> data.JobRow | None:
-        """The row under the cursor, or None when the table is empty."""
+        """The row under the cursor, or None when the table is empty or unmounted."""
+        if not self.ready:
+            return None
         table = self.query_one("#jobs-table", DataTable)
         if not self._rows or table.cursor_row < 0:
             return None
@@ -324,6 +338,8 @@ class JobsPanel(Vertical):
         The padding separates the detail from the rule above it and costs a row of
         the pane, so it goes exactly when the content would not otherwise fit.
         """
+        if not self.ready:
+            return
         detail = self.query_one("#jobs-detail", Static)
         text = self._detail_text()
         detail.set_class(len(text.splitlines()) >= pane_rows(self.content_size.height), "tight")

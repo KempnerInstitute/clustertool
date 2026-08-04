@@ -167,6 +167,7 @@ class StoragePanel(VerticalScroll):
     def on_mount(self) -> None:
         self.border_title = TITLE
         self.can_focus = True
+        self._paint()
 
     def begin_read(self) -> None:
         """Say that a read is under way, keeping the border and the last figures.
@@ -204,6 +205,15 @@ class StoragePanel(VerticalScroll):
     def on_resize(self, _event) -> None:
         self._paint()
 
+    @property
+    def ready(self) -> bool:
+        """Whether this panel's own widgets exist yet.
+
+        A query can land before Textual has mounted them, and looking one up then
+        raises inside the worker whose job is to report failures.
+        """
+        return bool(self.query("#storage-body"))
+
     def _paint(self) -> None:
         """Render the panel one line per row.
 
@@ -212,6 +222,8 @@ class StoragePanel(VerticalScroll):
         goes on the joined text rather than the rows, since Text.join drops a flag set
         on the parts.
         """
+        if not self.ready:
+            return
         body = self.query_one("#storage-body", Static)
         width = max(self.content_size.width - 1, 12)
         blocks: list[Text] = []
