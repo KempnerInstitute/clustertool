@@ -332,6 +332,56 @@ def _app(full_name="A Name", interval=0, days=data.STANDING_DAYS, theme=None):
     )
 
 
+@pytest.mark.parametrize(
+    ("panel", "act"),
+    [
+        ("jobs", lambda p: p.show(SAMPLE_JOBS)),
+        ("jobs", lambda p: p.fail("controller busy")),
+        ("jobs", lambda p: p.show_text("a log", "111")),
+        ("jobs", lambda p: p.selected),
+        ("storage", lambda p: p.show(data.StorageInfo(home=None, labs=[], mine=[]))),
+        ("storage", lambda p: p.fail("quota service down")),
+        ("storage", lambda p: p.begin_read()),
+        ("standing", lambda p: p.show(_standing())),
+        ("standing", lambda p: p.fail("sshare is not answering")),
+        ("standing", lambda p: p.begin_read()),
+    ],
+)
+def test_a_panel_takes_its_data_before_it_is_mounted(panel, act):
+    """A query can land before Textual has mounted the panel's own widgets.
+
+    Looking one up then raises inside the worker whose job is to report failures, so
+    the app died with a traceback over the screen instead of showing a stale panel.
+    """
+    from clustertool.tui.panels.jobs import JobsPanel
+    from clustertool.tui.panels.standing import StandingPanel
+    from clustertool.tui.panels.storage import StoragePanel
+
+    made = {"jobs": JobsPanel, "storage": StoragePanel, "standing": StandingPanel}[panel]()
+    assert not made.ready
+    act(made)
+
+
+async def test_rows_handed_over_early_are_painted_once_mounted():
+    """Storing them is only half of it; the panel has to paint them when it can."""
+    from textual.app import App
+
+    from clustertool.tui.panels.jobs import JobsPanel
+
+    class Early(App):
+        def compose(self):
+            panel = JobsPanel()
+            panel.show(SAMPLE_JOBS)
+            yield panel
+
+    app = Early()
+    async with app.run_test(size=(100, 24)) as pilot:
+        await pilot.pause()
+        painted = _painted(app)
+        for row in SAMPLE_JOBS:
+            assert row.jobid in painted, row.jobid
+
+
 async def test_shell_shows_three_panels_and_the_status_bar():
     app = _app()
     async with app.run_test(size=(100, 24)) as pilot:
@@ -4797,6 +4847,7 @@ async def test_every_line_the_pane_holds_is_one_the_screen_paints(monkeypatch, s
         await pilot.press("l")
         panel = app.query_one(JobsPanel)
         assert await _until(pilot, lambda: "torch.OutOfMemoryError" in panel._detail_text())
+        await pilot.pause()
         frame = [
             "".join(segment.text for segment in strip)
             for strip in app.screen._compositor.render_strips()
@@ -4959,6 +5010,7 @@ async def test_the_answer_to_a_one_line_read_is_painted_on_a_short_terminal(monk
         await pilot.press("w")
         panel = app.query_one(JobsPanel)
         assert await _until(pilot, lambda: "because Priority" in panel._detail_text())
+        await pilot.pause()
         frame = [
             "".join(segment.text for segment in strip)
             for strip in app.screen._compositor.render_strips()
@@ -4989,6 +5041,7 @@ async def test_a_pane_short_of_rows_says_that_it_dropped_a_line(monkeypatch, siz
     app = _act_app(monkeypatch)
     async with app.run_test(size=size) as pilot:
         assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.pause()
         panel = app.query_one(JobsPanel)
         shown = panel._detail_text().splitlines()
         assert shown[0].startswith("…") is cut, shown
@@ -5033,6 +5086,7 @@ async def test_a_pane_with_one_row_for_text_spends_it_on_the_detail(monkeypatch)
     app = _act_app(monkeypatch)
     async with app.run_test(size=(70, 16)) as pilot:
         assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.pause()
         assert "111  RUNNING  on kempner_h100" in _painted(app)
 
 
