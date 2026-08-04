@@ -89,6 +89,13 @@ The install name is singular. Unrelated projects hold `clustertools` and
 `cluster-tools` on PyPI, so check the spelling. The command it puts on your PATH
 is `clustertool`, along with the bundled `jobscope` and `kempnerpulse` tools.
 
+Add the `tui` extra for the [`me`](docs/commands/me.md) dashboard, which is
+otherwise skipped in favor of the text summary:
+
+```bash
+uv tool install 'clustertool[tui]'
+```
+
 To track the development version instead:
 
 ```bash
@@ -117,7 +124,8 @@ clustertool completion --install
 clustertool --help      # list command groups
 clustertool gpu --help  # list a group's commands
 clustertool search fairshare  # find a command by keyword (also: find, lookup)
-clustertool me                # your jobs, GPUs, and fairshare at a glance
+clustertool me                # interactive dashboard: jobs, storage, standing
+clustertool me --plain        # the same as text, for a log or a pipe
 clustertool me --access       # also: accounts, partitions, and QoS you can submit under
 
 # GPU
@@ -152,8 +160,9 @@ clustertool storage home              # home directory usage and quota
 
 ## Commands
 
-Most commands live in a group; a few are top-level (`search`, `completion`,
-`me`). The table below lists each group's commands. For the full reference of
+Most commands live in a group; a few are top-level (`search`, `completion`, and
+[`me`](docs/commands/me.md), which opens an interactive dashboard in a terminal).
+The table below lists each group's commands. For the full reference of
 what each does, its use cases, and inputs, see the linked
 [`docs/commands/<group>.md`](docs/commands/) file, or run
 `clustertool <group> <command> --help`.
