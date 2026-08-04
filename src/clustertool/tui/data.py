@@ -448,7 +448,8 @@ def _label(path: str, group: str) -> str:
     from clustertool import storage
 
     mount, _ = storage.mount_point(path)
-    filesystem = os.path.basename(mount.rstrip("/")) if mount else _filesystem_of(path)
+    named = os.path.basename(mount.rstrip("/")) if mount else ""
+    filesystem = named or _filesystem_of(path)
     return f"{group}@{filesystem}" if filesystem and group else group or path
 
 

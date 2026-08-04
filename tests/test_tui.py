@@ -1904,10 +1904,18 @@ def test_a_failed_lookup_is_described_in_a_few_words(code, err, expected):
     assert data._probe_error(code, err, "quota") == expected
 
 
-def test_the_label_names_the_lab_before_the_filesystem():
-    """Cut from the tail, filesystem first took forty labs to three names at 80 columns."""
-    label = data._label("/n/holylfs06/LABS/lab_one", "lab_one")
-    assert label.startswith("lab_one@")
+@pytest.mark.parametrize("mount", ["/n/holylfs06", "/", ""])
+def test_the_label_names_the_lab_before_the_filesystem(monkeypatch, mount):
+    """Cut from the tail, filesystem first took forty labs to three names at 80 columns.
+
+    The mount is stubbed rather than read from the host: a path that is its own mount
+    here is under the root filesystem on a runner, and a mount named nothing has to
+    fall back to the path.
+    """
+    from clustertool import storage
+
+    monkeypatch.setattr(storage, "mount_point", lambda path, mounts=None: (mount, "lustre"))
+    assert data._label("/n/holylfs06/LABS/lab_one", "lab_one") == "lab_one@holylfs06"
 
 
 def test_the_label_keeps_a_filesystem_when_the_mount_table_is_unreadable(monkeypatch):
