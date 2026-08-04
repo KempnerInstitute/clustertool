@@ -24,7 +24,7 @@ def usage(account: str | None) -> None:
 
     \b
     Inputs:
-      ACCOUNT  Slurm account name (e.g. kempner_sham_lab). Omit for all labs.
+      ACCOUNT  Slurm account name (e.g. kempner_nayar_lab). Omit for all labs.
     """
     if not slurm.BASE_PARTITIONS:
         raise click.ClickException(

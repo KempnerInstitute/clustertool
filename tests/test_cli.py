@@ -13,7 +13,18 @@ import pytest
 from click.testing import CliRunner
 from test_gpuhealth import ECC_DISABLED, HEALTHY, _gpu, _nvlink, _smi_xml
 
-from clustertool import completion, fabric, gpuhealth, process, qos, search, site, slurm, storage
+from clustertool import (
+    completion,
+    fabric,
+    gpuhealth,
+    jobaction,
+    process,
+    qos,
+    search,
+    site,
+    slurm,
+    storage,
+)
 from clustertool.cli import main
 from clustertool.commands.account import _write
 
@@ -299,7 +310,8 @@ def test_completion_callbacks_safe_on_error(monkeypatch):
 
 
 def test_me_overview(monkeypatch):
-    monkeypatch.setenv("USER", "alice")
+    """The caller comes from the uid, so a spoofed USER cannot redirect the summary."""
+    monkeypatch.setenv("USER", "someoneelse")
     monkeypatch.setattr(
         slurm,
         "my_jobs",
@@ -312,7 +324,8 @@ def test_me_overview(monkeypatch):
     monkeypatch.setattr(slurm, "user_fairshare", lambda user: [("kempner_dev", "0.87")])
     result = CliRunner().invoke(main, ["me"])
     assert result.exit_code == 0
-    assert "overview for alice" in result.output
+    assert f"overview for {pwd.getpwuid(os.getuid()).pw_name}" in result.output
+    assert "someoneelse" not in result.output
     assert "1 running, 1 pending, 4 GPU(s)" in result.output
     assert "Priority" in result.output
     assert "kempner_dev" in result.output
@@ -1000,11 +1013,25 @@ def test_jobs_cancel_none_errors(monkeypatch):
 
 
 def test_jobs_hold(monkeypatch):
-    monkeypatch.setattr(slurm, "job_owner", lambda j: "")
+    monkeypatch.setattr(slurm, "job_owner", lambda j: jobaction.caller())
     calls = _capture_stream(monkeypatch)
     result = CliRunner().invoke(main, ["jobs", "hold", "111", "222"])
     assert result.exit_code == 0
     assert calls[0] == ["scontrol", "hold", "111,222"]
+
+
+def test_jobs_hold_refuses_a_job_whose_owner_cannot_be_read(monkeypatch):
+    """An owner that could not be established is not the caller's by default.
+
+    Treating an empty answer as safe let the ownership check stop applying for
+    exactly the ids it could not resolve, while scontrol went on to act on them.
+    """
+    monkeypatch.setattr(slurm, "job_owner", lambda j: "")
+    calls = _capture_stream(monkeypatch)
+    result = CliRunner().invoke(main, ["jobs", "hold", "111"])
+    assert result.exit_code == 1
+    assert "could not establish who owns" in result.output
+    assert calls == []
 
 
 def test_jobs_release(monkeypatch):
@@ -3964,9 +3991,9 @@ def test_gpu_usage_suggests_the_lab_account_when_nothing_found(monkeypatch):
     monkeypatch.setattr(slurm, "priority_partitions", lambda: [])
     monkeypatch.setattr(slurm, "gpu_rows", lambda a, parts: [])
     monkeypatch.setattr(site, "lab_account_prefix", lambda: "kempner_")
-    result = CliRunner().invoke(main, ["gpu", "usage", "ydu_lab"])
+    result = CliRunner().invoke(main, ["gpu", "usage", "nayar_lab"])
     assert result.exit_code == 0
-    assert "kempner_ydu_lab also exists" in result.output
+    assert "kempner_nayar_lab also exists" in result.output
 
 
 def test_gpu_usage_does_not_suggest_when_usage_exists(monkeypatch):
@@ -3976,7 +4003,7 @@ def test_gpu_usage_does_not_suggest_when_usage_exists(monkeypatch):
     monkeypatch.setattr(slurm, "pending_at_cap", lambda a, p: 0)
     monkeypatch.setattr(slurm, "gpu_rows", lambda a, parts: [("alice", "kempner", 2)])
     monkeypatch.setattr(site, "lab_account_prefix", lambda: "kempner_")
-    result = CliRunner().invoke(main, ["gpu", "usage", "ydu_lab"])
+    result = CliRunner().invoke(main, ["gpu", "usage", "nayar_lab"])
     assert result.exit_code == 0
     assert "also exists" not in result.output
 
@@ -3987,7 +4014,7 @@ def test_gpu_usage_does_not_suggest_for_an_already_prefixed_account(monkeypatch)
     monkeypatch.setattr(slurm, "priority_partitions", lambda: [])
     monkeypatch.setattr(slurm, "gpu_rows", lambda a, parts: [])
     monkeypatch.setattr(site, "lab_account_prefix", lambda: "kempner_")
-    result = CliRunner().invoke(main, ["gpu", "usage", "kempner_ydu_lab"])
+    result = CliRunner().invoke(main, ["gpu", "usage", "kempner_nayar_lab"])
     assert result.exit_code == 0
     assert "also exists" not in result.output
 

@@ -1,11 +1,8 @@
 """jobs hold command."""
 
-import os
-import pwd
-
 import click
 
-from clustertool import completion, process, slurm
+from clustertool import completion, jobaction, process
 from clustertool.grouping import keywords
 
 
@@ -42,14 +39,5 @@ def hold(jobids: tuple[str, ...]) -> None:
     """
     if any(not jobid.strip() for jobid in jobids):
         raise click.UsageError("JOBID may not be empty.")
-    me = pwd.getpwuid(os.getuid()).pw_name
-    others = {jid: owner for jid in jobids if (owner := slurm.job_owner(jid)) and owner != me}
-    if others:
-        listed = ", ".join(f"{jid} ({owner})" for jid, owner in sorted(others.items()))
-        raise click.ClickException(
-            f"these jobs belong to another user: {listed}. Hold only your own"
-        )
-    process.passthrough(
-        ["scontrol", "hold", ",".join(jobids)],
-        f"could not hold one or more of {', '.join(jobids)}; see the messages above for which",
-    )
+    planned = jobaction.plan("hold", list(jobids))
+    process.passthrough(planned.cmd, planned.failure)

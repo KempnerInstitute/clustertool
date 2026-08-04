@@ -70,6 +70,44 @@ jobs:
           assert count >= 75, f"expected at least 75 commands, found {count}"
           PY
 
+  no-extra:
+    name: the tui extra is optional
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Install without the tui extra
+        run: |
+          uv venv --clear
+          uv pip install .
+
+      - name: The summary works and pulls in no textual
+        run: |
+          .venv/bin/clustertool me --help
+          .venv/bin/python - <<'PY'
+          import sys
+          import clustertool.commands.me
+          assert "textual" not in sys.modules, "me imported textual without the extra"
+          from click.testing import CliRunner
+          from clustertool.cli import main
+          said = CliRunner().invoke(main, ["me", "--plain"]).output
+          assert "overview for" in said, said
+          assert "textual" not in sys.modules, "the summary imported textual"
+          try:
+              import textual
+          except ModuleNotFoundError:
+              pass
+          else:
+              raise SystemExit("textual should not be installed in this job")
+          print("the optional extra is genuinely optional")
+          PY
+
   build:
     name: build the wheel
     runs-on: ubuntu-latest

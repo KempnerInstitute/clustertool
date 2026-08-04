@@ -1,11 +1,45 @@
 """me command."""
 
 import os
+import pwd
+import sys
 
 import click
 
 from clustertool import site, slurm, storage
 from clustertool.grouping import keywords
+
+
+def _caller() -> str:
+    """Return the caller's username from the uid.
+
+    A uid with no passwd entry raises, which happens in a container or during a
+    directory outage, so it is reported as something the caller can act on
+    rather than as a traceback.
+    """
+    try:
+        return pwd.getpwuid(os.getuid()).pw_name
+    except KeyError as exc:
+        raise click.UsageError(f"could not determine who you are ({exc}); pass -u USER") from exc
+
+
+def _wants_dashboard(user: str | None, plain: bool, access: bool) -> bool:
+    """Return True when this invocation asks for the interactive dashboard.
+
+    The dashboard covers the caller only, so naming another user falls back to
+    the one-shot summary, as does asking for the access map or redirecting the
+    output. Both streams must be a terminal: with stdout a terminal and stdin
+    not, the app draws but no keypress can reach it, leaving something that
+    cannot be quit. A dumb terminal cannot render it at all.
+
+    Whether the optional extra is installed is settled by importing it, not
+    asked here, so the check and the import cannot disagree.
+    """
+    if plain or user or access:
+        return False
+    if os.environ.get("TERM", "") in ("", "dumb"):
+        return False
+    return sys.stdout.isatty() and sys.stdin.isatty()
 
 
 def _show_access(user: str) -> None:
@@ -39,10 +73,34 @@ def _show_access(user: str) -> None:
 @keywords("dashboard", "home", "overview", "status", "mine", "access")
 @click.command("me")
 @click.option("-u", "--user", default=None, help="Show another user instead of yourself.")
+@click.option("--plain", is_flag=True, help="Print the one-shot summary instead of the dashboard.")
 @click.option(
     "-a", "--access", is_flag=True, help="Also show what you can access: accounts, partitions, QoS."
 )
-def me(user: str | None, access: bool) -> None:
+@click.option(
+    "-i",
+    "--interval",
+    type=click.FloatRange(min=2),
+    default=5.0,
+    show_default=True,
+    help="Seconds between dashboard job refreshes.",
+)
+@click.option(
+    "-d",
+    "--days",
+    type=click.IntRange(min=1),
+    default=7,
+    show_default=True,
+    help="Days of finished jobs the dashboard standing panel covers.",
+)
+@click.option(
+    "--theme",
+    default=None,
+    help="Dashboard color theme: dark, light, ansi, or any Textual theme name.",
+)
+def me(
+    user: str | None, plain: bool, access: bool, interval: float, days: int, theme: str | None
+) -> None:
     """Show a personal overview: your jobs, GPUs in use, and fairshare standing.
 
     A one-screen summary of your cluster life, so you do not have to run squeue
@@ -56,12 +114,29 @@ def me(user: str | None, access: bool) -> None:
 
     \b
     Inputs:
-      -u, --user    Show this user instead of the current one.
-      -a, --access  Also show your accounts, submission map, and priority tiers.
+      -u, --user      Show this user instead of the current one.
+      --plain         Print the one-shot summary instead of the dashboard.
+      -a, --access    Also show your accounts, submission map, and priority tiers.
+      -i, --interval  Seconds between dashboard job refreshes.
+      -d, --days      Days of finished jobs the standing panel covers.
+      --theme         dark, light, ansi, or any Textual theme name.
+
+    Run in a terminal with no other flags, this opens an interactive dashboard
+    where the optional tui extra is installed. Naming a user, asking for the
+    access map, or redirecting the output prints the one-shot summary instead.
+    The interval has a floor of two seconds, since every tick is a query on the
+    controller and r refreshes on demand; a wide window slows the standing panel,
+    which reads that many days of accounting.
     """
-    user = user or os.environ.get("USER", "")
-    if not user:
-        raise click.UsageError("Could not determine the user; pass -u USER.")
+    if _wants_dashboard(user, plain, access):
+        try:
+            from clustertool.tui.app import run
+        except ImportError:
+            pass
+        else:
+            run(interval=interval, days=days, theme=theme)
+            return
+    user = user or _caller()
     click.echo(f"clustertool overview for {user}")
 
     jobs = slurm.my_jobs(user)

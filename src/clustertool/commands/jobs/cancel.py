@@ -5,7 +5,7 @@ import pwd
 
 import click
 
-from clustertool import completion, process, slurm
+from clustertool import completion, jobaction, process, slurm
 from clustertool.grouping import keywords
 
 
@@ -46,21 +46,7 @@ def cancel(jobids: tuple[str, ...], all_jobs: bool, pending: bool, yes: bool) ->
         raise click.UsageError("Give --all or --pending, not both.")
     me = pwd.getpwuid(os.getuid()).pw_name
     if jobids:
-        unknown = [jid for jid in jobids if not slurm.job_exists(jid)]
-        if unknown:
-            raise click.ClickException(
-                f"not in the queue: {', '.join(unknown)}. The id may be mistyped, or "
-                "the job may have already finished; scancel treats an unknown id as "
-                "nothing to do, so this would have exited cleanly having canceled nothing"
-            )
-        theirs = {jid: slurm.job_owner(jid) for jid in jobids}
-        others = {jid: owner for jid, owner in theirs.items() if owner and owner != me}
-        if others:
-            listed = ", ".join(f"{jid} ({owner})" for jid, owner in sorted(others.items()))
-            raise click.ClickException(
-                f"these jobs belong to another user: {listed}. Cancel only your own"
-            )
-        cmd = ["scancel", *jobids]
+        cmd = jobaction.plan("cancel", list(jobids)).cmd
     elif all_jobs or pending:
         scope = "pending jobs" if pending else "jobs"
         counts = slurm.job_state_counts(me, pending_only=pending)

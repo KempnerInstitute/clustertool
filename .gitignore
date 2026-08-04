@@ -21,3 +21,6 @@ dist/
 .coverage
 coverage.xml
 htmlcov/
+
+# snapshot test report
+snapshot_report.html

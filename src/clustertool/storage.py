@@ -6,6 +6,7 @@ import re
 from collections.abc import Callable
 
 from clustertool import process, site
+from clustertool.process import CommandError
 
 _UNIT = {
     "": 1,
@@ -61,8 +62,14 @@ def quota_cmd(
 
 
 def _to_bytes(text: str) -> float:
-    """Parse a size like '1.5T', '200Gi' or '20k' into bytes; 0 when unparseable."""
-    match = re.match(r"([0-9.]+)\s*([KkMmGgTtPpEeZzYy]?)", text.rstrip("i"))
+    """Parse a size like '1.5T', '200Gi' or '20k' into bytes; 0 when unparseable.
+
+    Brackets are stripped first. lfs wraps a figure in them when it could not
+    reach every OST, which per man lfs-quota means the number may be low rather
+    than meaningless, and reading it as zero turned a lab at 98% into 0% with an
+    empty bar sorted last.
+    """
+    match = re.match(r"([0-9.]+)\s*([KkMmGgTtPpEeZzYy]?)", text.strip("[]").rstrip("i"))
     if not match:
         return 0.0
     return float(match.group(1)) * _UNIT.get(match.group(2).upper(), 1)
@@ -75,9 +82,12 @@ def _count(text: str) -> float | None:
     reads as unknown rather than as zero usage. lfs stars the used cell of the
     inode group as well as the block group, per man lfs-quota, so the star is
     stripped: an over-quota inode count is the one case the column exists for.
+    Brackets are stripped for the same reason _to_bytes strips them, so a reply
+    with an unreachable OST does not silently lose its inode figure while keeping
+    its block one.
     """
     try:
-        return float(text.rstrip("*"))
+        return float(text.strip("[]").rstrip("*"))
     except ValueError:
         return None
 
@@ -182,6 +192,37 @@ def lustre_ost_count(path: str) -> int:
     return sum(1 for line in out.splitlines() if "_UUID" in line)
 
 
+def mount_point(path: str, mounts: str | None = None) -> tuple[str, str]:
+    """Return the (mount point, filesystem type) a path sits on, or ('', '').
+
+    Read from mountinfo rather than by trying a tool and seeing whether it works,
+    so a Lustre-only query is not sent to an NFS path in the first place. The
+    longest matching mount point wins, since mounts nest, and of two entries for
+    the same point the last wins, since that is the one on top: eight points on
+    this host appear twice, as an autofs entry shadowed by the mount it triggered,
+    and taking the first named autofs where stat reports nfs.
+    """
+    try:
+        if mounts is None:
+            with open("/proc/self/mountinfo", encoding="utf-8", errors="replace") as handle:
+                mounts = handle.read()
+    except OSError:
+        return "", ""
+    target = os.path.realpath(path)
+    best, kind = "", ""
+    for line in mounts.splitlines():
+        head, _, tail = line.partition(" - ")
+        fields = head.split()
+        if len(fields) < 5:
+            continue
+        point = fields[4]
+        if (target == point or target.startswith(point.rstrip("/") + "/")) and len(point) >= len(
+            best
+        ):
+            best, kind = point, tail.split()[0] if tail.split() else ""
+    return best, kind
+
+
 def used_bytes(text: str) -> float:
     """Return a rendered usage figure as bytes, for ordering rows of equal percent."""
     return _to_bytes(text)
@@ -196,8 +237,17 @@ def percent_value(text: str) -> float:
 
 
 def user_groups(user: str) -> list[str]:
-    """Return a user's Unix group names (via id -nG)."""
-    return process.run(["id", "-nG", user]).split()
+    """Return a user's Unix group names (via id -nG).
+
+    Raises when id fails rather than returning nothing, since a directory service
+    that is not answering is a different fact from belonging to no groups, and the
+    caller would otherwise report a user in twenty labs as being in none.
+    """
+    code, out, err = process.probe(["id", "-nG", user])
+    if code != 0:
+        detail = err.strip() or f"id exited {code}"
+        raise CommandError(f"could not read your groups: {detail}")
+    return out.split()
 
 
 def lab_targets(

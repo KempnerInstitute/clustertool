@@ -1,5 +1,7 @@
 """Tests for storage command construction."""
 
+import pytest
+
 from clustertool import storage
 
 
@@ -59,7 +61,7 @@ def test_parse_quota_row_none():
 
 def test_parse_quota_row_ignores_a_df_table():
     out = (
-        "command: df -h /n/home14/mmsh\n"
+        "command: df -h /n/home14/alice\n"
         "Filesystem Size Used Avail Use% Mounted on\n"
         "/dev/mapper/vg-home 1.8T 1.2T 500G 71% /home\n"
     )
@@ -101,17 +103,27 @@ def test_fleet_targets(tmp_path):
 def test_user_groups(monkeypatch):
     from clustertool import process
 
-    monkeypatch.setattr(process, "run", lambda cmd: "kempner_dev kempner_shared\n")
+    monkeypatch.setattr(process, "probe", lambda cmd, **kw: (0, "kempner_dev kempner_shared\n", ""))
     assert storage.user_groups("alice") == ["kempner_dev", "kempner_shared"]
+
+
+def test_user_groups_raises_when_the_directory_service_is_down(monkeypatch):
+    """Returning nothing would report a user in twenty labs as belonging to none."""
+    from clustertool import process
+    from clustertool.process import CommandError
+
+    monkeypatch.setattr(process, "probe", lambda cmd, **kw: (1, "", "id: cannot resolve"))
+    with pytest.raises(CommandError, match="could not read your groups"):
+        storage.user_groups("alice")
 
 
 def test_parse_quota_row_takes_the_record_with_the_most_usage():
     """The tool prints a block per record; the unused one must not win by order."""
     out = (
-        "Disk quotas for grp mallet_lab (gid 402716):\n"
+        "Disk quotas for grp nayar_lab (gid 402716):\n"
         "Filesystem\tused\tquota\tfiles\tquota\n"
         "/n/holylabs\t0.0B\t4.0Ti\t3\t10000000\n"
-        "Disk quotas for grp mallet_lab (gid 402716):\n"
+        "Disk quotas for grp nayar_lab (gid 402716):\n"
         "Filesystem\tused\tquota\tfiles\tquota\n"
         "/n/holylabs\t42.0Ti\t100.0Ti\t3225130\t100000000\n"
     )

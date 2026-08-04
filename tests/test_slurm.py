@@ -153,11 +153,11 @@ def test_partition_accounts(monkeypatch):
         "probe",
         lambda cmd, timeout=None: (
             0,
-            "PartitionName=kempner AllowAccounts=kempner_dev,kempner_sham_lab State=UP\n",
+            "PartitionName=kempner AllowAccounts=kempner_dev,kempner_nayar_lab State=UP\n",
             "",
         ),
     )
-    assert slurm.partition_accounts("kempner") == ["kempner_dev", "kempner_sham_lab"]
+    assert slurm.partition_accounts("kempner") == ["kempner_dev", "kempner_nayar_lab"]
 
 
 def test_partition_accounts_raises_when_the_read_fails(monkeypatch):
@@ -411,7 +411,7 @@ def test_job_state_counts_raises_when_the_query_fails(monkeypatch):
 def test_job_output_path_assumes_no_default_for_an_interactive_job(monkeypatch):
     """An interactive allocation writes to the terminal, so it has no file to name."""
     rows = (
-        "32923082|32923082|||/work|bash|mmsh|n1\n"
+        "32923082|32923082|||/work|bash|alice|n1\n"
         "32923082.extern|32923082.extern||||extern||n1\n"
         "32923082.0|32923082.0||||bash||n1\n"
     )
@@ -435,7 +435,7 @@ def test_job_output_path_assumes_the_sbatch_default_for_a_batch_job(monkeypatch)
     def fake_probe(cmd, timeout=None):
         if cmd[0] == "scontrol":
             return 1, "", "Invalid job id specified"
-        return 0, "77|77|||/work|run|mmsh|n1\n77.batch|77.batch||||batch||n1\n", ""
+        return 0, "77|77|||/work|run|alice|n1\n77.batch|77.batch||||batch||n1\n", ""
 
     monkeypatch.setattr(process, "probe", fake_probe)
     assert slurm.job_output_path("77") == "/work/slurm-77.out"
@@ -443,9 +443,9 @@ def test_job_output_path_assumes_the_sbatch_default_for_a_batch_job(monkeypatch)
 
 def test_expand_log_pattern_follows_man_sbatch():
     """Checked against the names Slurm itself wrote for jobs using each symbol."""
-    plain = {"raw_id": "36684103", "job_id": "36684103", "user": "mmsh", "name": "nm", "node": ""}
+    plain = {"raw_id": "36684103", "job_id": "36684103", "user": "alice", "name": "nm", "node": ""}
     node = dict(plain, node="holy8a26602")
-    element = {"raw_id": "36684140", "job_id": "36684139_1", "user": "mmsh", "name": "nm"}
+    element = {"raw_id": "36684140", "job_id": "36684139_1", "user": "alice", "name": "nm"}
     cases = [
         ("w20_%20j.out", plain, "w20_0036684103.out"),
         ("trail_out%", plain, "trail_out"),
@@ -475,10 +475,10 @@ def test_expand_log_pattern_keeps_an_unresolvable_symbol_out_of_the_name():
 
 
 def test_first_node_takes_the_head_of_a_range():
-    assert slurm._first_node("holygpu8a[10102,10202]") == "holygpu8a10102"
-    assert slurm._first_node("holygpu8a[10301-10302]") == "holygpu8a10301"
-    assert slurm._first_node("holy8a26602") == "holy8a26602"
-    assert slurm._first_node("None assigned") == ""
+    assert slurm.first_node("holygpu8a[10102,10202]") == "holygpu8a10102"
+    assert slurm.first_node("holygpu8a[10301-10302]") == "holygpu8a10301"
+    assert slurm.first_node("holy8a26602") == "holy8a26602"
+    assert slurm.first_node("None assigned") == ""
 
 
 def test_account_members_raises_when_sshare_fails(monkeypatch):

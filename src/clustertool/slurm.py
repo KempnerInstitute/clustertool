@@ -140,6 +140,9 @@ def resumable_nodes_by_name(names: tuple[str, ...]) -> dict[str, tuple[str, str,
     return found
 
 
+_QOS_TIMEOUT_S = 20
+
+
 def account_cap() -> int | None:
     """Return the per-account GPU cap from the base QoS, or None if there is none.
 
@@ -375,6 +378,86 @@ def node_info(node: str) -> dict:
         "gpus": parse_gpu_count(cfgtres.group(1)) if cfgtres else 0,
         "partitions": partitions.group(1).split(",") if partitions else [],
     }
+
+
+def array_elements(base: str) -> set[str]:
+    """Return the array element ids the controller currently holds for a base job.
+
+    -r asks squeue to print one row per element rather than folding a pending range,
+    which is what makes an element-level membership check possible. -t all is not
+    what unfolds: a throttled array still prints its pending remainder folded
+    without -r.
+
+    Raises when the query fails, as job_exists does, so a controller that cannot be
+    reached is not reported as an array holding no elements, which a caller would
+    read as an id naming nothing.
+    """
+    code, out, err = process.probe(
+        ["squeue", "-r", "-h", "-t", "all", "-j", base, "-O", "JobArrayID:64"]
+    )
+    if code != 0:
+        raise CommandError(f"could not check array {base}: {err.strip() or code}")
+    return {line.strip() for line in out.splitlines() if line.strip()}
+
+
+def qos_gpu_caps() -> tuple[int | None, int | None]:
+    """Return the (per-user, per-account) GPU caps on the base QoS.
+
+    Both in one read, and raising when the read fails. Per man sacctmgr a QoS
+    limits each account and each of its users separately, and this site sets both:
+    a user's own usage has to go against MaxTRESPerUser, since MaxTRESPerAccount is
+    the ceiling for every member together. Raising matters because a query that did
+    not answer would otherwise be indistinguishable from a site that sets no cap,
+    and a panel would state the second when the first happened.
+    """
+    code, out, err = process.probe(
+        ["sacctmgr", "-nP", "show", "qos", site.base_qos(), "format=MaxTRESPU,MaxTRESPA"],
+        timeout=_QOS_TIMEOUT_S,
+    )
+    if code != 0 or not out.strip():
+        raise CommandError(f"could not read the {site.base_qos()} limits: {err.strip() or code}")
+    fields = out.strip().split("|")
+    per_user = parse_gpu_count(fields[0]) if fields else 0
+    per_account = parse_gpu_count(fields[1]) if len(fields) > 1 else 0
+    return per_user or None, per_account or None
+
+
+def user_gpus_by_account(user: str, partitions: tuple[str, ...] | list[str]):
+    """Return (GPUs the user holds on these partitions, and how they split by account).
+
+    Only accounts the user actually holds GPUs under are recorded, so a CPU-only
+    job on a capped partition does not name an account the caller holds nothing in.
+
+    Restricted to the given partitions because a QoS cap governs only the
+    partitions carrying that QoS: this site's cap sits on the base partitions,
+    and a user with hundreds of GPUs on the requeue partition has none that count
+    toward it. The split by account is returned from the same call because the
+    account a job runs under is not always the user's default account.
+    """
+    out = _run(
+        [
+            "squeue",
+            "-h",
+            "-t",
+            "R",
+            "-u",
+            user,
+            "-p",
+            ",".join(partitions),
+            "--Format=account:48,tres-alloc:512",
+        ]
+    )
+    total = 0
+    by_account: dict[str, int] = {}
+    for line in out.splitlines():
+        fields = line.split()
+        if not fields:
+            continue
+        gpus = parse_gpu_count(line)
+        total += gpus
+        if gpus:
+            by_account[fields[0]] = by_account.get(fields[0], 0) + gpus
+    return total, by_account
 
 
 def gpu_by_account(partitions: tuple[str, ...] | list[str]) -> dict[str, int]:
@@ -827,7 +910,7 @@ def expand_hostlist(nodelist: str) -> list[str]:
     return [name for name in out.split() if name]
 
 
-def _first_node(nodelist: str) -> str:
+def first_node(nodelist: str) -> str:
     """Return the first node of a NodeList, which is what %N expands to for a batch step.
 
     Accounting records the list, so a name using %N is resolvable after the fact
@@ -893,7 +976,7 @@ def job_output_paths(jobid: str) -> tuple[str, str]:
         "job_id": row[0].strip() or jobid,
         "user": row[6].strip(),
         "name": row[5].strip(),
-        "node": _first_node(row[7].strip()),
+        "node": first_node(row[7].strip()),
     }
     workdir = row[4].strip()
 
@@ -1065,7 +1148,7 @@ def sacct_window_rows(
 
     -D is passed because man sacct otherwise shows only the most recent record
     for a job id, and a requeued job has one record per incarnation. Without it
-    a job preempted nine times and then cancelled reports as one cancellation,
+    a job preempted nine times and then canceled reports as one cancellation,
     and the preemptions and node failures that caused the requeues are invisible.
 
     Raises if sacct fails, so a bad time string, an unknown user, or an
