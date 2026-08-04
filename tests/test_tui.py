@@ -295,6 +295,23 @@ at next. At thirty seconds one such thread reached a later test's stub and broke
 its count.
 """
 
+
+@pytest.fixture(autouse=True)
+def no_cluster(monkeypatch):
+    """Fail loudly instead of running a real command from a dashboard test.
+
+    A panel whose query is left unstubbed reaches the scheduler: on a login node that
+    passes, and on a runner it leaves subprocesses and threads behind that outlive the
+    test. Any test that means to run a command stubs probe itself.
+    """
+    import clustertool.process as proc
+
+    def refuse(cmd, *args, **kwargs):
+        raise AssertionError(f"a dashboard test ran {cmd[0]!r}; stub it")
+
+    monkeypatch.setattr(proc, "probe", refuse)
+
+
 FIXED_CLOCK = datetime.datetime(2026, 8, 2, 14, 32)
 
 
@@ -2100,13 +2117,18 @@ def test_fairshare_puts_the_most_share_first(monkeypatch):
     assert [row[0] for row in data.fairshare_rows("alice")] == ["b", "d", "a", "c"]
 
 
-def _stub_gpus(monkeypatch, mine=None, totals=None, caps=(16, 96), default="lab_one"):
+def _stub_gpus(monkeypatch, mine=None, totals=None, caps=(16, 96), default="lab_one", allowed=()):
+    """Stub every query gpu_standing can make, the partition's account list included.
+
+    Leaving that one out let the account fall through to a real scontrol call.
+    """
     monkeypatch.setattr(
         slurm, "user_gpus_by_account", lambda user, parts: (sum((mine or {}).values()), mine or {})
     )
     monkeypatch.setattr(slurm, "gpu_by_account", lambda parts: totals or {})
     monkeypatch.setattr(slurm, "qos_gpu_caps", lambda: caps)
     monkeypatch.setattr(slurm, "default_account", lambda user: default)
+    monkeypatch.setattr(slurm, "partition_accounts", lambda partition: list(allowed))
 
 
 def test_a_cap_that_could_not_be_read_is_not_a_cap_that_is_unset(monkeypatch):
