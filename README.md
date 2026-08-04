@@ -99,8 +99,11 @@ uv tool install 'clustertool[tui]'
 To track the development version instead:
 
 ```bash
-uv tool install git+https://github.com/KempnerInstitute/clustertool
+uv tool install 'clustertool[tui] @ git+https://github.com/KempnerInstitute/clustertool'
 ```
+
+The extra goes on the package name, not the URL: a bare `git+...` carries no name to
+attach it to, so it installs without the dashboard.
 
 Or work from a clone:
 
