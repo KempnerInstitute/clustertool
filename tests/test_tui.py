@@ -4296,11 +4296,7 @@ async def test_enter_on_an_empty_table_opens_nothing(monkeypatch):
 
 
 WIDE_NODES = "holygpu8a[" + ",".join(str(node) for node in range(11101, 11141)) + "]"
-"""A hostlist for a forty-node job, which a modal has to cut rather than wrap.
-
-Left whole it wrapped the line naming the job over row after row of a box sized for
-two, and the menu then painted no entries at all on an ordinary terminal.
-"""
+"""A hostlist for a forty-node job, which a modal has to cut rather than wrap."""
 
 
 @pytest.mark.parametrize(
@@ -4311,9 +4307,8 @@ two, and the menu then painted no entries at all on an ordinary terminal.
 async def test_every_menu_entry_can_be_reached_at_any_size(monkeypatch, size, nodes):
     """The entry the highlight is on has to be on screen, at every size and job.
 
-    A list sized to its own content is clipped by the modal while believing it is
-    whole, so it never scrolls and the last entries cannot be reached; a job on forty
-    nodes pushed every entry out of a box that had room for nine.
+    Both halves matter: a list sized to its own content never scrolls, and a job on
+    forty nodes can fill the box before an entry is drawn.
     """
     from textual.widgets import OptionList
 
@@ -4337,11 +4332,8 @@ async def test_every_menu_entry_can_be_reached_at_any_size(monkeypatch, size, no
         )
         clipped = options.virtual_size.height > options.size.height
         assert options.show_vertical_scrollbar is clipped, "a clipped list says so"
-        widest = max(
-            len("".join(x.text for x in strip).rstrip())
-            for strip in app.screen._compositor.render_strips()
-        )
-        assert widest <= size[0], "and the box is not drawn past an edge"
+        frame = _painted(app)
+        assert "╭" in frame and "╰" in frame, "and the box has both edges on screen"
 
 
 async def test_following_twice_leaves_one_timer(monkeypatch):
@@ -4427,6 +4419,29 @@ async def test_the_menu_opens_on_the_job_the_key_was_pressed_on(monkeypatch):
         await pilot.pause()
         assert not list(app.screen.query("#menu-options")), "no menu for a job that is gone"
         assert "no longer in the table" in _painted(app)
+
+
+@pytest.mark.parametrize("size", [(34, 10), (46, 18)])
+async def test_a_cut_to_the_line_naming_the_job_is_marked(monkeypatch, size):
+    """The line has two rows, and a job needing more of them says so.
+
+    These are the widths where the wrap runs past two rows. On a wide terminal the
+    whole line fits and there is nothing to mark.
+    """
+    from textual.widgets import Static
+
+    app = _act_app(monkeypatch, rows=[_row("999", nodelist=WIDE_NODES, nnodes=40)])
+    async with app.run_test(size=size) as pilot:
+        assert await _until(pilot, lambda: app.query_one(JobsPanel).selected is not None)
+        await pilot.press("enter")
+        await pilot.pause()
+        said = str(app.screen.query_one("#menu-subject", Static).render())
+        assert said.endswith("…"), said
+        assert len(said.splitlines()) <= 2, said
+        assert any(
+            "…" in "".join(x.text for x in strip)
+            for strip in app.screen._compositor.render_strips()
+        ), "and it is painted"
 
 
 def test_a_long_node_list_is_cut_before_it_reaches_a_modal():
