@@ -2,6 +2,7 @@
 
 import pathlib
 import re
+import signal
 
 import pytest
 from click.testing import CliRunner
@@ -151,10 +152,16 @@ def test_entry_reports_config_error_without_traceback(monkeypatch):
 
 
 def test_entry_runs_the_cli_when_the_config_loads(monkeypatch):
+    """Running the entry point here is what leaves SIGPIPE at its default.
+
+    The conftest guard puts it back, since pytest is killed rather than raising once
+    the default disposition is in force.
+    """
     called = []
     monkeypatch.setattr(entry, "_load_main", lambda: lambda: called.append(1))
     entry.run()
     assert called == [1]
+    assert signal.getsignal(signal.SIGPIPE) == signal.SIG_DFL, "which the guard restores"
 
 
 def test_gpu_types_replace_rather_than_merge(tmp_path):
