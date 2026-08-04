@@ -84,7 +84,7 @@ jobs:
 
       - name: Install without the tui extra
         run: |
-          uv venv
+          uv venv --clear
           uv pip install .
 
       - name: The summary works and pulls in no textual
