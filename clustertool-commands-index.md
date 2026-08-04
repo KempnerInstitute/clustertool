@@ -21,7 +21,7 @@ names the host tool each command shells out to.
 | --- | --- | --- | --- |
 | `search TERMS...` | user | (none) | Find commands by keyword, ranked by relevance (also: find, lookup). |
 | `completion [SHELL]` | user | (none) | Set up tab completion for bash, zsh, or fish (--install writes it). |
-| `me` | user | squeue, sshare, sacctmgr | Personal overview: jobs, GPUs, fairshare; `--access` adds your accounts, submission map, and tiers. |
+| `me` | user | squeue, sshare, sacctmgr, sacct, quota | Personal overview, as an interactive dashboard in a terminal: jobs, storage, and standing, with actions on the selected job. `--plain` for text, `--access` adds your accounts, submission map, and tiers. |
 
 ## gpu
 
