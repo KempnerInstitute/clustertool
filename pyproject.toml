@@ -63,7 +63,7 @@ build-backend = "hatchling.build"
 packages = ["src/clustertool"]
 
 [tool.hatch.build.targets.sdist]
-exclude = ["scripts", "me-tui-plan.md", ".github"]
+exclude = ["scripts", "*-plan.md", ".github"]
 
 [tool.ruff]
 line-length = 100
