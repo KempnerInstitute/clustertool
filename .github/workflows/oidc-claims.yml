@@ -1,0 +1,27 @@
+name: OIDC claims
+
+on:
+  pull_request:
+    paths: [".github/workflows/oidc-claims.yml"]
+
+jobs:
+  claims:
+    name: report the claims PyPI would see
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - name: Report the issuer and audience
+        run: |
+          set -euo pipefail
+          token=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=pypi" | jq -r .value)
+          payload=$(printf '%s' "$token" | cut -d. -f2)
+          python3 - "$payload" <<'PY'
+          import base64, json, sys
+
+          raw = sys.argv[1]
+          claims = json.loads(base64.urlsafe_b64decode(raw + "=" * (-len(raw) % 4)))
+          for name in ("iss", "aud", "sub", "repository", "repository_owner", "ref"):
+              print(f"{name} = {claims.get(name, 'MISSING')}")
+          PY
