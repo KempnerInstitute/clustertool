@@ -1,0 +1,103 @@
+# Default site configuration (the Kempner AI Cluster profile).
+#
+# Other centers override these values with their own file, discovered from
+# $CLUSTERTOOL_SITE_CONFIG, then ~/.config/clustertool/site.toml, then
+# /etc/clustertool/site.toml. A site file is deep-merged over this default, so it
+# only needs to set the keys that differ. Two tables are the exception:
+# [gpu_types] and [partitions.limits] describe what a cluster has, so defining
+# either one replaces it entirely and you must list every entry you want.
+
+[site]
+name = "Kempner AI Cluster"
+# Prefix of Slurm pseudo-groups that map to priority/fairshare tiers (not storage).
+slurm_group_prefix = "slurm_group_"
+
+[partitions]
+base = ["kempner", "kempner_h100", "kempner_h200", "kempner_rtx"]
+requeue = "kempner_requeue"
+priority_pattern = "kempner.*priority"
+
+[partitions.limits.kempner]
+cpus_per_gpu = 16
+mem_per_gpu_mb = 245760
+
+[partitions.limits.kempner_h100]
+cpus_per_gpu = 24
+mem_per_gpu_mb = 368640
+
+[partitions.limits.kempner_h200]
+cpus_per_gpu = 16
+mem_per_gpu_mb = 368640
+
+[partitions.limits.kempner_rtx]
+cpus_per_gpu = 16
+mem_per_gpu_mb = 184320
+
+[qos]
+base = "kempner_base"
+# Fallback per-account GPU cap, used only when the base QoS names no gres/gpu
+# limit. 0 means assume no cap, so usage is reported without a denominator
+# rather than against a number this cluster does not enforce.
+default_cap = 0
+# Slurm cluster name that the admin qos commands operate on.
+cluster = "odyssey"
+# Fairshare set on a new association created by qos grant.
+grant_fairshare = "parent"
+# QoS names stripped from a user's list when a priority QoS is granted (the
+# partition-named QoS is also stripped, dynamically).
+grant_strip = ["normal"]
+
+[pulse]
+# Venv on remote GPU nodes that `gpu pulse --node` activates to run kempnerpulse.
+# Leave empty to disable remote launch at a site without a shared install.
+remote_venv = "/n/holylfs06/LABS/kempner_shared/Everyone/common_envs/kempnerpulse/.venv"
+# Entry point to run inside that venv. Defaults to kempnerpulse.
+remote_tool = "kempnerpulse"
+
+[gpu_types]
+a100 = "kempner"
+h100 = "kempner_h100"
+h200 = "kempner_h200"
+rtx = "kempner_rtx"
+
+[gpu_status]
+types = [
+    { label = "A100", feature = "a100" },
+    { label = "A100 MIG", feature = "a100-mig" },
+    { label = "H100", feature = "h100" },
+    { label = "H200", feature = "h200" },
+    { label = "RTX", feature = "rtx6000pro" },
+]
+
+[accounts]
+roster_partition = "kempner"
+lab_prefix = "kempner_"
+
+[storage]
+path_prefix = "/n"
+scratch = "/n/netscratch"
+scratch_purge_days = 90
+# Roots that `storage quota --all` probes for directories named after your labs.
+lab_roots = ["/n/netscratch", "/n/holylabs/LABS", "/n/holylfs06/LABS", "/n/boslfs02/LABS"]
+
+# Site tools each command shells out to. A command whose tool is not on PATH is
+# hidden from help and search. Point a key at your cluster's equivalent binary,
+# or leave it and the command stays hidden where the tool is absent.
+[tools]
+queue = "showq"
+partitions = "spart"
+node_load = "lsload"
+account_usage = "stotal"
+account_efficiency = "seff-account"
+job_stats = "jobstats"
+quota = "quota"
+lfs = "lfs"
+ncdu = "ncdu"
+sdiag = "sdiag"
+nvtop = "nvtop"
+tmux = "tmux"
+
+# Command paths to turn off at this site, e.g. ["jobs scope", "diag nvlink"].
+# Disabled commands vanish from help, search, and resolution.
+[commands]
+disable = []

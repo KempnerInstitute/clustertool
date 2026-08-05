@@ -1,0 +1,137 @@
+"""Help formatting, command markers, and typo suggestions for the CLI."""
+
+import difflib
+from collections.abc import Callable
+from typing import ClassVar
+
+import click
+
+from clustertool import site
+
+
+def admin(command: click.Command) -> click.Command:
+    """Mark a command as admin-only so help lists it under Admin Commands."""
+    command.scope = "admin"
+    return command
+
+
+def keywords(*terms: str) -> Callable[[click.Command], click.Command]:
+    """Attach extra search terms to a command, used by 'clustertool search'."""
+
+    def decorator(command: click.Command) -> click.Command:
+        command.search_keywords = tuple(terms)
+        return command
+
+    return decorator
+
+
+def annotate_paths(group: click.Group, prefix: str = "") -> None:
+    """Record each command's full path so groups can honor the disable list."""
+    for name, command in group.commands.items():
+        command._path = f"{prefix}{name}"
+        if isinstance(command, click.Group):
+            annotate_paths(command, f"{prefix}{name} ")
+
+
+class ToolCommand(click.Command):
+    """A command backed by a site tool; hidden and erroring when it is absent.
+
+    tool_key may name several tools, for a command whose flags reach different
+    binaries. It then hides only when every one of them is missing, and leaves
+    the per-flag check to the command, since one flag's tool being absent should
+    not withdraw the others.
+    """
+
+    def __init__(self, *args, tool_key: str | tuple[str, ...], **kwargs) -> None:
+        self._tool_keys = (tool_key,) if isinstance(tool_key, str) else tuple(tool_key)
+        super().__init__(*args, **kwargs)
+
+    @property
+    def hidden(self) -> bool:
+        return not any(site.tool_available(key) for key in self._tool_keys)
+
+    @hidden.setter
+    def hidden(self, value: bool) -> None:
+        pass
+
+    def invoke(self, ctx: click.Context):
+        if not self.hidden:
+            return super().invoke(ctx)
+        names = ", ".join(f"'{site.tool(key)}'" for key in self._tool_keys)
+        keys = " or ".join(f"[tools].{key}" for key in self._tool_keys)
+        noun = "needs" if len(self._tool_keys) == 1 else "needs one of"
+        raise click.ClickException(
+            f"this command {noun} {names}, which was not found on this host. "
+            f"Install it, or set {keys} in your site config (see docs/configuration.md)."
+        )
+
+
+class SectionedGroup(click.Group):
+    """Group whose help splits user and admin commands, with typo suggestions.
+
+    Commands marked with the admin decorator are shown under Admin Commands and
+    the rest under User Commands, each sorted alphabetically. A group with no
+    admin commands keeps a single Commands section. Names in the aliases map
+    resolve to their target command, and an unknown subcommand is reported with
+    a "did you mean" suggestion.
+    """
+
+    aliases: ClassVar[dict[str, str]] = {}
+
+    def list_commands(self, ctx: click.Context) -> list[str]:
+        disabled = site.disabled_commands()
+        names = []
+        for name in super().list_commands(ctx):
+            command = super().get_command(ctx, name)
+            if command is not None and getattr(command, "_path", None) not in disabled:
+                names.append(name)
+        return names
+
+    def get_command(self, ctx: click.Context, name: str) -> click.Command | None:
+        command = super().get_command(ctx, name)
+        if command is None and name in self.aliases:
+            command = super().get_command(ctx, self.aliases[name])
+        if command is not None and getattr(command, "_path", None) in site.disabled_commands():
+            return None
+        return command
+
+    def resolve_command(self, ctx, args):
+        name = args[0] if args else ""
+        if (
+            name
+            and not name.startswith("-")
+            and not ctx.resilient_parsing
+            and self.get_command(ctx, name) is None
+        ):
+            close = difflib.get_close_matches(name, list(self.list_commands(ctx)), n=3, cutoff=0.5)
+            if close:
+                ctx.fail(f"No such command {name!r}. Did you mean: {', '.join(close)}?")
+        return super().resolve_command(ctx, args)
+
+    def format_commands(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
+        commands = []
+        for name in self.list_commands(ctx):
+            cmd = self.get_command(ctx, name)
+            if cmd is None or cmd.hidden:
+                continue
+            commands.append((name, cmd))
+        if not commands:
+            return
+        limit = formatter.width - 6 - max(len(name) for name, _ in commands)
+        user_rows = []
+        admin_rows = []
+        for name, cmd in commands:
+            row = (name, cmd.get_short_help_str(limit))
+            if getattr(cmd, "scope", "user") == "admin":
+                admin_rows.append(row)
+            else:
+                user_rows.append(row)
+        if admin_rows:
+            if user_rows:
+                with formatter.section("User Commands"):
+                    formatter.write_dl(user_rows)
+            with formatter.section("Admin Commands"):
+                formatter.write_dl(admin_rows)
+        else:
+            with formatter.section("Commands"):
+                formatter.write_dl(user_rows)
