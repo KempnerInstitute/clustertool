@@ -1,14 +1,15 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="_static/clustertool-logo-dark.svg">
-    <img src="_static/clustertool-logo-light.svg" alt="ClusterTool" width="440">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/KempnerInstitute/clustertool/main/_static/clustertool-logo-dark.svg">
+    <img src="https://raw.githubusercontent.com/KempnerInstitute/clustertool/main/_static/clustertool-logo-light.svg" alt="ClusterTool" width="440">
   </picture>
 </p>
 
 <p align="center">
+  <a href="https://pypi.org/project/clustertool/"><img src="https://img.shields.io/pypi/v/clustertool.svg" alt="PyPI"/></a>
   <a href="https://github.com/KempnerInstitute/clustertool/actions/workflows/ci.yml"><img src="https://github.com/KempnerInstitute/clustertool/actions/workflows/ci.yml/badge.svg" alt="CI"/></a>
   <a href="https://codecov.io/gh/KempnerInstitute/clustertool"><img src="https://codecov.io/gh/KempnerInstitute/clustertool/graph/badge.svg" alt="codecov"/></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"/></a>
+  <a href="https://github.com/KempnerInstitute/clustertool/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"/></a>
   <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.10+-blue.svg" alt="Python 3.10+"/></a>
   <a href="https://slurm.schedmd.com/"><img src="https://img.shields.io/badge/scheduler-Slurm-2b8cbe.svg" alt="Slurm"/></a>
   <a href="https://docs.astral.sh/uv/"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json" alt="uv"/></a>
@@ -29,19 +30,12 @@ inputs.
 
 ## What it runs
 
-```mermaid
-flowchart LR
-    you["you"] --> cli["clustertool<br/>no daemon, no state"]
-    cfg["site config"] -. "site values" .-> cli
-    cli --> host
-    subgraph host["your cluster's own tools"]
-        direction TB
-        slurm["Slurm"]
-        wrap["site wrappers"]
-        fs["lfs · getent"]
-    end
-    host --> out["your terminal"]
-```
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/KempnerInstitute/clustertool/main/_static/clustertool-flow-dark.svg">
+    <img src="https://raw.githubusercontent.com/KempnerInstitute/clustertool/main/_static/clustertool-flow-light.svg" alt="You run clustertool, which reads a site config and calls Slurm, the site wrappers, lfs and getent, and the answer reaches your terminal" width="820">
+  </picture>
+</p>
 
 Nothing runs as a service and nothing is cached: each command shells out to the
 tools your cluster already provides and formats what they return. Every
@@ -82,19 +76,16 @@ endpoint with `--backend prometheus`.
 ## Install
 
 ```bash
-uv tool install clustertool   # or: pipx install clustertool, pip install clustertool
+uv tool install 'clustertool[tui]'   # or: pipx install 'clustertool[tui]'
 ```
+
+The `tui` extra is what brings in the [`me`](docs/commands/me.md) dashboard. Without
+it every command still works and `me` prints its text summary instead, so plain
+`uv tool install clustertool` is enough if you do not want the dashboard.
 
 The install name is singular. Unrelated projects hold `clustertools` and
 `cluster-tools` on PyPI, so check the spelling. The command it puts on your PATH
 is `clustertool`, along with the bundled `jobscope` and `kempnerpulse` tools.
-
-Add the `tui` extra for the [`me`](docs/commands/me.md) dashboard, which is
-otherwise skipped in favor of the text summary:
-
-```bash
-uv tool install 'clustertool[tui]'
-```
 
 To track the development version instead:
 

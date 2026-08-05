@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 220" width="880" height="220" role="img" aria-label="You run clustertool, it calls your cluster's own tools, and the answer reaches your terminal">
+  <title>What clustertool runs</title>
+  <defs>
+    <marker id="tip" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 Z" fill="#9A9CC8"/>
+    </marker>
+  </defs>
+  <g font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" text-anchor="middle">
+    <rect x="16" y="101" width="88" height="44" rx="8" fill="#1C1D3F" stroke="#40427A"/>
+    <text x="60" y="128" font-size="15" fill="#F2F2FA">you</text>
+
+    <rect x="150" y="8" width="192" height="40" rx="8" fill="#1C1D3F" stroke="#40427A"/>
+    <text x="246" y="33" font-size="15" fill="#F2F2FA">site config</text>
+
+    <rect x="150" y="89" width="192" height="68" rx="8" fill="#14154C" stroke="#FB264C" stroke-width="2"/>
+    <text x="246" y="118" font-size="17" font-weight="700" fill="#F2F2FA">clustertool</text>
+    <text x="246" y="137" font-size="12.5" fill="#A9ABD6">no daemon, no state</text>
+
+    <rect x="396" y="41" width="252" height="168" rx="12" fill="none" stroke="#40427A" stroke-dasharray="5 4"/>
+    <text x="522" y="63" font-size="13" fill="#A9ABD6">your cluster&#8217;s own tools</text>
+    <rect x="421" y="76" width="202" height="32" rx="6" fill="#1C1D3F" stroke="#40427A"/>
+    <text x="522" y="97" font-size="15" fill="#F2F2FA">Slurm</text>
+    <rect x="421" y="118" width="202" height="32" rx="6" fill="#1C1D3F" stroke="#40427A"/>
+    <text x="522" y="139" font-size="15" fill="#F2F2FA">site wrappers</text>
+    <rect x="421" y="160" width="202" height="32" rx="6" fill="#1C1D3F" stroke="#40427A"/>
+    <text x="522" y="181" font-size="15" fill="#F2F2FA">lfs &#183; getent</text>
+
+    <rect x="700" y="101" width="164" height="44" rx="8" fill="#1C1D3F" stroke="#40427A"/>
+    <text x="782" y="128" font-size="15" fill="#F2F2FA">your terminal</text>
+
+    <g fill="none" stroke="#9A9CC8" stroke-width="1.6" marker-end="url(#tip)">
+      <path d="M112 123 L141 123"/>
+      <path d="M246 48 L246 82" stroke-dasharray="5 4"/>
+      <path d="M342 123 L389 123"/>
+      <path d="M648 123 L693 123"/>
+    </g>
+    <text x="256" y="70" font-size="12" fill="#A9ABD6" text-anchor="start">site values</text>
+  </g>
+</svg>
