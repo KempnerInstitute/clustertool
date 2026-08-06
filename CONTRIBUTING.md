@@ -213,7 +213,8 @@ behavior, help text, and tests before merging.
 
 Uploads to PyPI are manual.
 
-1. Raise `version` in `pyproject.toml`, run `uv lock`, and merge that.
+1. Raise `version` in `pyproject.toml` and `CITATION.cff`, run `uv lock`, and
+   merge that.
 2. Draft a GitHub release with tag `vX.Y.Z` targeting `main`, and publish it.
    The release check verifies the tag against the version, runs the tests,
    builds, and attaches both artifacts to the release.
