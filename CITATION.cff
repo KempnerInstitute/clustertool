@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "ClusterTool: Single Umbrella CLI Centralizing HPC/AI Cluster Tools"
+abstract: >-
+  A single umbrella CLI that centralizes the Slurm cluster scripts used by
+  researchers and admins, so common tasks live in one place with consistent help
+  and behavior, and adapts to other clusters through a site config.
+type: software
+authors:
+  - name: "Research Engineering Team, Kempner Institute, Harvard University"
+    website: "https://kempnerinstitute.harvard.edu"
+version: 0.1.1
+date-released: "2026-08-05"
+license: MIT
+repository-code: "https://github.com/KempnerInstitute/clustertool"
+url: "https://pypi.org/project/clustertool/"
+keywords:
+  - slurm
+  - hpc
+  - gpu
+  - cluster
+  - command-line tool
