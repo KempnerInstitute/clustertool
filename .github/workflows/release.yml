@@ -1,16 +1,15 @@
-name: Release
+name: Release check
 
 on:
   release:
     types: [published]
 
 jobs:
-  publish:
-    name: publish to PyPI
+  check:
+    name: check the release and attach the artifacts
     runs-on: ubuntu-latest
-    environment: pypi
     permissions:
-      id-token: write
+      contents: write
     steps:
       - uses: actions/checkout@v7
 
@@ -39,5 +38,7 @@ jobs:
       - name: Build
         run: uv build
 
-      - name: Publish
-        uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Attach the artifacts to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$GITHUB_REF_NAME" dist/* --clobber
