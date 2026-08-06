@@ -208,3 +208,20 @@ uv run pytest
 
 Describe the command, its inputs, and example output. A maintainer will review
 behavior, help text, and tests before merging.
+
+## Release
+
+Uploads to PyPI are manual.
+
+1. Raise `version` in `pyproject.toml`, run `uv lock`, and merge that.
+2. Draft a GitHub release with tag `vX.Y.Z` targeting `main`, and publish it.
+   The release check verifies the tag against the version, runs the tests,
+   builds, and attaches both artifacts to the release.
+3. Upload with a PyPI token scoped to this project where the scope is offered,
+   and revoke it afterward:
+
+```bash
+uv build
+uvx twine check --strict dist/*
+uvx twine upload dist/*
+```
