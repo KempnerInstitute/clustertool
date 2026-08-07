@@ -2,6 +2,7 @@
 
 import click
 
+from clustertool.commands.jobs.bestpartition import best_partition
 from clustertool.commands.jobs.cancel import cancel
 from clustertool.commands.jobs.debug import debug
 from clustertool.commands.jobs.failures import failures
@@ -57,3 +58,4 @@ jobs.add_command(new)
 jobs.add_command(debug)
 jobs.add_command(failures)
 jobs.add_command(wait_times)
+jobs.add_command(best_partition)

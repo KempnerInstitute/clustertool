@@ -25,17 +25,6 @@ def _epoch(text: str) -> int:
     return int(datetime.datetime.strptime(text, _TIME_FMT).timestamp())
 
 
-def _humanize(seconds: int) -> str:
-    seconds = int(seconds)
-    if seconds < 60:
-        return f"{seconds}s"
-    if seconds < 3600:
-        return f"{seconds // 60}m {seconds % 60}s"
-    if seconds < 86400:
-        return f"{seconds // 3600}h {seconds % 3600 // 60}m"
-    return f"{seconds // 86400}d {seconds % 86400 // 3600}h"
-
-
 def _bucket(gpus: int) -> str:
     if gpus <= 0:
         return "0"
@@ -156,9 +145,9 @@ def wait_times(
             values = sorted(groups[name])
             click.echo(
                 f"  {name:<24}{len(values):>6}"
-                f"{_humanize(slurm.percentile(values, 50)):>10}"
-                f"{_humanize(slurm.percentile(values, 90)):>10}"
-                f"{_humanize(values[-1]):>10}"
+                f"{slurm.humanize_seconds(slurm.percentile(values, 50)):>10}"
+                f"{slurm.humanize_seconds(slurm.percentile(values, 90)):>10}"
+                f"{slurm.humanize_seconds(values[-1]):>10}"
             )
 
     show("partition", "partition")

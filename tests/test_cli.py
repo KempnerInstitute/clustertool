@@ -3,6 +3,7 @@
 import csv
 import json
 import os
+import pathlib
 import pwd
 import re
 import shutil
@@ -5312,3 +5313,179 @@ def test_qos_retire_says_how_to_clear_an_account_level_holder(monkeypatch):
     assert result.exit_code == 1
     assert "account-level" in result.output
     assert "QOS-=prio" in result.output
+
+
+BEST_PARTITION_RECORDS = [
+    {"PartitionName": "fast", "AllowGroups": "lab_users", "State": "UP"},
+    {"PartitionName": "slow", "AllowGroups": "ALL", "State": "UP"},
+    {"PartitionName": "gpuonly", "AllowGroups": "ALL", "State": "UP"},
+    {"PartitionName": "closed", "AllowGroups": "other_lab", "State": "UP"},
+    {"PartitionName": "hung", "AllowGroups": "ALL", "State": "UP"},
+]
+
+
+def _best_partition_world(monkeypatch, answers):
+    import datetime
+
+    monkeypatch.setattr(storage, "user_groups", lambda user: ["lab_users"])
+    monkeypatch.setattr(slurm, "partition_records", lambda: BEST_PARTITION_RECORDS)
+    monkeypatch.setattr(slurm, "default_account", lambda user: "lab_acct")
+    now = datetime.datetime.now()
+    fmt = "%Y-%m-%dT%H:%M:%S"
+
+    def fake(partition, args, script="", timeout=10.0):
+        kind, offset_or_text = answers[partition]
+        if kind == "start":
+            return ("start", (now + datetime.timedelta(seconds=offset_or_text)).strftime(fmt))
+        return (kind, offset_or_text)
+
+    monkeypatch.setattr(slurm, "start_estimate", fake)
+
+
+def test_jobs_best_partition_ranks_and_explains(monkeypatch):
+    _best_partition_world(
+        monkeypatch,
+        {
+            "fast": ("start", -5),
+            "slow": ("start", 110700),
+            "gpuonly": ("reject", "You must request a gpu"),
+            "hung": ("timeout", "no answer in 10s"),
+        },
+    )
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        pathlib.Path("job.sh").write_text("#!/bin/bash\n#SBATCH -t 10\n")
+        result = runner.invoke(
+            main, ["jobs", "best-partition", "-f", "job.sh"], catch_exceptions=False
+        )
+    assert result.exit_code == 0
+    lines = result.output.splitlines()
+    assert "asking 4 partition(s)" in result.output
+    assert "skipped 1: 1 your groups are not allowed" in result.output
+    ranked = [
+        line.split()[0] for line in lines if line.startswith("  fast") or line.startswith("  slow")
+    ]
+    assert ranked == ["fast", "slow"]
+    assert "now" in next(line for line in lines if line.startswith("  fast"))
+    assert "1d 6h" in next(line for line in lines if line.startswith("  slow"))
+    assert "You must request a gpu" in result.output
+    assert "no answer in 10s" in result.output
+    assert "Submit there with: sbatch -p fast job.sh" in result.output
+
+
+def test_jobs_best_partition_named_partitions_skip_the_scan(monkeypatch):
+    def refuse():
+        raise AssertionError("the eligibility scan should not run when partitions are named")
+
+    _best_partition_world(monkeypatch, {"only": ("start", 0)})
+    monkeypatch.setattr(slurm, "partition_records", refuse)
+    result = CliRunner().invoke(main, ["jobs", "best-partition", "-p", "only"])
+    assert result.exit_code == 0
+    assert "asking 1 partition(s)" in result.output
+
+
+def test_jobs_best_partition_collapses_one_shared_reason(monkeypatch):
+    _best_partition_world(
+        monkeypatch,
+        {name: ("reject", "Time limit required") for name in ("fast", "slow", "gpuonly", "hung")},
+    )
+    result = CliRunner().invoke(main, ["jobs", "best-partition"])
+    assert result.exit_code == 0
+    assert "All 4 refused for the same reason: Time limit required" in result.output
+    assert result.output.count("Time limit required") == 1
+
+
+def test_jobs_best_partition_stops_on_an_unknown_sbatch_flag(monkeypatch):
+    _best_partition_world(monkeypatch, {"fast": ("reject", "unrecognized option '--nope'")})
+    result = CliRunner().invoke(main, ["jobs", "best-partition", "-p", "fast", "--nope"])
+    assert result.exit_code != 0
+    assert "unrecognized option '--nope'" in result.output
+
+
+def test_jobs_best_partition_stands_in_a_time_limit(monkeypatch):
+    seen = {}
+    _best_partition_world(monkeypatch, {"fast": ("start", 0)})
+    real = slurm.start_estimate
+
+    def record(partition, args, script="", timeout=10.0):
+        seen["args"] = list(args)
+        seen["script"] = script
+        return real(partition, args, script, timeout)
+
+    monkeypatch.setattr(slurm, "start_estimate", record)
+    CliRunner().invoke(main, ["jobs", "best-partition", "-p", "fast"])
+    assert seen["args"] == ["-t", "1:00:00"] and seen["script"] == ""
+    CliRunner().invoke(main, ["jobs", "best-partition", "-p", "fast", "-t", "5:00"])
+    assert seen["args"] == ["-t", "5:00"]
+    CliRunner().invoke(main, ["jobs", "best-partition", "-p", "fast", "--time=5:00"])
+    assert seen["args"] == ["--time=5:00"]
+    CliRunner().invoke(main, ["jobs", "best-partition", "-p", "fast", "--time", "5:00"])
+    assert seen["args"] == ["--time", "5:00"]
+    CliRunner().invoke(main, ["jobs", "best-partition", "-p", "fast", "-t5:00"])
+    assert seen["args"] == ["-t5:00"]
+    CliRunner().invoke(main, ["jobs", "best-partition", "-p", "fast", "--time-min", "5"])
+    assert seen["args"] == ["--time-min", "5", "-t", "1:00:00"], "a floor is not a limit"
+
+
+def test_jobs_best_partition_takes_the_account_from_the_script(monkeypatch, tmp_path):
+    script = tmp_path / "run.sh"
+    script.write_text("#!/bin/bash\n#SBATCH --account=script_acct\n#SBATCH -t 10\necho hi\n")
+    _best_partition_world(monkeypatch, {"fast": ("start", 0)})
+    result = CliRunner().invoke(main, ["jobs", "best-partition", "-p", "fast", "-f", str(script)])
+    assert result.exit_code == 0
+    assert "account script_acct" in result.output
+
+
+def test_jobs_best_partition_clamps_an_estimate_in_the_past():
+    import datetime
+
+    from clustertool.commands.jobs import bestpartition
+
+    now = datetime.datetime(2026, 8, 7, 12, 0, 0)
+    assert bestpartition._delay("2026-08-07T11:59:55", now) == 0
+    assert bestpartition._delay("2026-08-07T12:01:00", now) == 60
+    assert bestpartition._delay("not a time", now) == 0
+
+
+def test_jobs_best_partition_takes_a_script_positionally(monkeypatch):
+    """sbatch stops reading flags at the script, so the partition must precede it."""
+    seen = []
+    _best_partition_world(monkeypatch, {"fast": ("start", 0)})
+    monkeypatch.setattr(
+        slurm,
+        "start_estimate",
+        lambda partition, args, script="", timeout=10.0: (
+            seen.append((partition, list(args), script)),
+            ("start", "2026-08-07T12:00:00"),
+        )[1],
+    )
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        pathlib.Path("run.sh").write_text("#!/bin/bash\n#SBATCH -t 10\n")
+        result = runner.invoke(main, ["jobs", "best-partition", "run.sh", "-p", "fast"])
+    assert result.exit_code == 0
+    assert seen == [("fast", [], "run.sh")]
+    assert "Submit there with: sbatch -p fast run.sh" in result.output
+
+
+def test_jobs_best_partition_keeps_a_flag_value_out_of_the_script_slot(monkeypatch):
+    """A path after -o belongs to that flag, not to the positional script."""
+    seen = []
+    _best_partition_world(monkeypatch, {"fast": ("start", 0)})
+    monkeypatch.setattr(
+        slurm,
+        "start_estimate",
+        lambda partition, args, script="", timeout=10.0: (
+            seen.append((list(args), script)),
+            ("start", "2026-08-07T12:00:00"),
+        )[1],
+    )
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        pathlib.Path("out.log").write_text("")
+        pathlib.Path("run.sh").write_text("#!/bin/bash\n")
+        runner.invoke(main, ["jobs", "best-partition", "-p", "fast", "-o", "out.log", "run.sh"])
+        assert seen[-1] == (["-o", "out.log"], "run.sh")
+        seen.clear()
+        runner.invoke(main, ["jobs", "best-partition", "-p", "fast", "-o", "out.log"])
+        assert seen[-1] == (["-o", "out.log", "-t", "1:00:00"], "")

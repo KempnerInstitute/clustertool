@@ -259,6 +259,41 @@ submit.
 - `-d, --days`: Window length in days (default 7).
 - `--since` / `--until`: Explicit window, `YYYY-mm-ddTHH:MM:SS`.
 
+## `jobs best-partition [SCRIPT] [-p PARTITION]... [-A ACCOUNT] [-l LIMIT] [SBATCH_ARG...]`
+
+Find the partition where your job would start soonest. Asks the controller, once
+per partition, when it would schedule this job, and sorts the answers. The
+estimate is Slurm's own, from `sbatch --test-only`, and nothing is submitted. A
+partition that cannot run the job at all reports why, which is often the more
+useful answer: a missing GPU request, or a time limit the partition will not take.
+
+Partitions your groups and account cannot use are dropped first, from what
+`scontrol show partition` publishes, so only the plausible ones cost a query. A
+rule a site enforces at submission is not visible that way and appears as a
+refusal instead.
+
+The asking is deliberately serial. The controller runs each of these through its
+scheduler behind the same locks, so several at once take longer than one after
+another and start timing out.
+
+Compare with [`jobs wait-times`](#jobs-wait-times--u-user---a-account---p-partition--d-days), which
+reports what jobs like yours actually waited, from accounting history, rather
+than what the scheduler predicts for this one.
+
+**Use cases**
+- Decide where to submit a script you already have.
+- Price a request before writing a script at all, with `sbatch` flags.
+- Find out why a partition refuses a job without submitting it.
+
+**Inputs**
+- `SCRIPT`: Submission script to test, named the way `sbatch` takes it, or with `-f`. Without one, a trivial job stands in, so flags alone can be compared.
+- `-f, --file`: The script, for callers who prefer a flag.
+- `-p, --partition`: Test only these partitions, repeatable. Skips the eligibility scan and asks about exactly these.
+- `-A, --account`: Account to test under (default: the script's, else your default account).
+- `-l, --limit`: Most partitions to ask about (default 40).
+- `--timeout`: Seconds to wait per partition (default 10).
+- `[SBATCH_ARG]...`: Extra `sbatch` flags, such as `-t 2:00:00 --gpus 1 --mem 32G`, applied to every partition tested. They may surround the script, as they would for `sbatch`.
+
 ## `jobs failures [-u USER | -A ACCOUNT | -p PARTITION] [-d DAYS] [-n TOP]`
 
 Summarize finished-job failures over a window (via `sacct`). Classifies terminal

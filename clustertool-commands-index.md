@@ -55,6 +55,7 @@ names the host tool each command shells out to.
 | `jobs priorities PARTITION` | user | sprio, sinfo | Priority factors for the eligible pending jobs in a partition. |
 | `jobs violators PARTITION` | user | scontrol, sinfo | Running jobs over the per-GPU CPU/memory norm. |
 | `jobs wait-times` | user | sacct | Submit-to-start wait distributions by partition, QOS, GPU count. |
+| `jobs best-partition [SCRIPT] [-p PARTITION]... [SBATCH_ARG...]` | user | sbatch --test-only, scontrol | Where a job would start soonest, with the reason any partition refuses it. |
 | `jobs failures` | user | sacct | Window failure post-mortem: rate and top exit codes, users, nodes. |
 | `jobs cancel [JOBID...] [-y]` | user | scancel | Cancel jobs; `--all` and `--pending` prompt first. |
 | `jobs hold JOBID...` | user | scontrol | Prevent pending jobs from starting. |
