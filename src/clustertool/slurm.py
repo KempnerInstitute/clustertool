@@ -616,6 +616,94 @@ def partition_accounts(partition: str) -> list[str]:
     return match.group(1).split(",")
 
 
+def partition_records() -> list[dict[str, str]]:
+    """Return one mapping of Slurm's own fields per partition.
+
+    Raises when the partitions cannot be read, so a controller that is
+    unreachable is not reported as a cluster with no partitions.
+    """
+    code, out, err = process.probe(["scontrol", "show", "partition", "-o"])
+    if code != 0:
+        raise CommandError(f"could not read partitions: {err.strip() or out.strip() or code}")
+    records = []
+    for line in out.splitlines():
+        record = dict(field.split("=", 1) for field in line.split() if "=" in field)
+        if record.get("PartitionName"):
+            records.append(record)
+    return records
+
+
+def partition_refusal(record: dict[str, str], groups: set[str], account: str) -> str:
+    """Return why a user cannot submit to a partition, or "" if they can.
+
+    Reads the partition state, its group list, and its account allow and deny
+    lists. A rule a site applies at submission is not published there, so an
+    empty result means worth asking rather than certain to be accepted.
+    """
+    state = record.get("State", "UP").upper()
+    if state != "UP":
+        return f"state is {state}"
+    allowed_groups = record.get("AllowGroups", "ALL")
+    if allowed_groups.upper() != "ALL" and not groups & set(allowed_groups.split(",")):
+        return "your groups are not allowed"
+    allowed = record.get("AllowAccounts", "ALL")
+    denied = record.get("DenyAccounts", "")
+    if allowed.upper() != "ALL":
+        if account not in allowed.split(","):
+            return f"account {account or 'unknown'} is not allowed"
+    elif account and denied and account in denied.split(","):
+        return f"account {account} is denied"
+    return ""
+
+
+_START_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}")
+_REFUSAL_PREFIXES = ("sbatch: error: ", "sbatch: ", "allocation failure: ")
+
+
+def _refusal(text: str) -> str:
+    """Return the most specific refusal in sbatch's output.
+
+    Slurm adds a generic allocation failure after a site plugin has said what is
+    actually wrong, so the specific line wins.
+    """
+    lines = []
+    for line in text.splitlines():
+        line = line.strip()
+        for prefix in _REFUSAL_PREFIXES:
+            if line.startswith(prefix):
+                line = line[len(prefix) :].strip()
+        if line:
+            lines.append(line)
+    specific = [line for line in lines if "unspecified" not in line.lower()]
+    return (specific or lines or ["rejected"])[0]
+
+
+def start_estimate(
+    partition: str, args: list[str], script: str = "", timeout: float = 10.0
+) -> tuple[str, str]:
+    """Return when a job would start in a partition, as (kind, detail).
+
+    kind is "start" with Slurm's estimated start time, "reject" with the reason
+    the job cannot run there, or "timeout" when the controller did not answer.
+    Runs sbatch --test-only, which schedules the job without submitting it. The
+    partition goes after the caller's arguments and before the script, so it
+    overrides both a repeated flag and a directive in the script. Without a
+    script, a trivial job stands in for one.
+    """
+    tail = [script] if script else ["--wrap", "true"]
+    code, out, err = process.probe(
+        ["sbatch", "--test-only", *args, "-p", partition, *tail], timeout=timeout
+    )
+    if code == 127:
+        raise CommandError("'sbatch' not found on this host")
+    if code == 124:
+        return ("timeout", f"no answer in {timeout:g}s")
+    match = _START_RE.search(f"{out}\n{err}")
+    if match:
+        return ("start", match.group(0))
+    return ("reject", _refusal(f"{out}\n{err}"))
+
+
 def user_fullnames(usernames: list[str]) -> dict[str, str]:
     """Return {username: full_name} via one getent call.
 
@@ -1173,6 +1261,18 @@ def percentile(sorted_values: list[int], pct: int) -> int | None:
         return None
     rank = max(1, (pct * len(sorted_values) + 99) // 100)
     return sorted_values[rank - 1]
+
+
+def humanize_seconds(seconds: int) -> str:
+    """Return a duration as two units at most, from seconds up to days."""
+    seconds = int(seconds)
+    if seconds < 60:
+        return f"{seconds}s"
+    if seconds < 3600:
+        return f"{seconds // 60}m {seconds % 60}s"
+    if seconds < 86400:
+        return f"{seconds // 3600}h {seconds % 3600 // 60}m"
+    return f"{seconds // 86400}d {seconds % 86400 // 3600}h"
 
 
 def _float_field(value: str | None) -> float | None:

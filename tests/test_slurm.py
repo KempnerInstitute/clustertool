@@ -543,3 +543,122 @@ def test_window_rows_asks_for_every_record(monkeypatch):
     monkeypatch.setattr(process, "probe", lambda cmd, **kw: (seen.append(cmd), (0, "", ""))[1])
     slurm.sacct_window_rows("JobID,State", "2026-01-01", "2026-01-02", partition="p")
     assert "-D" in seen[0]
+
+
+PARTITION_LINES = (
+    "PartitionName=open AllowGroups=ALL AllowAccounts=ALL State=UP TRES=cpu=64\n"
+    "PartitionName=near AllowGroups=lab_users_extra AllowAccounts=ALL State=UP\n"
+    "PartitionName=lab AllowGroups=lab_users,admins AllowAccounts=lab_acct State=UP\n"
+    "PartitionName=shut AllowGroups=ALL AllowAccounts=ALL State=INACTIVE\n"
+    "PartitionName=wide AllowGroups=ALL AllowAccounts=ALL DenyAccounts=lab_acct State=UP\n"
+)
+
+
+def test_partition_records(monkeypatch):
+    monkeypatch.setattr(process, "probe", lambda cmd, **kw: (0, PARTITION_LINES, ""))
+    records = slurm.partition_records()
+    assert [r["PartitionName"] for r in records] == ["open", "near", "lab", "shut", "wide"]
+    assert records[0]["TRES"] == "cpu=64"
+
+
+def test_partition_records_raises_when_the_read_fails(monkeypatch):
+    monkeypatch.setattr(process, "probe", lambda cmd, **kw: (1, "", "down"))
+    with pytest.raises(slurm.SlurmError):
+        slurm.partition_records()
+
+
+def _record(name):
+    return next(
+        dict(field.split("=", 1) for field in line.split() if "=" in field)
+        for line in PARTITION_LINES.splitlines()
+        if f"PartitionName={name} " in f"{line} "
+    )
+
+
+def test_partition_refusal_allows_an_open_partition():
+    assert slurm.partition_refusal(_record("open"), {"lab_users"}, "lab_acct") == ""
+
+
+def test_partition_refusal_matches_a_group_exactly():
+    """A group whose name merely starts another allowed group's name grants nothing."""
+    assert slurm.partition_refusal(_record("near"), {"lab_users"}, "acct")
+    assert slurm.partition_refusal(_record("near"), {"lab_users_extra"}, "acct") == ""
+    assert slurm.partition_refusal(_record("lab"), {"admins"}, "lab_acct") == ""
+
+
+def test_partition_refusal_reads_the_account_lists():
+    assert "not allowed" in slurm.partition_refusal(_record("lab"), {"admins"}, "other_acct")
+    assert "denied" in slurm.partition_refusal(_record("wide"), {"any"}, "lab_acct")
+    assert slurm.partition_refusal(_record("wide"), {"any"}, "other_acct") == ""
+
+
+def test_partition_refusal_skips_a_partition_that_is_not_up():
+    assert slurm.partition_refusal(_record("shut"), {"any"}, "acct") == "state is INACTIVE"
+
+
+def test_start_estimate_reads_the_time_out_of_sbatch(monkeypatch):
+    line = (
+        "sbatch: Job 37678147 to start at 2026-08-07T14:38:09 a using 1 processors "
+        "on nodes holygpu8a19505 in partition kempner_dev\n"
+    )
+    seen = []
+    monkeypatch.setattr(process, "probe", lambda cmd, **kw: (seen.append(cmd), (0, "", line))[1])
+    assert slurm.start_estimate("kempner_dev", ["-t", "10"], "job.sh") == (
+        "start",
+        "2026-08-07T14:38:09",
+    )
+    assert seen[0] == [
+        "sbatch",
+        "--test-only",
+        "-t",
+        "10",
+        "-p",
+        "kempner_dev",
+        "job.sh",
+    ]
+
+
+def test_start_estimate_stands_a_job_in_when_there_is_no_script(monkeypatch):
+    seen = []
+    monkeypatch.setattr(process, "probe", lambda cmd, **kw: (seen.append(cmd), (0, "", ""))[1])
+    slurm.start_estimate("p", [])
+    assert seen[0][-2:] == ["--wrap", "true"]
+
+
+def test_start_estimate_prefers_the_reason_over_the_generic_failure(monkeypatch):
+    text = (
+        "allocation failure: Unspecified error\n"
+        "sbatch: error: You must request a gpu using the --gpus option to use kempner_h100\n"
+    )
+    monkeypatch.setattr(process, "probe", lambda cmd, **kw: (1, "", text))
+    kind, detail = slurm.start_estimate("kempner_h100", [])
+    assert kind == "reject"
+    assert detail.startswith("You must request a gpu")
+
+
+def test_start_estimate_reports_a_bare_allocation_failure(monkeypatch):
+    text = "allocation failure: User's group not permitted to use this partition\n"
+    monkeypatch.setattr(process, "probe", lambda cmd, **kw: (1, "", text))
+    assert slurm.start_estimate("p", []) == (
+        "reject",
+        "User's group not permitted to use this partition",
+    )
+
+
+def test_start_estimate_separates_a_timeout_from_a_refusal(monkeypatch):
+    monkeypatch.setattr(process, "probe", lambda cmd, **kw: (124, "", ""))
+    assert slurm.start_estimate("p", [], timeout=4) == ("timeout", "no answer in 4s")
+
+
+def test_start_estimate_raises_when_sbatch_is_missing(monkeypatch):
+    monkeypatch.setattr(process, "probe", lambda cmd, **kw: (127, "", ""))
+    with pytest.raises(slurm.SlurmError):
+        slurm.start_estimate("p", [])
+
+
+def test_humanize_seconds():
+    assert slurm.humanize_seconds(0) == "0s"
+    assert slurm.humanize_seconds(59) == "59s"
+    assert slurm.humanize_seconds(60) == "1m 0s"
+    assert slurm.humanize_seconds(3600) == "1h 0m"
+    assert slurm.humanize_seconds(90061) == "1d 1h"
